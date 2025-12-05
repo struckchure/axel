@@ -89,36 +89,13 @@ func (t *TypeScriptGenerator) mapTypeToTypeScript(dbType string, nullable bool) 
 }
 
 func (t *TypeScriptGenerator) toPascalCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-' || r == ' '
-	})
-	for i, word := range words {
-		if len(word) > 0 {
-			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
-		}
-	}
-	return strings.Join(words, "")
+	return toPascalCase(s)
 }
 
 func (t *TypeScriptGenerator) toCamelCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == '-' || r == ' '
-	})
-	for i, word := range words {
-		if len(word) > 0 {
-			if i == 0 {
-				words[i] = strings.ToLower(word)
-			} else {
-				words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
-			}
-		}
-	}
-	return strings.Join(words, "")
+	return toCamelCase(s)
 }
 
 func (t *TypeScriptGenerator) toKebabCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return r == '_' || r == ' '
-	})
-	return strings.ToLower(strings.Join(words, "-"))
+	return toKebabCase(s)
 }
