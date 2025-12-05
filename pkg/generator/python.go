@@ -33,7 +33,7 @@ func (p *PythonGenerator) generateClass(table db.Table) string {
 	var sb strings.Builder
 
 	sb.WriteString("from dataclasses import dataclass\n")
-	sb.WriteString("from typing import Optional\n")
+	sb.WriteString("from typing import Optional, Any\n")
 	sb.WriteString("from datetime import datetime\n\n")
 	sb.WriteString(fmt.Sprintf("@dataclass\n"))
 	sb.WriteString(fmt.Sprintf("class %s:\n", p.toPascalCase(table.Name)))
@@ -88,7 +88,7 @@ func (p *PythonGenerator) mapTypeToPython(dbType string, nullable bool) string {
 	case strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal"):
 		pyType = "float"
 	default:
-		pyType = "any"
+		pyType = "Any"
 	}
 
 	if nullable {
