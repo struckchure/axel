@@ -53,7 +53,13 @@ func Connect(cfg config.DatabaseConfig) (*Connection, error) {
 		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
 	}
 
-	db, err := sql.Open(cfg.Type, dsn)
+	// Map database type to driver name
+	driverName := cfg.Type
+	if cfg.Type == "sqlite" {
+		driverName = "sqlite3"
+	}
+
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
