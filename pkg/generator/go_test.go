@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/struckchure/axel/pkg/db"
@@ -81,22 +82,8 @@ func TestGoGenerator_GenerateStruct(t *testing.T) {
 	}
 
 	for _, expected := range expectedStrings {
-		if !contains(result, expected) {
+		if !strings.Contains(result, expected) {
 			t.Errorf("Generated struct missing expected string: %s", expected)
 		}
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && 
-		(findSubstring(s, substr) != -1))
-}
-
-func findSubstring(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }

@@ -34,7 +34,33 @@ func (g *GoGenerator) Generate(schema *db.Schema) error {
 func (g *GoGenerator) generateStruct(table db.Table) string {
 	var sb strings.Builder
 
+	// Determine which imports are needed
+	needsTime := false
+	needsJSON := false
+	for _, col := range table.Columns {
+		goType := g.mapTypeToGo(col.Type, col.Nullable)
+		if strings.Contains(goType, "time.Time") {
+			needsTime = true
+		}
+		if strings.Contains(goType, "json.RawMessage") {
+			needsJSON = true
+		}
+	}
+
 	sb.WriteString(fmt.Sprintf("package %s\n\n", g.pkg))
+	
+	// Add imports if needed
+	if needsTime || needsJSON {
+		sb.WriteString("import (\n")
+		if needsJSON {
+			sb.WriteString("\t\"encoding/json\"\n")
+		}
+		if needsTime {
+			sb.WriteString("\t\"time\"\n")
+		}
+		sb.WriteString(")\n\n")
+	}
+
 	sb.WriteString(fmt.Sprintf("// %s represents the %s table\n", g.toPascalCase(table.Name), table.Name))
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", g.toPascalCase(table.Name)))
 
