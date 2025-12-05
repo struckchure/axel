@@ -1,0 +1,25 @@
+abstract model Base {
+  id: uuid { default @func(generate_uuid_v4); };
+  created_at: datetime { default @func(now); };
+  updated_at: datetime { default @func(now); };
+
+  @before update update_timestamp {
+    self.updated_at := @func(now);
+  };
+}
+
+model User extends Base {
+  required email: str {
+    constraint exclusive;
+    constraint min_length(10);
+    constraint max_length(100);
+  };
+  name: str;
+}
+
+model Post extends Base {
+  required title: str;
+  required content: str;
+  required single author: User { on id; };
+  multi likes: User { on id; };
+}
