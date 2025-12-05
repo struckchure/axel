@@ -91,7 +91,9 @@ func (j *JavaScriptGenerator) toPascalCase(s string) string {
 		return r == '_' || r == '-' || r == ' '
 	})
 	for i, word := range words {
-		words[i] = strings.Title(strings.ToLower(word))
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+		}
 	}
 	return strings.Join(words, "")
 }
@@ -101,10 +103,12 @@ func (j *JavaScriptGenerator) toCamelCase(s string) string {
 		return r == '_' || r == '-' || r == ' '
 	})
 	for i, word := range words {
-		if i == 0 {
-			words[i] = strings.ToLower(word)
-		} else {
-			words[i] = strings.Title(strings.ToLower(word))
+		if len(word) > 0 {
+			if i == 0 {
+				words[i] = strings.ToLower(word)
+			} else {
+				words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+			}
 		}
 	}
 	return strings.Join(words, "")

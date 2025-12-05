@@ -103,11 +103,18 @@ func (p *PythonGenerator) toPascalCase(s string) string {
 		return r == '_' || r == '-' || r == ' '
 	})
 	for i, word := range words {
-		words[i] = strings.Title(strings.ToLower(word))
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+		}
 	}
 	return strings.Join(words, "")
 }
 
 func (p *PythonGenerator) toSnakeCase(s string) string {
+	// If already contains underscores, just lowercase it
+	if strings.Contains(s, "_") {
+		return strings.ToLower(s)
+	}
+	// Otherwise, return as-is (assuming it's already in correct format)
 	return strings.ToLower(s)
 }
