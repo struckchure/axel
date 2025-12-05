@@ -85,7 +85,7 @@ func (p *PythonGenerator) mapTypeToPython(dbType string, nullable bool) string {
 		pyType = "str"
 	case strings.Contains(dbType, "timestamp") || strings.Contains(dbType, "datetime") || strings.Contains(dbType, "date"):
 		pyType = "datetime"
-	case strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal"):
+	case strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal") || strings.Contains(dbType, "real"):
 		pyType = "float"
 	default:
 		pyType = "Any"

@@ -69,7 +69,7 @@ func (g *GoGenerator) mapTypeToGo(dbType string, nullable bool) string {
 		goType = "time.Time"
 	case strings.Contains(dbType, "date"):
 		goType = "time.Time"
-	case strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal"):
+	case strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal") || strings.Contains(dbType, "real"):
 		goType = "float64"
 	case strings.Contains(dbType, "json"):
 		goType = "json.RawMessage"

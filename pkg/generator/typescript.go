@@ -67,7 +67,7 @@ func (t *TypeScriptGenerator) mapTypeToTypeScript(dbType string, nullable bool) 
 	dbType = strings.ToLower(dbType)
 
 	switch {
-	case strings.Contains(dbType, "int") || strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal"):
+	case strings.Contains(dbType, "int") || strings.Contains(dbType, "float") || strings.Contains(dbType, "double") || strings.Contains(dbType, "decimal") || strings.Contains(dbType, "real"):
 		tsType = "number"
 	case strings.Contains(dbType, "boolean") || strings.Contains(dbType, "bool"):
 		tsType = "boolean"
