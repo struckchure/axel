@@ -1,0 +1,19 @@
+database:
+  type: postgres
+  host: localhost
+  port: 5432
+  database: mydb
+  username: postgres
+  password: postgres
+  sslMode: disable
+
+generators:
+  - language: go
+    options:
+      package: models
+  - language: python
+  - language: typescript
+  - language: javascript
+
+output:
+  directory: ./generated

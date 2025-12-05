@@ -1,0 +1,12 @@
+database:
+  type: sqlite
+  database: ./mydb.db
+
+generators:
+  - language: go
+    options:
+      package: models
+  - language: typescript
+
+output:
+  directory: ./generated
