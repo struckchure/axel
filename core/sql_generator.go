@@ -4,36 +4,15 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/samber/lo"
 )
-
-func GenerateSQL(models []Model) string {
-	var sql strings.Builder
-
-	// Separate abstract and concrete models
-	abstractModels := make(map[string]Model)
-	concreteModels := []Model{}
-
-	for _, model := range models {
-		if model.IsAbstract {
-			abstractModels[model.Name] = model
-		} else {
-			concreteModels = append(concreteModels, model)
-		}
-	}
-
-	// Generate tables for concrete models
-	for _, model := range concreteModels {
-		sql.WriteString(generateTable(model, abstractModels))
-		sql.WriteString("\n\n")
-	}
-
-	return sql.String()
-}
 
 func generateTable(model Model, abstractModels map[string]Model) string {
 	var sql strings.Builder
 
-	sql.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", toSnakeCase(model.Name)))
+	sql.WriteString(fmt.Sprintf(`CREATE TABLE %s (`, formatIdentifier(model.Name)))
+	sql.WriteString("\n")
 
 	var columns []string
 	var foreignKeys []string
@@ -97,7 +76,7 @@ func generateTable(model Model, abstractModels map[string]Model) string {
 }
 
 func generateColumn(field Field, modelName string) (string, string) {
-	colName := toSnakeCase(field.Name)
+	colName := formatIdentifier(field.Name)
 	sqlType := mapType(field.Type)
 
 	var parts []string
@@ -117,9 +96,9 @@ func generateColumn(field Field, modelName string) (string, string) {
 		}
 
 		// Generate foreign key constraint
-		refTable := toSnakeCase(field.Type)
-		refColumn := toSnakeCase(field.OnTarget.Name)
-		foreignKey = fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s)", colName, refTable, refColumn)
+		refTable := formatIdentifier(field.Type)
+		refColumn := formatIdentifier(field.OnTarget.Name)
+		foreignKey = fmt.Sprintf(`FOREIGN KEY (%s) REFERENCES %s(%s)`, colName, refTable, refColumn)
 
 		if field.OnTarget.Name != "" {
 			foreignKey += " ON DELETE CASCADE"
@@ -148,22 +127,22 @@ func generateColumn(field Field, modelName string) (string, string) {
 }
 
 func generateJunctionTable(modelName string, field Field) string {
-	tableName := fmt.Sprintf("%s_%s", toSnakeCase(modelName), toSnakeCase(field.Name))
-	refTable := toSnakeCase(field.Type)
-	modelTable := toSnakeCase(modelName)
+	tableName := formatIdentifier(fmt.Sprintf("%s_%s", lo.SnakeCase(modelName), lo.SnakeCase(field.Name)))
+	refTable := formatIdentifier(field.Type)
+	modelTable := formatIdentifier(modelName)
 
 	return fmt.Sprintf(`CREATE TABLE %s (
   %s UUID NOT NULL,
   %s UUID NOT NULL,
   PRIMARY KEY (%s, %s),
-  FOREIGN KEY (%s) REFERENCES %s(id) ON DELETE CASCADE,
-  FOREIGN KEY (%s) REFERENCES %s(id) ON DELETE CASCADE
+  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE,
+  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE
 );`,
 		tableName,
-		toSnakeCase(modelName), toSnakeCase(field.Type),
-		toSnakeCase(modelName), toSnakeCase(field.Type),
-		toSnakeCase(modelName), modelTable,
-		toSnakeCase(field.Type), refTable,
+		formatIdentifier(modelName), formatIdentifier(field.Type),
+		formatIdentifier(modelName), formatIdentifier(field.Type),
+		formatIdentifier(modelName), modelTable, "id", // TODO: should be the reference field
+		formatIdentifier(field.Type), refTable, "id", // TODO: should be the reference field
 	)
 }
 

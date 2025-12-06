@@ -5,18 +5,18 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Phase 1: Core Foundation (In Progress)
 
 ### Schema Definition & Type Safety
-- [ ] Design and implement schema definition language (SDL)
+- [x] Design and implement schema definition language (SDL)
 - [ ] Create Go type generation from schema definitions
 - [ ] Implement type-safe query client generation
-- [ ] Support for basic data types (String, Int, Boolean, DateTime, Float, JSON)
-- [ ] Relationship modeling (One-to-One, One-to-Many, Many-to-Many)
+- [x] Support for basic data types (String, Int, Boolean, DateTime, Float, JSON)
+- [x] Relationship modeling (One-to-One, One-to-Many, Many-to-Many)
 
 ### SQL Migration Generation
 - [ ] Build migration engine core
-- [ ] Implement CREATE TABLE generation
+- [x] Implement CREATE TABLE generation
 - [ ] Implement ALTER TABLE operations
 - [ ] Generate CREATE INDEX statements
-- [ ] Support for constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL)
+- [x] Support for constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL)
 - [ ] Migration history tracking and versioning
 - [ ] Rollback capability
 

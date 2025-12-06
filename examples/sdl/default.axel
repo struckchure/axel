@@ -1,5 +1,8 @@
 abstract model Base {
-  id: uuid { default @func(gen_random_uuid); };
+  id: uuid {
+    default @func(gen_random_uuid);
+    constraint exclusive;
+  };
   created_at: datetime { default @func(now); };
   updated_at: datetime { default @func(now); };
 
@@ -15,8 +18,11 @@ model User extends Base {
     constraint max_length(100);
   };
   name: str {
-    default "n/a";
+    default 'n/a 2';
   };
+  required age: int32;
+  required health: int32;
+  active: bool { default true };
 }
 
 model Comment extends Base {

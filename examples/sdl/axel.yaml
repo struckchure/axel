@@ -1,0 +1,3 @@
+database-url: "postgres://user:password@localhost:5432/db?sslmode=disable"
+migrations-dir: "./examples/sdl/migrations"
+schema-path: "./examples/sdl/default.axel"
