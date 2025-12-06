@@ -12,13 +12,13 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [x] Relationship modeling (One-to-One, One-to-Many, Many-to-Many)
 
 ### SQL Migration Generation
-- [ ] Build migration engine core
+- [x] Build migration engine core
 - [x] Implement CREATE TABLE generation
-- [ ] Implement ALTER TABLE operations
+- [x] Implement ALTER TABLE operations
 - [ ] Generate CREATE INDEX statements
 - [x] Support for constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL)
-- [ ] Migration history tracking and versioning
-- [ ] Rollback capability
+- [x] Migration history tracking and versioning
+- [x] Rollback capability
 
 ### Type-Safe Query Client
 - [ ] Basic CRUD operations (Create, Read, Update, Delete)
