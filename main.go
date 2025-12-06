@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/struckchure/axel/cmd"
+	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
+	"github.com/struckchure/axel/clients"
 )
 
 func main() {
@@ -27,9 +30,41 @@ func main() {
 	// 	return
 	// }
 
-	err := cmd.RootCmd.Execute()
+	// err := cmd.RootCmd.Execute()
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+
+	db, err := sqlx.Connect(
+		"postgres",
+		"postgres://user:password@localhost:5432/db?sslmode=disable",
+	)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+
+	ctx := context.Background()
+
+	u := new(clients.User)
+
+	user, err := u.Query(db).Where(
+		u.EmailEq("john@mail.com"),
+		u.NameEq("NULL"),
+	).First(ctx)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Printf("%#v\n", user)
+
+	users, err := u.Query(db).Where().All(ctx)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Printf("%#v\n", users)
 }

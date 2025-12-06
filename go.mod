@@ -3,6 +3,7 @@ module github.com/struckchure/axel
 go 1.23
 
 require (
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/samber/lo v1.52.0
 	github.com/spf13/cobra v1.10.2
