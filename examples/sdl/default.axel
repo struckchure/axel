@@ -2,6 +2,7 @@ abstract model Base {
   id: uuid {
     default @func(gen_random_uuid);
     constraint exclusive;
+    constraint pk;
   };
   created_at: datetime { default @func(now); };
   updated_at: datetime { default @func(now); };

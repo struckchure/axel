@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE "user" (
-  "id" UUID DEFAULT gen_random_uuid() UNIQUE,
+  "id" UUID DEFAULT gen_random_uuid() UNIQUE PRIMARY KEY,
   "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   "email" TEXT NOT NULL UNIQUE,
@@ -12,7 +12,7 @@ CREATE TABLE "user" (
 );
 
 CREATE TABLE "post" (
-  "id" UUID DEFAULT gen_random_uuid() UNIQUE,
+  "id" UUID DEFAULT gen_random_uuid() UNIQUE PRIMARY KEY,
   "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   "title" TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE "post_likes" (
 );
 
 CREATE TABLE "comment" (
-  "id" UUID DEFAULT gen_random_uuid() UNIQUE,
+  "id" UUID DEFAULT gen_random_uuid() UNIQUE PRIMARY KEY,
   "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   "post" UUID NOT NULL,

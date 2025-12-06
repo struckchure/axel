@@ -119,6 +119,8 @@ func generateColumn(field Field, modelName string) (string, string) {
 			switch constraint.Name {
 			case "exclusive":
 				parts = append(parts, "UNIQUE")
+			case "pk":
+				parts = append(parts, "PRIMARY KEY")
 			}
 		}
 	}
