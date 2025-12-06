@@ -1,5 +1,5 @@
 abstract model Base {
-  id: uuid { default @func(generate_uuid_v4); };
+  id: uuid { default @func(gen_random_uuid); };
   created_at: datetime { default @func(now); };
   updated_at: datetime { default @func(now); };
 
@@ -14,12 +14,20 @@ model User extends Base {
     constraint min_length(10);
     constraint max_length(100);
   };
-  name: str;
+  name: str {
+    default "n/a";
+  };
+}
+
+model Comment extends Base {
+  required post: Post { on id };
+  required content: str;
+  required author: User { on email; };
 }
 
 model Post extends Base {
   required title: str;
   required content: str;
   required single author: User { on id; };
-  multi likes: User { on id; };
+  multi likes: User { on email; };
 }
