@@ -1,11 +1,11 @@
 abstract model Base {
-  id: uuid {
+  required id: uuid {
     default @func(gen_random_uuid);
     constraint exclusive;
     constraint pk;
   };
-  created_at: datetime { default @func(now); };
-  updated_at: datetime { default @func(now); };
+  required created_at: datetime { default @func(now); };
+  required updated_at: datetime { default @func(now); };
 
   @before update update_timestamp {
     self.updated_at := @func(now);

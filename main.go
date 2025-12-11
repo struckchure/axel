@@ -1,12 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/struckchure/axel/clients"
+	axel "github.com/struckchure/axel/core"
 )
 
 func main() {
@@ -36,35 +35,49 @@ func main() {
 	// 	return
 	// }
 
-	db, err := sqlx.Connect(
-		"postgres",
-		"postgres://user:password@localhost:5432/db?sslmode=disable",
-	)
+	// db, err := sqlx.Connect(
+	// 	"postgres",
+	// 	"postgres://user:password@localhost:5432/db?sslmode=disable",
+	// )
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+
+	// ctx := context.Background()
+
+	// user, err := clients.Q[clients.User](db).Where(
+	// 	// clients.UserEmail.Eq("john@mail.com"),
+	// 	clients.UserEmail.Contains("n", false),
+	// ).First(ctx)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+
+	// fmt.Printf("%#v\n", user)
+
+	// users, err := u.Query(db).Where().All(ctx)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+
+	// fmt.Printf("%#v\n", users)
+
+	generator, err := clients.NewGoClientGenerator(&axel.MigrationConfig{
+		PackageName: "ax",
+		SchemaPath:  "./examples/sdl/default.axel",
+		ClientDir:   "./examples/sdl/client",
+	})
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	ctx := context.Background()
-
-	u := new(clients.User)
-
-	user, err := u.Query(db).Where(
-		u.EmailEq("john@mail.com"),
-		u.NameEq("NULL"),
-	).First(ctx)
+	err = generator.Generate()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-
-	fmt.Printf("%#v\n", user)
-
-	users, err := u.Query(db).Where().All(ctx)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	fmt.Printf("%#v\n", users)
 }

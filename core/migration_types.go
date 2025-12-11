@@ -63,6 +63,8 @@ type MigrationPlan struct {
 
 // MigrationConfig holds configuration for migration operations
 type MigrationConfig struct {
+	PackageName   string `json:"package-name" yaml:"package-name"`     // Default: "./ax"
+	ClientDir     string `json:"client-dir" yaml:"client-dir"`         // Default: "./axel/client"
 	MigrationsDir string `json:"migrations-dir" yaml:"migrations-dir"` // Default: "./migrations"
 	SchemaPath    string `json:"schema-path" yaml:"schema-path"`       // Path to .axel schema file
 	DatabaseURL   string `json:"database-url" yaml:"database-url" `    // PostgreSQL connection string
