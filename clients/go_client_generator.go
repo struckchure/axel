@@ -59,6 +59,11 @@ func (g *GoClientGenerator) Generate() error {
 			return err
 		}
 
+		err = g.generateFields(model, values)
+		if err != nil {
+			return err
+		}
+
 		err = g.generateQuery(model, values)
 		if err != nil {
 			return err
@@ -153,40 +158,60 @@ func (g *GoClientGenerator) generateOperations(model axel.Model, values goClient
 	for _, opType := range opTypes {
 		f := jen.NewFile(values.packageName)
 
-		structName := lo.Ternary(opType.hasGenerics,
-			fmt.Sprintf("%sOp%s[T any]", model.Name, opType.name),
-			fmt.Sprintf("%sOp%s", model.Name, opType.name),
-		)
+		structName := fmt.Sprintf("%sOp%s", model.Name, opType.name)
+		generics := lo.Map(opType.generics, func(item string, idx int) jen.Code {
+			return jen.Custom(jen.Options{}, jen.Id(item))
+		})
+		genericsArgs := strings.Join(lo.Map(opType.generics, func(item string, idx int) string { return strings.Split(item, " ")[0] }), ", ")
 
-		f.Type().Id(structName).Struct(jen.Id("Field").String())
+		struct_ := jen.Type().Id(structName)
+		if len(generics) > 0 {
+			struct_.Types(generics...)
+		}
+		struct_.Struct(jen.Id("field").String())
+		f.Add(struct_)
 
-		f.Func().
-			Id(fmt.Sprintf("New%s", structName)).
-			Params(jen.Id("field").String()).
-			Custom(jen.Options{}, jen.Op("*").Id(structName)).
-			Block(
-				jen.Return(
-					jen.
-						Op("&").
-						Id(structName).
-						Values(jen.Dict{jen.Id("Field"): jen.Id("field")}),
-				),
-			)
-		f.Line()
+		func_ := jen.Func().Id(fmt.Sprintf("New%s", structName))
+		if len(generics) > 0 {
+			func_.Types(generics...)
+		}
+
+		return_ := jen.
+			Op("&").Id(structName)
+		if len(generics) > 0 {
+			return_.Index(jen.Id(genericsArgs))
+		}
+		return_.Values(jen.Dict{jen.Id("field"): jen.Id("field")})
+
+		func_.Params(jen.Id("field").String()).
+			Op("*").Add(
+			lo.TernaryF(len(opType.generics) > 0,
+				func() *jen.Statement { return jen.Id(structName).Index(jen.Id(genericsArgs)) },
+				func() *jen.Statement { return jen.Id(structName) },
+			),
+		).
+			Block(jen.Return(return_))
+		func_.Line()
+		f.Add(func_)
 
 		for _, op := range opType.ops {
-			f.Func().
-				Params(jen.Id("o").Op("*").Id(structName)).
-				Id(op.name).
+			f.Func().Add(
+				lo.TernaryF(len(opType.generics) > 0,
+					func() *jen.Statement {
+						return jen.Params(jen.Id("o").Op("*").Id(structName).Index(jen.Id(genericsArgs)))
+					},
+					func() *jen.Statement { return jen.Params(jen.Id("o").Op("*").Id(structName)) },
+				),
+			).Id(op.name).
 				Params(lo.Map(op.args, func(item string, idx int) jen.Code { return jen.Id(item) })...).
-				Custom(jen.Options{}, jen.Op("*").Id(fmt.Sprintf("%sOp", model.Name))).
+				Op("*").Id(fmt.Sprintf("%sOp", model.Name)).
 				Block(
 					jen.Return(
 						jen.
 							Op("&").
 							Id(fmt.Sprintf("%sOp", model.Name)).
 							Values(jen.Dict{
-								jen.Id("column"):   jen.Id("o.Field"),
+								jen.Id("column"):   jen.Id("o.field"),
 								jen.Id("operator"): op.operator,
 								jen.Id("value"):    op.value,
 								jen.Id("required"): lo.Ternary(len(op.args) > 0, jen.True(), jen.False()),
@@ -201,6 +226,74 @@ func (g *GoClientGenerator) generateOperations(model axel.Model, values goClient
 			return err
 		}
 	}
+	return nil
+}
+
+func (g *GoClientGenerator) generateFields(model axel.Model, values goClientGeneratorValues) error {
+	f := jen.NewFile(values.packageName)
+
+	f.Const().Defs(
+		append(
+			lo.Map(model.Fields, func(item axel.Field, idx int) jen.Code {
+				return jen.
+					Id(fmt.Sprintf("%sField%s", model.Name, lo.PascalCase(item.Name))).
+					String().Op("=").
+					Id(fmt.Sprintf("`\"%s\"`", lo.SnakeCase(item.Name)))
+			}),
+			jen.
+				Id(fmt.Sprintf("%sTableName", model.Name)).
+				String().Op("=").
+				Id(fmt.Sprintf("`\"%s\"`", lo.SnakeCase(model.Name))),
+		)...,
+	)
+
+	f.Var().Defs(
+		lo.Map(model.Fields, func(item axel.Field, idx int) jen.Code {
+			getOp := func(type_, name, field string, generics ...string) *jen.Statement {
+				field = lo.PascalCase(field)
+
+				if len(generics) > 0 {
+					return jen.
+						Id(fmt.Sprintf("New%sOp%s", name, type_)).
+						Index(jen.Id(strings.Join(generics, ", "))).
+						Call(jen.Id(fmt.Sprintf("%sField%s", name, field)))
+				}
+
+				return jen.
+					Id(fmt.Sprintf("New%sOp%s", name, type_)).
+					Call(jen.Id(fmt.Sprintf("%sField%s", name, field)))
+			}
+
+			defaultOp := getOp("String", model.Name, item.Name)
+
+			return jen.
+				Id(fmt.Sprintf("%s%s", model.Name, lo.PascalCase(item.Name))).
+				Op("=").
+				Add(
+					lo.
+						IfF(
+							lo.Contains([]string{"int16", "int32", "int64", "float32", "float64"}, item.Type),
+							func() *jen.Statement { return getOp("Number", model.Name, item.Name, item.Type) },
+						).
+						ElseIfF(
+							item.Type == "datetime",
+							func() *jen.Statement { return getOp("Datetime", model.Name, item.Name) },
+						).
+						ElseIfF(
+							item.Type == "string",
+							func() *jen.Statement { return defaultOp },
+						).ElseF(
+						func() *jen.Statement { return defaultOp },
+					),
+				)
+		})...,
+	)
+
+	err := axel.WriteFile(path.Join(g.config.ClientDir, strings.ToLower(fmt.Sprintf("%s_fields.go", model.Name))), []byte(f.GoString()), 0644)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
