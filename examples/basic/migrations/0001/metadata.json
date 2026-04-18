@@ -1,0 +1,378 @@
+{
+  "version": "0001",
+  "name": "",
+  "created_at": "2026-04-18T19:07:53.956521+01:00",
+  "checksum": "aaeec4adde2a08df09ca0b6173822c9d20445d27c77644c12c2499c81955122a",
+  "schema_snapshot": [
+    {
+      "Name": "User",
+      "IsAbstract": false,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "email",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "min_length",
+              "Args": [
+                "10"
+              ]
+            },
+            {
+              "Name": "max_length",
+              "Args": [
+                "100"
+              ]
+            }
+          ],
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "name",
+          "Type": "str",
+          "IsRequired": false,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "'n/a'",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "age",
+          "Type": "int32",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "health",
+          "Type": "int32",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "active",
+          "Type": "bool",
+          "IsRequired": false,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "true",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        }
+      ]
+    },
+    {
+      "Name": "Comment",
+      "IsAbstract": false,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "content",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "post",
+          "Type": "Post",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          }
+        },
+        {
+          "Name": "author",
+          "Type": "User",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "Post",
+      "IsAbstract": false,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "content",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "title",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "author",
+          "Type": "User",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          }
+        },
+        {
+          "Name": "likes",
+          "Type": "User",
+          "IsRequired": false,
+          "IsMulti": true,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "Base",
+      "IsAbstract": true,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          }
+        }
+      ]
+    }
+  ],
+  "previous_version": ""
+}
