@@ -1,6 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
+  base: "/axel/",
   title: "Axel",
   description: "Schema and query language tool for PostgreSQL",
 
