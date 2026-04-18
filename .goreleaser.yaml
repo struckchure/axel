@@ -23,9 +23,9 @@ builds:
       - windows
       - darwin
     ldflags:
-      - "-X 'github.com/struckchure/axel/cmd.version={{.Version}}'"
-      - "-X 'github.com/struckchure/axel/cmd.commit={{.Commit}}'"
-      - "-X 'github.com/struckchure/axel/cmd.buildDate={{.Date}}'"
+      - "-X 'main.version={{.Version}}'"
+      - "-X 'main.commit={{.Commit}}'"
+      - "-X 'main.buildDate={{.Date}}'"
 
 archives:
   - format: tar.gz
