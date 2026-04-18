@@ -108,6 +108,7 @@ axel -d ./myproject up
 ```
 
 Discovery order inside `--dir`:
+
 1. `axel.yaml` — loaded as the full config if found
 2. `schema.asl` — used as the schema if no `axel.yaml`
 3. `default.asl` — fallback schema name
@@ -127,14 +128,14 @@ axel -c axel.yaml <command>
 
 ### Commands
 
-| Command | Description |
-|---|---|
-| `axel validate` | Parse and validate a `.asl` schema file |
-| `axel compile` | Compile an AQL query to parameterized SQL |
+| Command         | Description                                |
+| --------------- | ------------------------------------------ |
+| `axel validate` | Parse and validate a `.asl` schema file    |
+| `axel compile`  | Compile an AQL query to parameterized SQL  |
 | `axel generate` | Diff schema and write a new migration file |
-| `axel up` | Apply all pending migrations |
-| `axel down <n>` | Roll back the last N migrations |
-| `axel status` | Show migration state |
+| `axel up`       | Apply all pending migrations               |
+| `axel down <n>` | Roll back the last N migrations            |
+| `axel status`   | Show migration state                       |
 
 ```sh
 # Validate schema

@@ -81,5 +81,4 @@ go.work.sum
 
 .DS_Store
 
-.vitepress/dist
-.vitepress/cache
+cache
