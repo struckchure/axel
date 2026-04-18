@@ -11,8 +11,8 @@
     "typescript": "^5"
   },
   "scripts": {
-    "dev": "vitepress dev",
-    "build": "vitepress build",
-    "preview": "vitepress preview"
+    "dev": "bunx vitepress dev docs",
+    "build": "bunx vitepress build docs",
+    "preview": "bunx vitepress preview docs"
   }
 }
