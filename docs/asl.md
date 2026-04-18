@@ -1,3 +1,8 @@
+---
+title: Schema Language (ASL)
+description: Define PostgreSQL schemas with Axel Schema Language
+---
+
 # Axel Schema Language (ASL)
 
 ASL is a declarative schema language for defining PostgreSQL types. You write `.asl` files; Axel compiles them into migration SQL that you apply with `axel generate` and `axel up`.

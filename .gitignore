@@ -80,3 +80,6 @@ go.work.sum
 # .vscode/
 
 .DS_Store
+
+.vitepress/dist
+.vitepress/cache

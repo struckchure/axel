@@ -1,3 +1,8 @@
+---
+title: CLI Reference
+description: All Axel commands, flags, and usage examples
+---
+
 # Axel CLI
 
 Axel is invoked as `axel <command>`. Commands split into two groups:

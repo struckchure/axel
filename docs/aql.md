@@ -1,3 +1,8 @@
+---
+title: Query Language (AQL)
+description: Write expressive queries that compile to parameterized PostgreSQL SQL
+---
+
 # Axel Query Language (AQL)
 
 AQL is a query language that compiles to parameterized PostgreSQL SQL. You write queries; Axel outputs SQL strings you execute however you like. Axel never runs queries for you.
