@@ -25,9 +25,10 @@ type MigrationManager struct {
 
 // NewMigrationManager creates a new migration manager
 func NewMigrationManager(config *MigrationConfig) (*MigrationManager, error) {
-	// Create migrations directory if it doesn't exist
-	if err := os.MkdirAll(config.MigrationsDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create migrations directory: %w", err)
+	if config.MigrationsDir != "" {
+		if err := os.MkdirAll(config.MigrationsDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create migrations directory: %w", err)
+		}
 	}
 
 	return &MigrationManager{
