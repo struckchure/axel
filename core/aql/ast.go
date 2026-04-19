@@ -107,8 +107,11 @@ type Expr struct {
 
 // Primary is a single expression operand.
 type Primary struct {
-	// Sub-expression or subquery in parens
-	SubExpr  *Expr     `parser:"  '(' @@ ')'"`
+	// Subquery: (select TypeName { shape } filter ...)
+	// Must come before SubExpr so that '(' 'select' is matched here, not as an expr.
+	SubQuery *SelectBody `parser:"  '(' 'select' @@ ')'"`
+	// Sub-expression or parenthesized expression: (expr)
+	SubExpr  *Expr       `parser:"| '(' @@ ')'"`
 	// Function call: count(...)
 	FuncCall *FuncCall `parser:"| @@"`
 	// Path expression: .email or .author.name

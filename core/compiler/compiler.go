@@ -320,16 +320,11 @@ func (c *compiler) compileInsert(stmt *aql.InsertStmt) (string, error) {
 
 func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, string, error) {
 	// The value must be a subquery: (select TypeName filter ...)
-	if a.Value.Left == nil || a.Value.Left.SubExpr == nil {
-		return "", "", fmt.Errorf("link %q assignment must be a subquery (select ...)", a.Field)
+	if a.Value.Left == nil || a.Value.Left.SubQuery == nil {
+		return "", "", fmt.Errorf("link %q assignment must be a subquery, e.g. (select %s filter ...)", a.Field, link.TargetType)
 	}
-	sub := a.Value.Left.SubExpr
-	if sub.Left == nil || sub.Left.SubExpr == nil {
-		// It's actually a Select statement wrapped in parens.
-		// For now just compile the inner expression.
-	}
+	sub := a.Value.Left.SubQuery
 
-	// Compile as a scalar subquery returning the FK value.
 	targetType, err := c.resolveType(link.TargetType)
 	if err != nil {
 		return "", "", err
@@ -337,8 +332,8 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 	alias := tableAlias(link.TargetType)
 
 	var whereClause string
-	if sub.Op != "" {
-		where, err := c.compileExpr(sub, alias, targetType)
+	if sub.Filter != nil {
+		where, err := c.compileExpr(sub.Filter.Expr, alias, targetType)
 		if err != nil {
 			return "", "", err
 		}
@@ -360,6 +355,28 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 		colName = strings.ToLower(a.Field) + "_id"
 	}
 	return fmt.Sprintf("%q", colName), subSQL, nil
+}
+
+// compileSubQuery compiles a (select ...) subquery used as a scalar expression.
+func (c *compiler) compileSubQuery(body *aql.SelectBody) (string, error) {
+	rt, err := c.resolveType(body.TypeName)
+	if err != nil {
+		return "", err
+	}
+	alias := tableAlias(body.TypeName)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "SELECT %s.id FROM \"%s\" %s", alias, rt.Table, alias)
+
+	if body.Filter != nil {
+		where, err := c.compileExpr(body.Filter.Expr, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&sb, " WHERE %s", where)
+	}
+	sb.WriteString(" LIMIT 1")
+	return "(" + sb.String() + ")", nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -458,6 +475,9 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 	}
 
 	switch {
+	case p.SubQuery != nil:
+		return c.compileSubQuery(p.SubQuery)
+
 	case p.SubExpr != nil:
 		inner, err := c.compileExpr(p.SubExpr, alias, rt)
 		if err != nil {
