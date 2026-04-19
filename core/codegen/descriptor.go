@@ -372,6 +372,73 @@ func queryNameFromFile(file string) string {
 	return strings.Join(parts, "")
 }
 
+// ToSchemaIR reconstructs an asl.SchemaIR from a SchemaDescriptor.
+// This is the inverse of FromSchemaIR and is used by the generated runner to
+// compile inline AQL queries at runtime.
+func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
+	ir := &asl.SchemaIR{
+		ScalarTypes: make(map[string]*asl.ResolvedScalar),
+		EnumTypes:   make(map[string]*asl.ResolvedEnum),
+		ObjectTypes: make(map[string]*asl.ResolvedType),
+	}
+	for _, s := range sd.Scalars {
+		ir.ScalarTypes[s.Name] = &asl.ResolvedScalar{
+			Name:    s.Name,
+			Base:    s.Base,
+			SQLType: s.SQLType,
+		}
+	}
+	for _, e := range sd.Enums {
+		ir.EnumTypes[e.Name] = &asl.ResolvedEnum{
+			Name:   e.Name,
+			Values: e.Values,
+		}
+	}
+	for _, t := range sd.Types {
+		rt := &asl.ResolvedType{
+			Name:       t.Name,
+			IsAbstract: t.IsAbstract,
+			Table:      t.Table,
+			Properties: make(map[string]*asl.ResolvedProp),
+			Links:      make(map[string]*asl.ResolvedLink),
+			Computed:   make(map[string]*asl.ResolvedComputed),
+		}
+		for _, p := range t.Properties {
+			var constraints []asl.ResolvedConstraint
+			for _, c := range p.Constraints {
+				constraints = append(constraints, asl.ResolvedConstraint{Name: c.Name, Args: c.Args})
+			}
+			rt.Properties[p.Name] = &asl.ResolvedProp{
+				Name:        p.Name,
+				Column:      p.Column,
+				SQLType:     p.SQLType,
+				IsRequired:  p.IsRequired,
+				IsMulti:     p.IsMulti,
+				Default:     p.Default,
+				Constraints: constraints,
+			}
+		}
+		for _, l := range t.Links {
+			rt.Links[l.Name] = &asl.ResolvedLink{
+				Name:          l.Name,
+				TargetType:    l.TargetType,
+				JoinColumn:    l.JoinColumn,
+				JunctionTable: l.JunctionTable,
+				IsRequired:    l.IsRequired,
+				IsMulti:       l.IsMulti,
+			}
+		}
+		for _, c := range t.Computed {
+			rt.Computed[c.Name] = &asl.ResolvedComputed{Name: c.Name, Expr: c.Expr}
+		}
+		for _, idx := range t.Indexes {
+			rt.Indexes = append(rt.Indexes, &asl.ResolvedIndex{Columns: idx.Columns})
+		}
+		ir.ObjectTypes[t.Name] = rt
+	}
+	return ir
+}
+
 // sqlTypeToAQLType maps a SQL type string back to an AQL type name.
 func sqlTypeToAQLType(sqlType string) string {
 	switch sqlType {

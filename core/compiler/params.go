@@ -13,6 +13,14 @@ func newParamCollector() *paramCollector {
 	return &paramCollector{index: make(map[string]int)}
 }
 
+// setType updates the AQLType for an already-registered param.
+// No-op if the param is unknown or already has a type.
+func (p *paramCollector) setType(name, aqlType string) {
+	if pos, ok := p.index[name]; ok && aqlType != "" && p.params[pos-1].AQLType == "" {
+		p.params[pos-1].AQLType = aqlType
+	}
+}
+
 // add registers a named param and returns its positional placeholder ($1, $2, ...).
 // If the param was already registered, returns the same placeholder.
 func (p *paramCollector) add(name, aqlType string) string {

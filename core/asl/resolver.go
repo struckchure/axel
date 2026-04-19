@@ -229,12 +229,8 @@ func (r *Resolver) resolveLink(f *FieldDecl, rt *ResolvedType, ir *SchemaIR, tar
 		// Multi-link → junction table: source_linkname
 		link.JunctionTable = fmt.Sprintf("%s_%s", toSnakeCase(rt.Name), toSnakeCase(f.Name))
 	} else {
-		// Single link → FK column: fieldname_id (or fieldname_joinfield)
-		if joinField != "" {
-			link.JoinColumn = toSnakeCase(f.Name) + "_" + toSnakeCase(joinField)
-		} else {
-			link.JoinColumn = toSnakeCase(f.Name) + "_id"
-		}
+		// Single link → FK column: fieldname (matches migration SQL generator convention)
+		link.JoinColumn = toSnakeCase(f.Name)
 	}
 
 	rt.Links[f.Name] = link

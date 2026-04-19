@@ -50,8 +50,8 @@ type Generator interface {
 //	  BeginType
 //	    OnProperty / OnLink / OnComputed / OnIndex  (each member)
 //	  EndType
-//	EndSchema
 //	OnQuery (each AQL query)
+//	EndSchema
 func Walk(schema SchemaDescriptor, queries []QueryDescriptor, gen Generator, ctx *Context) error {
 	if err := gen.BeginSchema(ctx, schema); err != nil {
 		return fmt.Errorf("[%s] BeginSchema: %w", gen.Name(), err)
@@ -98,14 +98,14 @@ func Walk(schema SchemaDescriptor, queries []QueryDescriptor, gen Generator, ctx
 		}
 	}
 
-	if err := gen.EndSchema(ctx); err != nil {
-		return fmt.Errorf("[%s] EndSchema: %w", gen.Name(), err)
-	}
-
 	for _, q := range queries {
 		if err := gen.OnQuery(ctx, q); err != nil {
 			return fmt.Errorf("[%s] OnQuery %s: %w", gen.Name(), q.Name, err)
 		}
+	}
+
+	if err := gen.EndSchema(ctx); err != nil {
+		return fmt.Errorf("[%s] EndSchema: %w", gen.Name(), err)
 	}
 
 	return nil

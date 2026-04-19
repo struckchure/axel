@@ -1,0 +1,5 @@
+insert User {
+  email := $email,
+  age := 100,
+  health := 100
+};

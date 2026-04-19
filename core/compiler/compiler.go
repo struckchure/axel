@@ -257,9 +257,6 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 
 	// Single link → correlated scalar subquery.
 	joinCond := fmt.Sprintf("%s.id = %s.%s", tAlias, parentAlias, link.JoinColumn)
-	if link.JoinColumn == "" {
-		joinCond = fmt.Sprintf("%s.id = %s.%s_id", tAlias, parentAlias, strings.ToLower(f.Name))
-	}
 
 	col := fmt.Sprintf(
 		"(SELECT row_to_json(%s_sub) FROM (SELECT %s FROM \"%s\" %s WHERE %s LIMIT 1) %s_sub) AS %s",
@@ -278,20 +275,27 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 // ─────────────────────────────────────────────────────────────
 
 func (c *compiler) compileInsert(stmt *aql.InsertStmt) (string, error) {
-	rt, err := c.resolveType(stmt.TypeName)
+	return c.compileInsertBody(stmt.TypeName, stmt.Assignments, true)
+}
+
+func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignment, topLevel bool) (string, error) {
+	rt, err := c.resolveType(typeName)
 	if err != nil {
 		return "", err
 	}
 
 	var cols, vals []string
+	var ctes []string
 
-	for _, a := range stmt.Assignments {
+	for _, a := range assignments {
 		// Check if this is a link assignment.
 		if link, ok := rt.Links[a.Field]; ok {
-			// link := (select TypeName filter ...) → subquery for FK value
-			col, val, err := c.compileLinkAssignment(a, link, rt)
+			col, val, cteFrag, err := c.compileLinkAssignment(a, link, rt)
 			if err != nil {
 				return "", err
+			}
+			if cteFrag != "" {
+				ctes = append(ctes, cteFrag)
 			}
 			cols = append(cols, col)
 			vals = append(vals, val)
@@ -300,34 +304,66 @@ func (c *compiler) compileInsert(stmt *aql.InsertStmt) (string, error) {
 		// Scalar property.
 		prop, ok := rt.Properties[a.Field]
 		if !ok {
-			return "", fmt.Errorf("type %q has no field %q", stmt.TypeName, a.Field)
+			return "", fmt.Errorf("type %q has no field %q", typeName, a.Field)
 		}
 		val, err := c.compileExpr(a.Value, "", rt)
 		if err != nil {
 			return "", err
 		}
+		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType))
 		cols = append(cols, fmt.Sprintf("%q", prop.Column))
 		vals = append(vals, val)
 	}
 
-	return fmt.Sprintf(
-		"INSERT INTO \"%s\" (%s)\nVALUES (%s)\nRETURNING *;",
+	var sb strings.Builder
+	if len(ctes) > 0 {
+		sb.WriteString("WITH ")
+		sb.WriteString(strings.Join(ctes, ", "))
+		sb.WriteString("\n")
+	}
+	fmt.Fprintf(&sb, "INSERT INTO \"%s\" (%s)\nVALUES (%s)",
 		rt.Table,
 		strings.Join(cols, ", "),
 		strings.Join(vals, ", "),
-	), nil
+	)
+	if topLevel {
+		sb.WriteString("\nRETURNING *;")
+		return "BEGIN;\n" + sb.String() + "\nCOMMIT;", nil
+	}
+	sb.WriteString(" RETURNING id")
+	return sb.String(), nil
 }
 
-func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, string, error) {
-	// The value must be a subquery: (select TypeName filter ...)
-	if a.Value.Left == nil || a.Value.Left.SubQuery == nil {
-		return "", "", fmt.Errorf("link %q assignment must be a subquery, e.g. (select %s filter ...)", a.Field, link.TargetType)
+// compileLinkAssignment compiles a link assignment. Returns (column, value, cteFrag, error).
+// cteFrag is non-empty when a sub-insert CTE was generated.
+func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, string, string, error) {
+	if a.Value.Left == nil {
+		return "", "", "", fmt.Errorf("link %q assignment must be a subquery or sub-insert", a.Field)
+	}
+	col := fmt.Sprintf("%q", link.JoinColumn)
+
+	// (insert TypeName { ... }) → CTE
+	if a.Value.Left.SubInsert != nil {
+		sub := a.Value.Left.SubInsert
+		innerSQL, err := c.compileInsertBody(sub.TypeName, sub.Assignments, false)
+		if err != nil {
+			return "", "", "", fmt.Errorf("link %q sub-insert: %w", a.Field, err)
+		}
+		cteAlias := "_ins_" + link.JoinColumn
+		cteFrag := fmt.Sprintf("%s AS (%s)", cteAlias, innerSQL)
+		val := fmt.Sprintf("(SELECT id FROM %s)", cteAlias)
+		return col, val, cteFrag, nil
+	}
+
+	// (select TypeName filter ...) → scalar subquery
+	if a.Value.Left.SubQuery == nil {
+		return "", "", "", fmt.Errorf("link %q assignment must be a subquery (select ...) or sub-insert (insert ...)", a.Field)
 	}
 	sub := a.Value.Left.SubQuery
 
 	targetType, err := c.resolveType(link.TargetType)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	alias := tableAlias(link.TargetType)
 
@@ -335,7 +371,7 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 	if sub.Filter != nil {
 		where, err := c.compileExpr(sub.Filter.Expr, alias, targetType)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		whereClause = " WHERE " + where
 	}
@@ -350,11 +386,7 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 		alias, joinField, targetType.Table, alias, whereClause,
 	)
 
-	colName := link.JoinColumn
-	if colName == "" {
-		colName = strings.ToLower(a.Field) + "_id"
-	}
-	return fmt.Sprintf("%q", colName), subSQL, nil
+	return col, subSQL, "", nil
 }
 
 // compileSubQuery compiles a (select ...) subquery used as a scalar expression.
@@ -400,6 +432,7 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType))
 		sets = append(sets, fmt.Sprintf("%s = %s", prop.Column, val))
 	}
 
@@ -414,7 +447,7 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		fmt.Fprintf(&sb, "\nWHERE %s", where)
 	}
 	sb.WriteString("\nRETURNING *;")
-	return sb.String(), nil
+	return "BEGIN;\n" + sb.String() + "\nCOMMIT;", nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -439,7 +472,7 @@ func (c *compiler) compileDelete(stmt *aql.DeleteStmt) (string, error) {
 		fmt.Fprintf(&sb, "\nWHERE %s", where)
 	}
 	sb.WriteString(";")
-	return sb.String(), nil
+	return "BEGIN;\n" + sb.String() + "\nCOMMIT;", nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -465,6 +498,12 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 		return "", err
 	}
 
+	// Infer param types from the opposite side of a comparison.
+	if rt != nil {
+		inferFilterParamType(c.params, expr.Left, expr.Right, rt)
+		inferFilterParamType(c.params, expr.Right, expr.Left, rt)
+	}
+
 	op := mapOp(expr.Op)
 	return fmt.Sprintf("%s %s %s", left, op, right), nil
 }
@@ -477,6 +516,14 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 	switch {
 	case p.SubQuery != nil:
 		return c.compileSubQuery(p.SubQuery)
+
+	case p.SubInsert != nil:
+		// (insert TypeName { ... }) used as a scalar — compile as a subquery returning id.
+		sql, err := c.compileInsertBody(p.SubInsert.TypeName, p.SubInsert.Assignments, false)
+		if err != nil {
+			return "", err
+		}
+		return "(" + sql + ")", nil
 
 	case p.SubExpr != nil:
 		inner, err := c.compileExpr(p.SubExpr, alias, rt)
@@ -618,6 +665,46 @@ func mapOp(op string) string {
 		return "IS NOT DISTINCT FROM" // coalesce-like; actually use COALESCE in practice
 	default:
 		return op
+	}
+}
+
+// sqlToAQLType maps a SQL type string back to an AQL type name.
+func sqlToAQLType(sqlType string) string {
+	switch sqlType {
+	case "TEXT":             return "str"
+	case "SMALLINT":         return "int16"
+	case "INTEGER":          return "int32"
+	case "BIGINT":           return "int64"
+	case "REAL":             return "float32"
+	case "DOUBLE PRECISION": return "float64"
+	case "BOOLEAN":          return "bool"
+	case "UUID":             return "uuid"
+	case "TIMESTAMPTZ":      return "datetime"
+	case "DATE":             return "date"
+	case "TIME":             return "time"
+	case "JSONB":            return "json"
+	case "BYTEA":            return "bytes"
+	case "NUMERIC":          return "decimal"
+	default:                 return ""
+	}
+}
+
+// inferAssignmentParamType sets the param type when an assignment value is a bare $param.
+func inferAssignmentParamType(params *paramCollector, val *aql.Expr, aqlType string) {
+	if val != nil && val.Op == "" && val.Left != nil && val.Left.Param != nil {
+		params.setType(*val.Left.Param, aqlType)
+	}
+}
+
+// inferFilterParamType sets a param's type when paired with a path on the other side of a binary op.
+func inferFilterParamType(params *paramCollector, maybePath, maybeParam *aql.Primary, rt *asl.ResolvedType) {
+	if maybePath == nil || maybeParam == nil || maybeParam.Param == nil {
+		return
+	}
+	if maybePath.Path != nil && len(maybePath.Path.Steps) == 1 {
+		if prop, ok := rt.Properties[maybePath.Path.Steps[0]]; ok {
+			params.setType(*maybeParam.Param, sqlToAQLType(prop.SQLType))
+		}
 	}
 }
 

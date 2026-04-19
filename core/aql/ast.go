@@ -47,6 +47,14 @@ type InsertStmt struct {
 	Assignments []*Assignment `parser:"'{' @@ ( ',' @@ )* ','? '}' ';'"`
 }
 
+// InsertBody is a bare insert without a trailing ';', used as a sub-expression.
+//
+//	(insert User { email := $email })
+type InsertBody struct {
+	TypeName    string        `parser:"'insert' @Ident"`
+	Assignments []*Assignment `parser:"'{' @@ ( ',' @@ )* ','? '}'"`
+}
+
 // UpdateStmt: update TypeName filter expr set { field := expr, ... };
 type UpdateStmt struct {
 	TypeName    string        `parser:"'update' @Ident"`
@@ -110,6 +118,9 @@ type Primary struct {
 	// Subquery: (select TypeName { shape } filter ...)
 	// Must come before SubExpr so that '(' 'select' is matched here, not as an expr.
 	SubQuery *SelectBody `parser:"  '(' 'select' @@ ')'"`
+	// Sub-insert: (insert TypeName { field := expr, ... })
+	// Must come before SubExpr so that '(' 'insert' is matched here.
+	SubInsert *InsertBody `parser:"| '(' @@ ')'"`
 	// Sub-expression or parenthesized expression: (expr)
 	SubExpr  *Expr       `parser:"| '(' @@ ')'"`
 	// Function call: count(...)

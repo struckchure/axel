@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ Built-in generators:
 External generators (any language):
   Write a binary that reads a JSON CodegenRequest from stdin and writes a JSON CodegenResponse to stdout.
   See https://github.com/struckchure/axel for the protocol spec.`,
+	Args:             cobra.ArbitraryArgs,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) { loadConfig() },
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pluginPath, _ := cmd.Flags().GetString("plugin")
@@ -66,33 +68,58 @@ External generators (any language):
 
 		schema := codegen.FromSchemaIR(ir)
 
-		// --- Compile AQL queries ---
-		var queries []codegen.QueryDescriptor
+		// --- Resolve query file paths ---
+		// Sources, in priority order:
+		//   1. -q flag values (glob patterns, expanded by axel)
+		//   2. Positional args (shell-expanded globs land here)
+		//   3. Auto-discovery: all *.aql files under --dir when nothing else given
+		var queryPaths []string
+
+		// -q patterns (axel expands these, so quoting works: -q '**/*.aql')
 		for _, glob := range queryGlobs {
 			matches, err := expandGlob(glob)
 			if err != nil {
 				return fmt.Errorf("expanding --query %q: %w", glob, err)
 			}
-			for _, path := range matches {
-				src, err := os.ReadFile(path)
-				if err != nil {
-					return fmt.Errorf("reading %q: %w", path, err)
-				}
-				name, aqlSrc := extractQueryName(string(src), path)
-				stmt, err := aql.ParseString(aqlSrc)
-				if err != nil {
-					return fmt.Errorf("parsing AQL %q: %w", path, err)
-				}
-				compiled, err := compiler.Compile(stmt, ir)
-				if err != nil {
-					return fmt.Errorf("compiling %q: %w", path, err)
-				}
-				qd, err := codegen.BuildQueryDescriptor(name, path, stmt, compiled, ir)
-				if err != nil {
-					return fmt.Errorf("building descriptor for %q: %w", path, err)
-				}
-				queries = append(queries, qd)
+			queryPaths = append(queryPaths, matches...)
+		}
+
+		// Positional args — shell glob expansion delivers extra files here
+		queryPaths = append(queryPaths, args...)
+
+		// Auto-discover when nothing was provided and --dir is set
+		if len(queryPaths) == 0 && projectDir != "" {
+			discovered, err := findAQLFiles(projectDir)
+			if err != nil {
+				return fmt.Errorf("discovering .aql files in %q: %w", projectDir, err)
 			}
+			queryPaths = discovered
+		}
+
+		// Deduplicate (shell expansion + -q can produce duplicates)
+		queryPaths = dedupe(queryPaths)
+
+		// --- Compile AQL queries ---
+		var queries []codegen.QueryDescriptor
+		for _, path := range queryPaths {
+			src, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("reading %q: %w", path, err)
+			}
+			name, aqlSrc := extractQueryName(string(src), path)
+			stmt, err := aql.ParseString(aqlSrc)
+			if err != nil {
+				return fmt.Errorf("parsing AQL %q: %w", path, err)
+			}
+			compiled, err := compiler.Compile(stmt, ir)
+			if err != nil {
+				return fmt.Errorf("compiling %q: %w", path, err)
+			}
+			qd, err := codegen.BuildQueryDescriptor(name, path, stmt, compiled, ir)
+			if err != nil {
+				return fmt.Errorf("building descriptor for %q: %w", path, err)
+			}
+			queries = append(queries, qd)
 		}
 
 		// --- Build generator ---
@@ -141,17 +168,68 @@ func init() {
 	RootCmd.AddCommand(codegenCmd)
 }
 
-// expandGlob expands a glob pattern using filepath.Glob but also accepts plain paths.
+// expandGlob expands a glob pattern. Supports ** for recursive matching.
+// Plain paths with no wildcards are returned as-is.
 func expandGlob(pattern string) ([]string, error) {
+	if strings.Contains(pattern, "**") {
+		// Split on ** and walk the directory portion.
+		parts := strings.SplitN(pattern, "**", 2)
+		dir := filepath.Clean(parts[0])
+		suffix := strings.TrimPrefix(parts[1], string(filepath.Separator))
+		return findAQLFilesWithSuffix(dir, suffix)
+	}
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
 	}
 	if len(matches) == 0 {
-		// Maybe it's a literal path (no wildcards) — let os.ReadFile report the error.
 		return []string{pattern}, nil
 	}
 	return matches, nil
+}
+
+// findAQLFiles walks dir recursively and returns all *.aql files.
+func findAQLFiles(dir string) ([]string, error) {
+	return findAQLFilesWithSuffix(dir, "*.aql")
+}
+
+// findAQLFilesWithSuffix walks dir recursively and returns files matching suffix glob.
+// suffix is matched against the filename only (e.g. "*.aql").
+func findAQLFilesWithSuffix(dir, suffix string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if suffix == "" || suffix == "*.aql" {
+			if strings.HasSuffix(path, ".aql") {
+				files = append(files, path)
+			}
+			return nil
+		}
+		matched, _ := filepath.Match(suffix, filepath.Base(path))
+		if matched {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
+}
+
+// dedupe returns paths with duplicates removed, preserving order.
+func dedupe(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	out := paths[:0]
+	for _, p := range paths {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // extractQueryName checks for a "# @name Foo" annotation on the first line.
