@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/struckchure/axel/core/aql"
@@ -141,6 +142,16 @@ func scanRows(rows *sql.Rows) (*Result, error) {
 		}
 		if err := rows.Scan(ptrs...); err != nil {
 			return nil, err
+		}
+		for i, v := range vals {
+			if b, ok := v.([]byte); ok {
+				var decoded any
+				if json.Unmarshal(b, &decoded) == nil {
+					vals[i] = decoded
+				} else {
+					vals[i] = string(b)
+				}
+			}
 		}
 		row := make(Row, len(cols))
 		for i, col := range cols {

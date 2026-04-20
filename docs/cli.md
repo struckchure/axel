@@ -8,7 +8,7 @@ description: All Axel commands, flags, and usage examples
 Axel is invoked as `axel <command>`. Commands split into two groups:
 
 - **Schema commands** — compile ASL and manage PostgreSQL migrations (require a DB connection)
-- **Query commands** — parse and compile AQL to SQL (no DB connection)
+- **Query commands** — parse, compile, and generate code from AQL (no DB connection required)
 
 ---
 
@@ -16,22 +16,23 @@ Axel is invoked as `axel <command>`. Commands split into two groups:
 
 These flags are accepted by all commands.
 
-| Flag              | Short | Description                                                    |
-|-------------------|-------|----------------------------------------------------------------|
-| `--dir`           | `-d`  | Project directory — auto-discovers `axel.yaml`, `schema.asl`, or `default.asl` |
-| `--config`        | `-c`  | Explicit config file path (overrides `--dir`)                  |
-| `--url`           | `-u`  | PostgreSQL connection URL                                      |
-| `--schema-path`   |       | Explicit schema file path (overrides `--dir`)                  |
-| `--migrations-dir`|       | Migrations directory (overrides `--dir`)                       |
+| Flag               | Short | Description                                                                     |
+|--------------------|-------|---------------------------------------------------------------------------------|
+| `--dir`            | `-d`  | Project directory — auto-discovers `axel.yaml`, `schema.asl`, or `default.asl` |
+| `--config`         | `-c`  | Explicit config file path (overrides `--dir`)                                   |
+| `--url`            | `-u`  | PostgreSQL connection URL                                                       |
+| `--schema-path`    |       | Explicit schema file path (overrides `--dir`)                                   |
+| `--migrations-dir` |       | Migrations directory (overrides `--dir`)                                        |
 
 ### Project directory (`--dir`)
 
-The simplest way to configure axel. Point it at your project folder and it figures out the rest:
+The simplest way to configure Axel. Point it at your project folder and it figures out the rest:
 
 ```sh
 axel -d ./myproject validate
 axel -d ./myproject compile --aql 'select User { id, email };'
 axel -d ./myproject up
+axel -d ./myproject codegen -g go -o ./gen
 ```
 
 Discovery order inside `--dir`:
@@ -60,21 +61,27 @@ axel --config axel.yaml <command>
 
 ### `axel generate`
 
-Diffs the current `.asl` schema against the last migration and writes a new `.sql` migration file.
+Diffs the current `.asl` schema against the last migration and writes a new migration.
 
 ```sh
 axel generate --name "add users table"
-axel generate -n "add users table"
+axel generate -n "add comments table"
 ```
 
-| Flag     | Short | Description                          |
-|----------|-------|--------------------------------------|
-| `--name` | `-n`  | Human-readable label for the migration |
+| Flag     | Short | Description                              |
+|----------|-------|------------------------------------------|
+| `--name` | `-n`  | Human-readable label for the migration   |
 
-The generated file is written to `--migrations-dir` with a timestamp prefix, e.g.:
+The generated migration is written to `--migrations-dir` with a sequential version prefix:
 
 ```
-axel/migrations/20240418120000_add_users_table.sql
+migrations/
+  0001/
+    up.sql
+    down.sql
+    metadata.json
+  0002/
+    ...
 ```
 
 ---
@@ -101,10 +108,6 @@ axel down 1    # roll back the most recent migration
 axel down 3    # roll back the last 3 migrations
 ```
 
-```
-axel down <steps>
-```
-
 ---
 
 ### `axel status`
@@ -118,67 +121,29 @@ axel status
 Example output:
 
 ```
-20240101000000_create_users    applied
-20240102000000_add_posts       applied
-20240418120000_add_comments    pending
+0001_create_users    applied
+0002_add_posts       applied
+0003_add_comments    pending
 ```
 
 ---
 
 ## Query commands
 
-These commands compile AQL queries to SQL. They read the schema file but do not connect to a database.
-
-### `axel compile`
-
-Compiles an AQL query to parameterized SQL and prints it to stdout.
-
-```sh
-# Inline query — use single quotes so the shell doesn't expand $params
-axel compile --aql 'select User { id, email } filter .id = $id;'
-
-# From a file (recommended for queries with parameters)
-axel compile --file queries/get_users.aql
-
-# Write output to a file
-axel compile --file queries/get_users.aql --out queries/get_users.sql
-```
-
-> **Shell quoting:** Always use single quotes around `--aql` values. Double quotes cause the shell to expand `$param` as a shell variable before axel sees it.
-
-| Flag            | Short | Default           | Description                              |
-|-----------------|-------|-------------------|------------------------------------------|
-| `--aql`         |       |                   | AQL query string (mutually exclusive with `--file`) |
-| `--file`        | `-f`  |                   | Path to a `.aql` file                    |
-| `--out`         | `-o`  | stdout            | Write compiled SQL to this file          |
-| `--schema-path` |       | `axel/schema.asl` | Schema to compile against                |
-
-Example output:
-
-```sql
--- $1: active (bool)
--- $2: min_age (int32)
-SELECT
-  u.id AS id,
-  u.email AS email
-FROM "user" u
-WHERE u.active = $1 AND u.age >= $2;
-```
-
----
+These commands work with AQL queries. They read the schema file but do not connect to a database.
 
 ### `axel validate`
 
-Parses and validates an ASL schema file. Exits with a non-zero status and prints errors if the schema is invalid.
+Parses and validates an ASL schema file. Exits with a non-zero status on errors.
 
 ```sh
 axel validate
 axel validate --schema axel/schema.asl
 ```
 
-| Flag       | Short | Default           | Description              |
-|------------|-------|-------------------|--------------------------|
-| `--schema` | `-s`  | `axel/schema.asl` | Path to the `.asl` file  |
+| Flag       | Short | Default           | Description             |
+|------------|-------|-------------------|-------------------------|
+| `--schema` | `-s`  | `axel/schema.asl` | Path to the `.asl` file |
 
 On success:
 
@@ -196,28 +161,108 @@ schema validation failed:
 
 ---
 
+### `axel compile`
+
+Compiles an AQL query (or all queries in a project) to parameterized SQL.
+
+#### Single-query mode
+
+```sh
+# Inline query — use single quotes so the shell doesn't expand $params
+axel compile --aql 'select User { id, email } filter .id = $id'
+
+# From a file
+axel compile --file queries/get_users.aql
+
+# Write to a file
+axel compile --file queries/get_users.aql --out queries/get_users.sql
+```
+
+> **Shell quoting:** Always use single quotes around `--aql` values. Double quotes cause the shell to expand `$param` as a shell variable before Axel sees it.
+
+#### Batch mode
+
+When `--dir` (`-d`) is supplied without `--aql` or `--file`, Axel finds all `*.aql` files under the project directory and compiles each one.
+
+```sh
+# Compile everything in the project, write .sql files alongside the .aql files
+axel -d ./myproject compile
+
+# Write compiled .sql files to a separate directory (created automatically)
+axel -d ./myproject compile --output-dir ./sql
+```
+
+| Flag            | Short | Default           | Description                                                         |
+|-----------------|-------|-------------------|---------------------------------------------------------------------|
+| `--aql`         |       |                   | AQL query string (mutually exclusive with `--file`)                 |
+| `--file`        | `-f`  |                   | Path to a `.aql` file                                               |
+| `--out`         | `-o`  | stdout            | Output `.sql` file (single-query mode)                              |
+| `--output-dir`  |       |                   | Output directory for compiled `.sql` files (batch or single mode)   |
+| `--schema-path` |       | `axel/schema.asl` | Schema to compile against                                           |
+
+Example output:
+
+```sql
+-- $1: active (bool)
+-- $2: min_age (int32)
+SELECT
+  u.id AS id,
+  u.email AS email
+FROM "user" u
+WHERE u.active = $1 AND u.age >= $2;
+```
+
+---
+
+### `axel codegen`
+
+Generates code from your schema and compiled AQL queries. See the [Code Generation](./codegen) guide for full details.
+
+```sh
+# Go
+axel -d ./myproject codegen -g go -o ./gen
+
+# TypeScript
+axel -d ./myproject codegen -g ts -o ./gen
+
+# External generator binary
+axel -d ./myproject codegen --plugin ./my-generator -o ./gen
+```
+
+| Flag            | Short | Default | Description                                              |
+|-----------------|-------|---------|----------------------------------------------------------|
+| `--generator`   | `-g`  |         | Built-in generator (`go` or `ts`)                        |
+| `--plugin`      | `-p`  |         | Path to external generator binary                        |
+| `--out-dir`     | `-o`  | `.`     | Directory to write generated files into                  |
+| `--query`       | `-q`  |         | AQL file or glob pattern — repeatable                    |
+| `--schema-path` |       |         | Schema file (default: from config or `axel/schema.asl`)  |
+| `--option`      |       |         | `key=value` forwarded to the generator — repeatable      |
+
+---
+
 ## Typical workflow
 
 ```sh
 # 1. Write your schema
-vim axel/schema.asl
+vim schema.asl
 
 # 2. Validate it
-axel validate
+axel -d . validate
 
-# 3. Generate a migration
-axel generate -n "initial schema"
+# 3. Generate and apply a migration
+axel -d . generate -n "initial schema"
+axel -d . up
 
-# 4. Apply the migration
-axel up
+# 4. Write queries
+vim queries/list_posts.aql
 
-# 5. Write a query
-vim queries/get_posts.aql
+# 5. Generate typed code
+axel -d . codegen -g go -o ./gen
 
-# 6. Compile it to SQL
-axel compile --file queries/get_posts.aql
+# 6. Compile queries to SQL (optional — codegen does this internally)
+axel -d . compile --output-dir ./sql
 
-# 7. Run the SQL in your application however you like
+# 7. Use the generated code in your application
 ```
 
 ---

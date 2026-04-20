@@ -285,6 +285,36 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) []ResultField {
 	var fields []ResultField
 	for _, sf := range shape.Fields {
+		// Inline computed field: name := expr
+		if sf.Computed != nil {
+			if sf.Computed.Op == "" && sf.Computed.Left != nil && sf.Computed.Left.SubQuery != nil {
+				sq := sf.Computed.Left.SubQuery
+				targetRT := ir.ObjectTypes[sq.TypeName]
+				var subFields []ResultField
+				if targetRT != nil {
+					if sq.Shape != nil {
+						subFields = buildShapeFields(sq.Shape, targetRT, ir)
+					} else {
+						subFields = allPropsAsFields(targetRT, ir)
+					}
+				}
+				fields = append(fields, ResultField{
+					Name:       sf.Name,
+					IsMultiple: true,
+					IsNullable: true,
+					TargetType: sq.TypeName,
+					SubFields:  subFields,
+				})
+			} else {
+				fields = append(fields, ResultField{
+					Name:       sf.Name,
+					AQLType:    "json",
+					IsNullable: true,
+				})
+			}
+			continue
+		}
+
 		if sf.SubShape != nil {
 			// Link field with nested shape
 			link, ok := rt.Links[sf.Name]

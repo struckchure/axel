@@ -146,6 +146,44 @@ offset $offset;
 
 ---
 
+## Computed shape fields
+
+A shape field can be assigned an inline expression using `:=`. The most common use is a sub-select that pulls related rows as a JSON array, without defining a link in the schema.
+
+```aql
+select User {
+  id,
+  email,
+  posts := (select Post { id, title } filter .author.id = User.id)
+}
+```
+
+The sub-select compiles to a correlated `json_agg` subquery. The outer type name (`User.id`) is a **qualified reference** — it resolves to the outer query's alias.
+
+```sql
+SELECT
+  u.id AS id,
+  u.email AS email,
+  (SELECT json_agg(row_to_json(p_posts_sub))
+   FROM (
+     SELECT p.id AS id, p.title AS title
+     FROM "post" p
+     WHERE p.author = u.id
+   ) p_posts_sub) AS posts
+FROM "user" u;
+```
+
+Computed shape fields with no sub-select compile as scalar expressions:
+
+```aql
+select User {
+  id,
+  label := .name ?? .email
+}
+```
+
+---
+
 ## Nested shapes (links)
 
 Shapes can include linked types. Axel compiles nested shapes into a single SQL query using `row_to_json` or `json_agg` — no N+1.
@@ -367,21 +405,24 @@ filter .author.email = $email
 
 ## Grammar reference
 
+The semicolon at the end of each statement is optional when the query is passed as an inline string.
+
 ```
 Statement   = SelectStmt | InsertStmt | UpdateStmt | DeleteStmt
 
-SelectStmt  = "select" SelectBody ";"
+SelectStmt  = "select" SelectBody ";"?
 SelectBody  = AggExpr
             | TypeName Shape? Filter? OrderBy? Limit? Offset?
 
 AggExpr     = Ident "(" TypeName Filter? ")"
 
-InsertStmt  = "insert" TypeName "{" Assignment ("," Assignment)* ","? "}" ";"
-UpdateStmt  = "update" TypeName Filter? "set" "{" Assignment ("," Assignment)* ","? "}" ";"
-DeleteStmt  = "delete" TypeName Filter? ";"
+InsertStmt  = "insert" TypeName "{" Assignment ("," Assignment)* ","? "}" ";"?
+UpdateStmt  = "update" TypeName Filter? "set" "{" Assignment ("," Assignment)* ","? "}" ";"?
+DeleteStmt  = "delete" TypeName Filter? ";"?
 
 Shape       = "{" ShapeField ("," ShapeField)* ","? "}"
-ShapeField  = Ident (":" Shape)?
+ShapeField  = Ident (":" Shape)?          # leaf or nested link shape
+            | Ident ":=" Expr             # computed field
 
 Assignment  = Ident ":=" Expr
 
@@ -394,13 +435,17 @@ Offset      = "offset" Expr
 Expr        = Primary (BinOp Primary)?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "and" | "or" | "??" | "in" | "like" | "ilike"
 
-Primary     = "(" Expr ")"
+Primary     = "(" "select" SelectBody ")"   # correlated sub-select
+            | "(" "insert" TypeName "{" ... ")" # sub-insert returning id
+            | "(" Expr ")"
             | FuncCall
             | PathExpr
-            | "$" Ident
+            | QualifiedIdent               # TypeName.field — outer-query reference
+            | "$" Ident                    # named parameter
             | "null" | "true" | "false"
             | String | Int | Float | Ident
 
-FuncCall    = Ident "(" (Expr ("," Expr)*)? ")"
-PathExpr    = ("." Ident)+
+FuncCall      = Ident "(" (Expr ("," Expr)*)? ")"
+PathExpr      = ("." Ident)+
+QualifiedIdent = Ident "." Ident           # e.g. User.id in a sub-select filter
 ```

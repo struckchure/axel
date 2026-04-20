@@ -38,6 +38,12 @@ features:
     title: Migration lifecycle
     details: axel generate diffs your schema, axel up applies it, axel down rolls it back. Migration history is tracked in a _axel_migrations table.
 
+  - icon: 🧩
+    title: Code generation
+    details: Generate typed Go structs and functions, TypeScript interfaces and async functions, or plug in your own generator binary written in any language.
+    link: /codegen
+    linkText: Codegen guide
+
   - icon: 📦
     title: Zero runtime deps
     details: The compiled SQL is plain text. Axel itself only needs a PostgreSQL connection during migrations — never during query execution.

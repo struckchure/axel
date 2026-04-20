@@ -15,6 +15,7 @@ import (
 
 	// Register built-in generators.
 	_ "github.com/struckchure/axel/generators/golang"
+	_ "github.com/struckchure/axel/generators/typescript"
 )
 
 var codegenCmd = &cobra.Command{

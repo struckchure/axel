@@ -10,7 +10,7 @@ WHERE p.id = $1;
 ```
 
 ```sh
-$ axel -d ./examples/basic compile -f examples/basic/list_post.query.aql -o examples/basic/list_post.query.sql
+$ axel -d ./examples/basic compile -od ./examples/basic/gen
 written to examples/basic/list_post.query.sql
 ```
 

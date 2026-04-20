@@ -170,6 +170,11 @@ func (c *compiler) compileAgg(agg *aql.AggExpr) (string, error) {
 // compileShapeField compiles one field in a shape.
 // Returns (column expression, lateral subquery string, error).
 func (c *compiler) compileShapeField(f *aql.ShapeField, parentType *asl.ResolvedType, parentAlias string) (string, string, error) {
+	// Inline computed field: name := expr
+	if f.Computed != nil {
+		return c.compileComputedShapeField(f, parentType, parentAlias)
+	}
+
 	// Check computed properties.
 	if comp, ok := parentType.Computed[f.Name]; ok {
 		expr := expandComputedExpr(comp.Expr, parentAlias)
@@ -268,6 +273,67 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 		f.Name,
 	)
 	return col, "", nil
+}
+
+// compileComputedShapeField compiles a shape field with an inline := expression.
+func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.ResolvedType, parentAlias string) (string, string, error) {
+	expr := f.Computed
+
+	// Pure sub-select: name := (select TypeName { shape } filter ...)
+	if expr.Op == "" && expr.Left != nil && expr.Left.SubQuery != nil {
+		sq := expr.Left.SubQuery
+		sqRT, err := c.resolveType(sq.TypeName)
+		if err != nil {
+			return "", "", err
+		}
+		sqAlias := tableAlias(sq.TypeName)
+
+		// Build inner SELECT columns.
+		var innerCols []string
+		if sq.Shape != nil {
+			for _, sf := range sq.Shape.Fields {
+				col, _, err := c.compileShapeField(sf, sqRT, sqAlias)
+				if err != nil {
+					return "", "", err
+				}
+				innerCols = append(innerCols, col)
+			}
+		} else {
+			propNames := make([]string, 0, len(sqRT.Properties))
+			for n := range sqRT.Properties {
+				propNames = append(propNames, n)
+			}
+			for _, n := range propNames {
+				p := sqRT.Properties[n]
+				innerCols = append(innerCols, fmt.Sprintf("%s.%s AS %s", sqAlias, p.Column, p.Name))
+			}
+		}
+
+		// Build WHERE from filter.
+		var where string
+		if sq.Filter != nil {
+			where, err = c.compileExpr(sq.Filter.Expr, sqAlias, sqRT)
+			if err != nil {
+				return "", "", err
+			}
+		}
+
+		innerSQL := fmt.Sprintf(`SELECT %s FROM "%s" %s`, strings.Join(innerCols, ", "), sqRT.Table, sqAlias)
+		if where != "" {
+			innerSQL += " WHERE " + where
+		}
+
+		sub := sqAlias + "_" + f.Name + "_sub"
+		col := fmt.Sprintf(`(SELECT json_agg(row_to_json(%s)) FROM (%s) %s) AS %s`, sub, innerSQL, sub, f.Name)
+		return col, "", nil
+	}
+
+	// Scalar computed expression: name := some_expr
+	exprSQL, err := c.compileExpr(expr, parentAlias, parentType)
+	if err != nil {
+		return "", "", err
+	}
+	return fmt.Sprintf("(%s) AS %s", exprSQL, f.Name), "", nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -553,6 +619,21 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		return *p.Int, nil
 	case p.Float != nil:
 		return *p.Float, nil
+	case p.QualifiedIdent != nil:
+		qi := p.QualifiedIdent
+		qrt := c.schema.ObjectTypes[qi.TypeName]
+		if qrt == nil {
+			return "", fmt.Errorf("unknown type %q in qualified reference", qi.TypeName)
+		}
+		outerAlias := tableAlias(qi.TypeName)
+		if prop, ok := qrt.Properties[qi.Field]; ok {
+			return fmt.Sprintf("%s.%s", outerAlias, prop.Column), nil
+		}
+		if link, ok := qrt.Links[qi.Field]; ok {
+			return fmt.Sprintf("%s.%s", outerAlias, link.JoinColumn), nil
+		}
+		return "", fmt.Errorf("type %q has no field %q", qi.TypeName, qi.Field)
+
 	case p.Ident != nil:
 		return *p.Ident, nil
 	}
@@ -605,6 +686,13 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 
 	tAlias := tableAlias(link.TargetType)
 	remaining := path.Steps[1:]
+
+	// Optimization: .link.id → FK column directly, avoiding a correlated subquery
+	// and alias conflicts when the outer query already uses the same alias.
+	if len(remaining) == 1 && remaining[0] == "id" {
+		return fmt.Sprintf("%s.%s", alias, link.JoinColumn), nil
+	}
+
 	subPath := &aql.PathExpr{Steps: remaining}
 	subExpr, err := c.compilePath(subPath, tAlias, targetType)
 	if err != nil {

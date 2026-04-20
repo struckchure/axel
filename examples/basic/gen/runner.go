@@ -45,3 +45,7 @@ func (r *Runner) CreateUser(ctx context.Context, params CreateUserParams) (*Crea
 func (r *Runner) ListPost(ctx context.Context) ([]ListPostRow, error) {
 	return ListPost(ctx, r.db)
 }
+
+func (r *Runner) ListUsersWithPost(ctx context.Context) ([]ListUsersWithPostRow, error) {
+	return ListUsersWithPost(ctx, r.db)
+}

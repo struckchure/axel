@@ -15,7 +15,7 @@ type Statement struct {
 //	select count(User filter .active = true);
 type SelectStmt struct {
 	Body *SelectBody `parser:"'select' @@"`
-	End  string      `parser:"';'"`
+	End  string      `parser:"';'?"`
 }
 
 // SelectBody holds the select content — either an aggregate or a typed shape query.
@@ -44,7 +44,8 @@ type AggExpr struct {
 // InsertStmt: insert TypeName { field := expr, ... };
 type InsertStmt struct {
 	TypeName    string        `parser:"'insert' @Ident"`
-	Assignments []*Assignment `parser:"'{' @@ ( ',' @@ )* ','? '}' ';'"`
+	Assignments []*Assignment `parser:"'{' @@ ( ',' @@ )* ','? '}'"`
+	End         string        `parser:"';'?"`
 }
 
 // InsertBody is a bare insert without a trailing ';', used as a sub-expression.
@@ -59,14 +60,15 @@ type InsertBody struct {
 type UpdateStmt struct {
 	TypeName    string        `parser:"'update' @Ident"`
 	Filter      *Filter       `parser:"@@?"`
-	Assignments []*Assignment `parser:"'set' '{' @@ ( ',' @@ )* ','? '}' ';'"`
+	Assignments []*Assignment `parser:"'set' '{' @@ ( ',' @@ )* ','? '}'"`
+	End         string        `parser:"';'?"`
 }
 
 // DeleteStmt: delete TypeName filter expr;
 type DeleteStmt struct {
 	TypeName string  `parser:"'delete' @Ident"`
 	Filter   *Filter `parser:"@@?"`
-	End      string  `parser:"';'"`
+	End      string  `parser:"';'?"`
 }
 
 // Shape is a set of selected fields, possibly with nested shapes.
@@ -80,9 +82,17 @@ type Shape struct {
 //
 //	id               → leaf field
 //	posts: { title } → nested link with sub-shape
+//	posts := (...)   → inline computed field
 type ShapeField struct {
 	Name     string `parser:"@Ident"`
 	SubShape *Shape `parser:"( ':' @@ )?"`
+	Computed *Expr  `parser:"( ':=' @@ )?"`
+}
+
+// QualifiedIdent is a TypeName.field reference used in expressions (e.g. User.id).
+type QualifiedIdent struct {
+	TypeName string `parser:"@Ident '.'"`
+	Field    string `parser:"@Ident"`
 }
 
 // Assignment is a field value assignment used in INSERT and UPDATE.
@@ -140,6 +150,9 @@ type Primary struct {
 	Int      *string   `parser:"| @Int"`
 	// Float literal
 	Float    *string   `parser:"| @Float"`
+	// Qualified identifier: TypeName.field (e.g. User.id in a subquery filter).
+	// Must come before Ident so the parser greedily consumes TypeName.field as one node.
+	QualifiedIdent *QualifiedIdent `parser:"| @@"`
 	// Bare identifier (enum value, type name, etc.)
 	Ident    *string   `parser:"| @Ident"`
 }
