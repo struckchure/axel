@@ -152,6 +152,22 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 				upStatements = append(upStatements, up)
 				downStatements = append(downStatements, down)
 			}
+
+		case AddIndex:
+			index := change.NewValue.(Index)
+			up := createIndexSQL(change.ModelName, index.Columns)
+			down := fmt.Sprintf("DROP INDEX IF EXISTS %s;", formatIdentifier(indexName(change.ModelName, index.Columns)))
+
+			upStatements = append(upStatements, up)
+			downStatements = append(downStatements, down)
+
+		case DropIndex:
+			index := change.OldValue.(Index)
+			up := fmt.Sprintf("DROP INDEX IF EXISTS %s;", formatIdentifier(indexName(change.ModelName, index.Columns)))
+			down := createIndexSQL(change.ModelName, index.Columns)
+
+			upStatements = append(upStatements, up)
+			downStatements = append(downStatements, down)
 		}
 	}
 
@@ -263,6 +279,11 @@ func generateAddColumn(tableName string, field Field) string {
 		}
 	}
 
+	// Length constraints → inline CHECK clauses.
+	if !isLink {
+		parts = append(parts, lengthCheckClauses(formatIdentifier(field.Name), field)...)
+	}
+
 	stmt := strings.Join(parts, " ") + ";"
 
 	// Add foreign key if it's a link
@@ -322,10 +343,76 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 		}
 	}
 
+	// Length constraint changes (min_length / max_length).
+	oldChecks := lengthConstraintMap(oldField)
+	newChecks := lengthConstraintMap(newField)
+
+	for _, kind := range []string{"min_length", "max_length"} {
+		oldArg, hadOld := oldChecks[kind]
+		newArg, hasNew := newChecks[kind]
+		if hadOld == hasNew && oldArg == newArg {
+			continue
+		}
+
+		name := lengthConstraintName(tableName, colName, kind)
+		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
+
+		if hasNew {
+			// Added or changed: ensure the old (if any) is gone, then add the new.
+			addStmt := fmt.Sprintf(
+				"ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (char_length(%s) %s %s);",
+				tableName, name, formatIdentifier(newField.Name), lengthCheckOp(kind), newArg,
+			)
+			upParts = append(upParts, addStmt)
+			downParts = append(downParts, dropStmt)
+		} else {
+			// Removed.
+			upParts = append(upParts, dropStmt)
+			if hadOld {
+				downParts = append(downParts, fmt.Sprintf(
+					"ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (char_length(%s) %s %s);",
+					tableName, name, formatIdentifier(oldField.Name), lengthCheckOp(kind), oldArg,
+				))
+			}
+		}
+	}
+
 	upSQL = strings.Join(upParts, "\n")
 	downSQL = strings.Join(downParts, "\n")
 
 	return upSQL, downSQL
+}
+
+// lengthConstraintMap returns the min_length/max_length constraint arguments for
+// a string field, keyed by constraint name. Non-string fields yield an empty map.
+func lengthConstraintMap(field Field) map[string]string {
+	checks := make(map[string]string)
+	if field.Type != "str" {
+		return checks
+	}
+	for _, c := range field.Constraints {
+		if len(c.Args) == 0 {
+			continue
+		}
+		if c.Name == "min_length" || c.Name == "max_length" {
+			checks[c.Name] = c.Args[0]
+		}
+	}
+	return checks
+}
+
+// lengthConstraintName builds the deterministic name for a named length CHECK
+// constraint added via ALTER TABLE. tableName and colName are snake_case.
+func lengthConstraintName(tableName, colName, kind string) string {
+	return fmt.Sprintf("chk_%s_%s_%s", tableName, colName, kind)
+}
+
+// lengthCheckOp returns the comparison operator for a length constraint kind.
+func lengthCheckOp(kind string) string {
+	if kind == "max_length" {
+		return "<="
+	}
+	return ">="
 }
 
 // generateJunctionTableForField creates junction table SQL for a multi field

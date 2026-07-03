@@ -9,6 +9,12 @@ type Model struct {
 	IsAbstract bool
 	Extends    string
 	Fields     []Field
+	Indexes    []Index
+}
+
+// Index is an index over one or more columns of a model.
+type Index struct {
+	Columns []string
 }
 
 type OnTarget struct {
@@ -81,6 +87,13 @@ func SchemaIRToModels(ir *asl.SchemaIR) []Model {
 					Name: joinField,
 					Type: joinFieldType,
 				},
+			})
+		}
+
+		// Indexes → model-level indexes.
+		for _, idx := range rt.Indexes {
+			model.Indexes = append(model.Indexes, Index{
+				Columns: append([]string(nil), idx.Columns...),
 			})
 		}
 

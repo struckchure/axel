@@ -72,6 +72,12 @@ func generateTable(model Model, abstractModels map[string]Model) string {
 		}
 	}
 
+	// Generate indexes
+	for _, stmt := range generateIndexes(model) {
+		sql.WriteString("\n\n")
+		sql.WriteString(stmt)
+	}
+
 	return sql.String()
 }
 
@@ -123,9 +129,68 @@ func generateColumn(field Field, modelName string) (string, string) {
 				parts = append(parts, "PRIMARY KEY")
 			}
 		}
+
+		// Length constraints → inline CHECK clauses.
+		parts = append(parts, lengthCheckClauses(colName, field)...)
 	}
 
 	return strings.Join(parts, " "), foreignKey
+}
+
+// lengthCheckClauses returns inline CHECK clauses for min_length/max_length
+// constraints on a string column. colName must already be a quoted identifier.
+// Non-string columns are skipped since char_length only applies to text.
+func lengthCheckClauses(colName string, field Field) []string {
+	if field.Type != "str" {
+		return nil
+	}
+
+	var clauses []string
+	for _, constraint := range field.Constraints {
+		if len(constraint.Args) == 0 {
+			continue
+		}
+		switch constraint.Name {
+		case "min_length":
+			clauses = append(clauses, fmt.Sprintf("CHECK (char_length(%s) >= %s)", colName, constraint.Args[0]))
+		case "max_length":
+			clauses = append(clauses, fmt.Sprintf("CHECK (char_length(%s) <= %s)", colName, constraint.Args[0]))
+		}
+	}
+
+	return clauses
+}
+
+// indexName builds a deterministic index name from a table and its columns.
+func indexName(tableName string, columns []string) string {
+	parts := append([]string{"idx", lo.SnakeCase(tableName)}, columns...)
+	return strings.Join(parts, "_")
+}
+
+// createIndexSQL builds a CREATE INDEX statement for the given table and columns.
+func createIndexSQL(tableName string, columns []string) string {
+	cols := make([]string, len(columns))
+	for i, c := range columns {
+		cols[i] = formatIdentifier(c)
+	}
+	return fmt.Sprintf(
+		"CREATE INDEX IF NOT EXISTS %s ON %s (%s);",
+		formatIdentifier(indexName(tableName, columns)),
+		formatIdentifier(tableName),
+		strings.Join(cols, ", "),
+	)
+}
+
+// generateIndexes returns CREATE INDEX statements for all of a model's indexes.
+func generateIndexes(model Model) []string {
+	var statements []string
+	for _, idx := range model.Indexes {
+		if len(idx.Columns) == 0 {
+			continue
+		}
+		statements = append(statements, createIndexSQL(model.Name, idx.Columns))
+	}
+	return statements
 }
 
 func generateJunctionTable(modelName string, field Field) string {

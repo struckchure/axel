@@ -167,6 +167,13 @@ id: uuid {
 };
 ```
 
+`min_length(n)` and `max_length(n)` apply to string columns and are emitted as
+`CHECK (char_length("col") >= n)` / `<= n` in the migration SQL. Inside
+`CREATE TABLE` these checks are inline and unnamed; a length constraint added to
+an existing column later is emitted via `ALTER TABLE ... ADD CONSTRAINT
+chk_<table>_<column>_<min|max>_length CHECK (...)` so it can be dropped on
+rollback.
+
 ---
 
 ## Links

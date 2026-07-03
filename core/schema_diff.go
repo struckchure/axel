@@ -2,6 +2,7 @@ package axel
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/samber/lo"
 )
@@ -32,6 +33,10 @@ func DiffSchemas(oldSchema, newSchema []Model) []SchemaChange {
 			// Model exists, check for field changes
 			fieldChanges := diffFields(oldModel, newModel)
 			changes = append(changes, fieldChanges...)
+
+			// Check for index changes
+			indexChanges := diffIndexes(oldModel, newModel)
+			changes = append(changes, indexChanges...)
 		} else {
 			// New model
 			changes = append(changes, SchemaChange{
@@ -113,6 +118,48 @@ func diffFields(oldModel, newModel Model) []SchemaChange {
 				FieldName:   name,
 				OldValue:    oldField,
 				Description: fmt.Sprintf("Drop column '%s.%s'", lo.SnakeCase(newModel.Name), lo.SnakeCase(name)),
+			})
+		}
+	}
+
+	return changes
+}
+
+// diffIndexes compares indexes between two versions of a model, keyed by the
+// deterministic index name (column order is significant).
+func diffIndexes(oldModel, newModel Model) []SchemaChange {
+	var changes []SchemaChange
+
+	oldIndexes := make(map[string]Index)
+	newIndexes := make(map[string]Index)
+
+	for _, idx := range oldModel.Indexes {
+		oldIndexes[indexName(oldModel.Name, idx.Columns)] = idx
+	}
+	for _, idx := range newModel.Indexes {
+		newIndexes[indexName(newModel.Name, idx.Columns)] = idx
+	}
+
+	// Added indexes.
+	for key, idx := range newIndexes {
+		if _, exists := oldIndexes[key]; !exists {
+			changes = append(changes, SchemaChange{
+				Type:        AddIndex,
+				ModelName:   newModel.Name,
+				NewValue:    idx,
+				Description: fmt.Sprintf("Add index on '%s' (%s)", lo.SnakeCase(newModel.Name), strings.Join(idx.Columns, ", ")),
+			})
+		}
+	}
+
+	// Removed indexes.
+	for key, idx := range oldIndexes {
+		if _, exists := newIndexes[key]; !exists {
+			changes = append(changes, SchemaChange{
+				Type:        DropIndex,
+				ModelName:   newModel.Name,
+				OldValue:    idx,
+				Description: fmt.Sprintf("Drop index on '%s' (%s)", lo.SnakeCase(newModel.Name), strings.Join(idx.Columns, ", ")),
 			})
 		}
 	}
