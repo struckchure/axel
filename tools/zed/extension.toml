@@ -6,16 +6,15 @@ authors = ["Mohammed Al-Ameen"]
 description = "Syntax highlighting for Axel Schema (.asl) and Query (.aql) languages."
 repository = "https://github.com/struckchure/axel"
 
-# Grammars live in subdirectories of this repository and are referenced via
-# `path`. `rev` MUST point at a commit that contains tools/zed/grammars — update
-# it to the commit that adds this extension (see tools/zed/README.md for the
-# local `file://` development workflow).
+# Grammar sources live at tools/zed/parsers/<name> (NOT under grammars/, which
+# Zed clones into and manages itself). `rev` must point at a commit that contains
+# those sources — see tools/zed/README.md for the local `file://` dev workflow.
 [grammars.asl]
 repository = "https://github.com/struckchure/axel"
-path = "tools/zed/grammars/asl"
+path = "tools/zed/parsers/asl"
 rev = "main"
 
 [grammars.aql]
 repository = "https://github.com/struckchure/axel"
-path = "tools/zed/grammars/aql"
+path = "tools/zed/parsers/aql"
 rev = "main"

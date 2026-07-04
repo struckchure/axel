@@ -82,3 +82,6 @@ go.work.sum
 .DS_Store
 
 cache
+
+# Zed clones extension grammars here during dev-extension builds
+tools/zed/grammars/

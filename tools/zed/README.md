@@ -17,15 +17,20 @@ tools/zed/
   languages/
     asl/  { config.toml, highlights.scm, brackets.scm, indents.scm, outline.scm }
     aql/  { config.toml, highlights.scm, brackets.scm, indents.scm, outline.scm }
-  grammars/
+  parsers/                           # Tree-sitter grammar sources (referenced by `path`)
     asl/  { grammar.js, package.json, tree-sitter.json, src/ }   # generated parser committed
     aql/  { grammar.js, package.json, tree-sitter.json, src/ }
 ```
 
+> The sources live under `parsers/`, **not** `grammars/`. Zed clones each grammar
+> into `tools/zed/grammars/<name>` and manages that directory itself — keeping our
+> own sources out of it avoids the "already exists, but is not a git clone" error.
+> `tools/zed/grammars/` is git-ignored.
+
 ## The `rev` requirement
 
 Zed fetches grammars from git at a specific revision, so `[grammars.*].rev` in
-`extension.toml` must be a **real commit that contains `tools/zed/grammars`**. After
+`extension.toml` must be a **real commit that contains `tools/zed/parsers`**. After
 committing this directory, set both `rev` values to that commit SHA.
 
 ### Local development (no push required)
@@ -36,12 +41,12 @@ local commit SHA:
 ```toml
 [grammars.asl]
 repository = "file:///Users/mohammed/projects/axel"
-path = "tools/zed/grammars/asl"
+path = "tools/zed/parsers/asl"
 rev = "<local commit sha>"
 
 [grammars.aql]
 repository = "file:///Users/mohammed/projects/axel"
-path = "tools/zed/grammars/aql"
+path = "tools/zed/parsers/aql"
 rev = "<local commit sha>"
 ```
 
@@ -65,8 +70,8 @@ after editing a `grammar.js`, pin the parser ABI to **14** — Zed cannot compil
 the newer ABI 15 that recent `tree-sitter-cli` emits by default:
 
 ```sh
-cd tools/zed/grammars/asl && bunx tree-sitter-cli generate --abi 14
-cd tools/zed/grammars/aql && bunx tree-sitter-cli generate --abi 14
+cd tools/zed/parsers/asl && bunx tree-sitter-cli generate --abi 14
+cd tools/zed/parsers/aql && bunx tree-sitter-cli generate --abi 14
 ```
 
 Run the grammar corpus tests with `bunx tree-sitter-cli test` in either grammar dir.
