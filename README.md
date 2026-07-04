@@ -6,6 +6,11 @@ Axel never wraps a driver or executes queries on your behalf. It generates SQL; 
 
 ---
 
+> [!NOTE]
+> **Disclaimer:** The code in this repository is majorly AI-generated. Review it carefully before relying on it in production.
+
+---
+
 ## How it works
 
 ```
