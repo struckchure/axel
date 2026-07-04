@@ -15,7 +15,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [x] Build migration engine core
 - [x] Implement CREATE TABLE generation
 - [x] Implement ALTER TABLE operations
-- [ ] Generate CREATE INDEX statements
+- [x] Generate CREATE INDEX statements
 - [x] Support for constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL)
 - [x] Migration history tracking and versioning
 - [x] Rollback capability
@@ -60,11 +60,11 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 
 ### CLI Tools
 - [ ] `axel init` - Initialize new project
-- [ ] `axel generate` - Generate migrations and types
-- [ ] `axel migrate` - Run pending migrations
+- [x] `axel generate` - Generate migrations and types
+- [x] `axel up` - Run pending migrations
 - [ ] `axel studio` - Visual database explorer
 - [ ] `axel seed` - Run seed files
-- [ ] `axel validate` - Validate schema
+- [x] `axel validate` - Validate schema
 
 ### Code Generation
 - [ ] Multi-language support (TypeScript, JavaScript, Python)
