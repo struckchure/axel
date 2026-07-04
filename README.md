@@ -187,6 +187,16 @@ axel -d . compile --file queries/get_users.aql
 
 ---
 
+## Editor support
+
+A Zed extension provides syntax highlighting for `.asl` and `.aql` files.
+
+To install it, open the command palette in Zed, run **`zed: install dev extension`**, and select the [`tools/zed`](tools/zed) directory.
+
+See [tools/zed/README.md](tools/zed/README.md) for details.
+
+---
+
 ## Documentation
 
 - [docs/asl.md](docs/asl.md) — Axel Schema Language reference
