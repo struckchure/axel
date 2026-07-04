@@ -5,16 +5,25 @@ import (
 )
 
 type Model struct {
-	Name       string
-	IsAbstract bool
-	Extends    string
-	Fields     []Field
-	Indexes    []Index
+	Name        string
+	IsAbstract  bool
+	Extends     string
+	Fields      []Field
+	Indexes     []Index
+	Constraints []TypeConstraint
 }
 
 // Index is an index over one or more columns of a model.
 type Index struct {
 	Columns []string
+}
+
+// TypeConstraint is a type-level constraint spanning one or more columns
+// (composite UNIQUE / PRIMARY KEY, or a length CHECK).
+type TypeConstraint struct {
+	Expression string
+	Args       []string
+	Columns    []string
 }
 
 type OnTarget struct {
@@ -30,6 +39,8 @@ type Field struct {
 	Constraints []Constraint
 	Default     string
 	OnTarget    OnTarget // For links
+	EnumType    string   // enum type name when the column is enum-backed
+	EnumValues  []string // allowed enum values (drives the CHECK constraint)
 }
 
 type Constraint struct {
@@ -66,6 +77,13 @@ func SchemaIRToModels(ir *asl.SchemaIR) []Model {
 					Args: c.Args,
 				})
 			}
+			// Enum-backed property → carry enum identity and values for the CHECK.
+			if prop.EnumType != "" {
+				f.EnumType = prop.EnumType
+				if enum, ok := ir.EnumTypes[prop.EnumType]; ok {
+					f.EnumValues = append([]string(nil), enum.Values...)
+				}
+			}
 			model.Fields = append(model.Fields, f)
 		}
 
@@ -78,7 +96,7 @@ func SchemaIRToModels(ir *asl.SchemaIR) []Model {
 
 			joinFieldType := resolveJoinFieldASLType(ir, link.TargetType, joinField)
 
-			model.Fields = append(model.Fields, Field{
+			lf := Field{
 				Name:       link.Name,
 				Type:       link.TargetType,
 				IsRequired: link.IsRequired,
@@ -87,13 +105,29 @@ func SchemaIRToModels(ir *asl.SchemaIR) []Model {
 					Name: joinField,
 					Type: joinFieldType,
 				},
-			})
+			}
+			for _, c := range link.Constraints {
+				lf.Constraints = append(lf.Constraints, Constraint{
+					Name: c.Name,
+					Args: c.Args,
+				})
+			}
+			model.Fields = append(model.Fields, lf)
 		}
 
 		// Indexes → model-level indexes.
 		for _, idx := range rt.Indexes {
 			model.Indexes = append(model.Indexes, Index{
 				Columns: append([]string(nil), idx.Columns...),
+			})
+		}
+
+		// Type-level constraints → composite UNIQUE / PRIMARY KEY / length CHECK.
+		for _, tc := range rt.Constraints {
+			model.Constraints = append(model.Constraints, TypeConstraint{
+				Expression: tc.Expression,
+				Args:       append([]string(nil), tc.Args...),
+				Columns:    append([]string(nil), tc.Columns...),
 			})
 		}
 

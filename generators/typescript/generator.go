@@ -65,6 +65,13 @@ func (g *TsGenerator) OnProperty(_ *codegen.Context, p codegen.PropertyDescripto
 		return nil
 	}
 	tsType := aqlToTsType(p.AQLType, !p.IsRequired)
+	if p.EnumType != "" {
+		// Enum-backed column → use the generated enum union type.
+		tsType = p.EnumType
+		if !p.IsRequired {
+			tsType += " | null"
+		}
+	}
 	fmt.Fprintf(&g.models, "  %s: %s;\n", toTsCamelCase(p.Name), tsType)
 	return nil
 }

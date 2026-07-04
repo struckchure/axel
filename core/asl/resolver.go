@@ -2,6 +2,7 @@ package asl
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -102,6 +103,7 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 				rt.Computed[k] = v
 			}
 			rt.Indexes = append(rt.Indexes, parent.Indexes...)
+			rt.Constraints = append(rt.Constraints, parent.Constraints...)
 		}
 
 		// Resolve own members.
@@ -129,6 +131,16 @@ func (r *Resolver) resolveMember(m *Member, rt *ResolvedType, ir *SchemaIR) erro
 			idx.Columns = append(idx.Columns, toSnakeCase(f))
 		}
 		rt.Indexes = append(rt.Indexes, idx)
+
+	case m.Constraint != nil:
+		tc := &ResolvedTypeConstraint{
+			Expression: m.Constraint.Expression,
+			Args:       m.Constraint.Args,
+		}
+		for _, f := range m.Constraint.Fields {
+			tc.Columns = append(tc.Columns, toSnakeCase(f))
+		}
+		rt.Constraints = append(rt.Constraints, tc)
 
 	case m.Field != nil:
 		if err := r.resolveField(m.Field, rt, ir); err != nil {
@@ -185,6 +197,8 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 		return fmt.Errorf("property %q: %w", f.Name, err)
 	}
 
+	enum, isEnum := ir.EnumTypes[typeName]
+
 	prop := &ResolvedProp{
 		Name:       f.Name,
 		Column:     toSnakeCase(f.Name),
@@ -192,13 +206,28 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 		IsRequired: f.Required,
 		IsMulti:    f.Multi,
 	}
+	if isEnum {
+		prop.EnumType = typeName
+	}
 
 	// Extract default and constraints from body.
 	if f.Body != nil {
 		for _, item := range f.Body.Items {
 			switch {
 			case item.Default != nil:
-				prop.Default = resolveDefault(item.Default, sqlType)
+				if isEnum {
+					def, err := resolveEnumDefault(item.Default, typeName, enum)
+					if err != nil {
+						return fmt.Errorf("property %q: %w", f.Name, err)
+					}
+					prop.Default = def
+				} else {
+					if item.Default.QualEnum != nil {
+						return fmt.Errorf("property %q: qualified enum default %s.%s used on non-enum type %q",
+							f.Name, item.Default.QualEnum[0], item.Default.QualEnum[1], typeName)
+					}
+					prop.Default = resolveDefault(item.Default, sqlType)
+				}
 			case item.Constraint != nil:
 				prop.Constraints = append(prop.Constraints, ResolvedConstraint{
 					Name: item.Constraint.Name,
@@ -210,6 +239,41 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 
 	rt.Properties[f.Name] = prop
 	return nil
+}
+
+// resolveEnumDefault resolves a default for an enum-typed property to a quoted
+// SQL string literal, validating that the referenced member belongs to the enum.
+// Accepts the qualified form (default := Enum.Member) or a quoted/bare literal.
+func resolveEnumDefault(d *DefaultDecl, enumName string, enum *ResolvedEnum) (string, error) {
+	var member string
+	switch {
+	case d.QualEnum != nil:
+		if d.QualEnum[0] != enumName {
+			return "", fmt.Errorf("default references enum %q but property is of enum type %q", d.QualEnum[0], enumName)
+		}
+		member = d.QualEnum[1]
+	case d.NewLit != nil:
+		member = stripSingleQuotes(*d.NewLit)
+	case d.OldLit != nil:
+		member = stripSingleQuotes(*d.OldLit)
+	case d.NewFunc != nil, d.OldFunc != nil:
+		return "", fmt.Errorf("function default is not valid for enum type %q", enumName)
+	default:
+		return "", nil
+	}
+
+	if !slices.Contains(enum.Values, member) {
+		return "", fmt.Errorf("%q is not a value of enum %q (allowed: %s)", member, enumName, strings.Join(enum.Values, ", "))
+	}
+	return "'" + member + "'", nil
+}
+
+// stripSingleQuotes removes a single pair of surrounding single quotes, if present.
+func stripSingleQuotes(s string) string {
+	if len(s) >= 2 && strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'") {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 func (r *Resolver) resolveLink(f *FieldDecl, rt *ResolvedType, ir *SchemaIR, targetType, joinField string) error {
@@ -231,6 +295,18 @@ func (r *Resolver) resolveLink(f *FieldDecl, rt *ResolvedType, ir *SchemaIR, tar
 	} else {
 		// Single link → FK column: fieldname (matches migration SQL generator convention)
 		link.JoinColumn = toSnakeCase(f.Name)
+	}
+
+	// Extract body constraints (e.g. exclusive) so they reach the FK column.
+	if f.Body != nil {
+		for _, item := range f.Body.Items {
+			if item.Constraint != nil {
+				link.Constraints = append(link.Constraints, ResolvedConstraint{
+					Name: item.Constraint.Name,
+					Args: item.Constraint.Args,
+				})
+			}
+		}
 	}
 
 	rt.Links[f.Name] = link

@@ -41,9 +41,10 @@ type TypeDef struct {
 
 // Member is any declaration inside a type body.
 type Member struct {
-	Computed *ComputedDecl `parser:"  @@"`
-	Index    *IndexDecl    `parser:"| @@"`
-	Field    *FieldDecl    `parser:"| @@"`
+	Computed   *ComputedDecl   `parser:"  @@"`
+	Index      *IndexDecl      `parser:"| @@"`
+	Constraint *ConstraintDecl `parser:"| @@"`
+	Field      *FieldDecl      `parser:"| @@"`
 }
 
 // FieldDecl covers both property and link declarations.
@@ -53,15 +54,15 @@ type Member struct {
 // Property:  required property email: str { constraint exclusive; };
 // Bare prop: required age: int32;
 type FieldDecl struct {
-	Required    bool       `parser:"@'required'?"`
-	Multi       bool       `parser:"@'multi'?"`
-	Single      bool       `parser:"@'single'?"`
-	PropKeyword bool       `parser:"@'property'?"`
-	LinkKeyword bool       `parser:"@'link'?"`
-	Name        string     `parser:"@Ident"`
-	TypeSpec    *TypeSpec  `parser:"@@?"`
+	Required    bool      `parser:"@'required'?"`
+	Multi       bool      `parser:"@'multi'?"`
+	Single      bool      `parser:"@'single'?"`
+	PropKeyword bool      `parser:"@'property'?"`
+	LinkKeyword bool      `parser:"@'link'?"`
+	Name        string    `parser:"@Ident"`
+	TypeSpec    *TypeSpec `parser:"@@?"`
 	// ";" is always consumed here — attached after optional body
-	Body        *FieldBody `parser:"( '{' @@ '}' )? ';'"`
+	Body *FieldBody `parser:"( '{' @@ '}' )? ';'"`
 }
 
 // TypeSpec holds the type annotation for a field.
@@ -79,14 +80,14 @@ type FieldBody struct {
 
 // FieldBodyItem is one item inside a field's body block.
 type FieldBodyItem struct {
-	Constraint *ConstraintDecl `parser:"  @@"`
-	Default    *DefaultDecl    `parser:"| @@"`
-	OnClause   *OnClause       `parser:"| @@"`
+	Constraint *FieldConstraintDecl `parser:"  @@"`
+	Default    *DefaultDecl         `parser:"| @@"`
+	OnClause   *OnClause            `parser:"| @@"`
 }
 
-// ConstraintDecl: constraint exclusive; / constraint min_length(10);
+// FieldConstraintDecl: constraint exclusive; / constraint min_length(10);
 // Trailing semicolon is optional (some single-item bodies omit it).
-type ConstraintDecl struct {
+type FieldConstraintDecl struct {
 	Name string   `parser:"'constraint' @Ident"`
 	Args []string `parser:"( '(' @( Ident | Int | String ) ( ',' @( Ident | Int | String ) )* ')' )? ';'?"`
 }
@@ -99,12 +100,14 @@ type ConstraintDecl struct {
 type DefaultDecl struct {
 	// new: default := funcName()
 	NewFunc *string `parser:"  'default' ':=' @Ident '(' ')' ';'?"`
+	// new: default := Enum.Member (qualified enum reference)
+	QualEnum []string `parser:"| 'default' ':=' @Ident '.' @Ident ';'?"`
 	// new: default := literal
-	NewLit  *string `parser:"| 'default' ':=' @( String | Int | Ident ) ';'?"`
+	NewLit *string `parser:"| 'default' ':=' @( String | Int | Ident ) ';'?"`
 	// old: default @func(name)
 	OldFunc *string `parser:"| 'default' '@' 'func' '(' @Ident ')' ';'?"`
 	// old: default literal
-	OldLit  *string `parser:"| 'default' @( String | Int | Ident ) ';'?"`
+	OldLit *string `parser:"| 'default' @( String | Int | Ident ) ';'?"`
 }
 
 // OnClause specifies the join field for old-style links.
@@ -120,6 +123,16 @@ type OnClause struct {
 type ComputedDecl struct {
 	Name  string   `parser:"'computed' @Ident ':='"`
 	Parts []string `parser:"@( Ident | '.' | '??' | String | Int )+ ';'"`
+}
+
+// ConstraintDecl declares an constraint on one or more properties.
+//
+//	constraint <expression> on (.email);
+//	constraint <expression> on (.active, .age);
+type ConstraintDecl struct {
+	Expression string   `parser:"'constraint' @Ident"`
+	Args       []string `parser:"( '(' @( Ident | Int | String ) ( ',' @( Ident | Int | String ) )* ')' )?"`
+	Fields     []string `parser:"'on' '(' '.' @Ident ( ',' '.' @Ident )* ')' ';'"`
 }
 
 // IndexDecl declares an index on one or more properties.

@@ -2,6 +2,7 @@ package axel
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/samber/lo"
@@ -37,6 +38,10 @@ func DiffSchemas(oldSchema, newSchema []Model) []SchemaChange {
 			// Check for index changes
 			indexChanges := diffIndexes(oldModel, newModel)
 			changes = append(changes, indexChanges...)
+
+			// Check for type-level constraint changes
+			constraintChanges := diffTypeConstraints(oldModel, newModel)
+			changes = append(changes, constraintChanges...)
 		} else {
 			// New model
 			changes = append(changes, SchemaChange{
@@ -167,6 +172,48 @@ func diffIndexes(oldModel, newModel Model) []SchemaChange {
 	return changes
 }
 
+// diffTypeConstraints compares type-level constraints between two versions of a
+// model, keyed by the deterministic constraint name.
+func diffTypeConstraints(oldModel, newModel Model) []SchemaChange {
+	var changes []SchemaChange
+
+	oldCons := make(map[string]TypeConstraint)
+	newCons := make(map[string]TypeConstraint)
+
+	for _, tc := range oldModel.Constraints {
+		oldCons[typeConstraintName(oldModel.Name, tc)] = tc
+	}
+	for _, tc := range newModel.Constraints {
+		newCons[typeConstraintName(newModel.Name, tc)] = tc
+	}
+
+	// Added constraints.
+	for key, tc := range newCons {
+		if _, exists := oldCons[key]; !exists {
+			changes = append(changes, SchemaChange{
+				Type:        AddConstraint,
+				ModelName:   newModel.Name,
+				NewValue:    tc,
+				Description: fmt.Sprintf("Add constraint '%s' on '%s'", key, lo.SnakeCase(newModel.Name)),
+			})
+		}
+	}
+
+	// Removed constraints.
+	for key, tc := range oldCons {
+		if _, exists := newCons[key]; !exists {
+			changes = append(changes, SchemaChange{
+				Type:        DropConstraint,
+				ModelName:   newModel.Name,
+				OldValue:    tc,
+				Description: fmt.Sprintf("Drop constraint '%s' on '%s'", key, lo.SnakeCase(newModel.Name)),
+			})
+		}
+	}
+
+	return changes
+}
+
 // getAllFields returns all fields including inherited ones
 func getAllFields(model Model, abstractModels map[string]Model) []Field {
 	var allFields []Field
@@ -207,6 +254,14 @@ func fieldsEqual(f1, f2 Field) bool {
 	}
 
 	if f1.OnTarget.Type != f2.OnTarget.Type {
+		return false
+	}
+
+	// Enum backing
+	if f1.EnumType != f2.EnumType {
+		return false
+	}
+	if !slices.Equal(f1.EnumValues, f2.EnumValues) {
 		return false
 	}
 

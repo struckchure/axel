@@ -2,6 +2,7 @@ package axel
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/samber/lo"
@@ -168,6 +169,22 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 
 			upStatements = append(upStatements, up)
 			downStatements = append(downStatements, down)
+
+		case AddConstraint:
+			tc := change.NewValue.(TypeConstraint)
+			up := typeConstraintAddSQL(change.ModelName, tc)
+			if up != "" {
+				upStatements = append(upStatements, up)
+				downStatements = append(downStatements, typeConstraintDropSQL(change.ModelName, tc))
+			}
+
+		case DropConstraint:
+			tc := change.OldValue.(TypeConstraint)
+			down := typeConstraintAddSQL(change.ModelName, tc)
+			if down != "" {
+				upStatements = append(upStatements, typeConstraintDropSQL(change.ModelName, tc))
+				downStatements = append(downStatements, down)
+			}
 		}
 	}
 
@@ -279,9 +296,12 @@ func generateAddColumn(tableName string, field Field) string {
 		}
 	}
 
-	// Length constraints → inline CHECK clauses.
+	// Length + enum constraints → inline CHECK clauses.
 	if !isLink {
 		parts = append(parts, lengthCheckClauses(formatIdentifier(field.Name), field)...)
+		if clause := enumCheckClause(formatIdentifier(field.Name), field); clause != "" {
+			parts = append(parts, clause)
+		}
 	}
 
 	stmt := strings.Join(parts, " ") + ";"
@@ -377,10 +397,55 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 		}
 	}
 
+	// Enum membership change (add / remove / change of allowed values).
+	if !slices.Equal(oldField.EnumValues, newField.EnumValues) {
+		name := fmt.Sprintf("chk_%s_%s_enum", tableName, colName)
+		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
+		addNew := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s IN (%s));",
+			tableName, name, formatIdentifier(newField.Name), quotedEnumValues(newField.EnumValues))
+		addOld := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s IN (%s));",
+			tableName, name, formatIdentifier(oldField.Name), quotedEnumValues(oldField.EnumValues))
+
+		if len(newField.EnumValues) > 0 {
+			// Replace any prior enum check with the new one.
+			if len(oldField.EnumValues) > 0 {
+				upParts = append(upParts, dropStmt)
+			}
+			upParts = append(upParts, addNew)
+			downParts = append(downParts, dropStmt)
+			if len(oldField.EnumValues) > 0 {
+				downParts = append(downParts, addOld)
+			}
+		} else {
+			// Enum backing removed.
+			upParts = append(upParts, dropStmt)
+			if len(oldField.EnumValues) > 0 {
+				downParts = append(downParts, addOld)
+			}
+		}
+	}
+
 	upSQL = strings.Join(upParts, "\n")
 	downSQL = strings.Join(downParts, "\n")
 
 	return upSQL, downSQL
+}
+
+// typeConstraintAddSQL builds an ALTER TABLE ADD CONSTRAINT statement for a
+// type-level constraint. Returns "" for unsupported expressions.
+func typeConstraintAddSQL(tableName string, tc TypeConstraint) string {
+	body := typeConstraintBody(tc)
+	if body == "" {
+		return ""
+	}
+	return fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s %s;",
+		lo.SnakeCase(tableName), formatIdentifier(typeConstraintName(tableName, tc)), body)
+}
+
+// typeConstraintDropSQL builds an ALTER TABLE DROP CONSTRAINT statement.
+func typeConstraintDropSQL(tableName string, tc TypeConstraint) string {
+	return fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;",
+		lo.SnakeCase(tableName), formatIdentifier(typeConstraintName(tableName, tc)))
 }
 
 // lengthConstraintMap returns the min_length/max_length constraint arguments for

@@ -35,6 +35,7 @@ type PropertyDescriptor struct {
 	Column      string                `json:"column"`
 	AQLType     string                `json:"aql_type"`
 	SQLType     string                `json:"sql_type"`
+	EnumType    string                `json:"enum_type,omitempty"`
 	IsRequired  bool                  `json:"is_required"`
 	IsMulti     bool                  `json:"is_multi"`
 	Default     string                `json:"default,omitempty"`
@@ -171,6 +172,7 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 				Column:     p.Column,
 				AQLType:    sqlTypeToAQLType(p.SQLType),
 				SQLType:    p.SQLType,
+				EnumType:   p.EnumType,
 				IsRequired: p.IsRequired,
 				IsMulti:    p.IsMulti,
 				Default:    p.Default,
@@ -442,6 +444,7 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 				Name:        p.Name,
 				Column:      p.Column,
 				SQLType:     p.SQLType,
+				EnumType:    p.EnumType,
 				IsRequired:  p.IsRequired,
 				IsMulti:     p.IsMulti,
 				Default:     p.Default,

@@ -44,19 +44,19 @@ func generateTable(model Model, abstractModels map[string]Model) string {
 		}
 	}
 
-	// Add all columns
-	for i, col := range columns {
-		sql.WriteString("  " + col)
-		if i < len(columns)-1 || len(foreignKeys) > 0 {
-			sql.WriteString(",")
+	// Assemble body rows in order: columns, foreign keys, then type-level constraints.
+	rows := make([]string, 0, len(columns)+len(foreignKeys)+len(model.Constraints))
+	rows = append(rows, columns...)
+	rows = append(rows, foreignKeys...)
+	for _, tc := range model.Constraints {
+		if clause := typeConstraintClause(model.Name, tc); clause != "" {
+			rows = append(rows, clause)
 		}
-		sql.WriteString("\n")
 	}
 
-	// Add foreign keys
-	for i, fk := range foreignKeys {
-		sql.WriteString("  " + fk)
-		if i < len(foreignKeys)-1 {
+	for i, row := range rows {
+		sql.WriteString("  " + row)
+		if i < len(rows)-1 {
 			sql.WriteString(",")
 		}
 		sql.WriteString("\n")
@@ -101,6 +101,16 @@ func generateColumn(field Field, modelName string) (string, string) {
 			parts = append(parts, "NOT NULL")
 		}
 
+		// Body constraints on the link column (e.g. exclusive → UNIQUE).
+		for _, constraint := range field.Constraints {
+			switch constraint.Name {
+			case "exclusive":
+				parts = append(parts, "UNIQUE")
+			case "pk":
+				parts = append(parts, "PRIMARY KEY")
+			}
+		}
+
 		// Generate foreign key constraint
 		refTable := formatIdentifier(field.Type)
 		refColumn := formatIdentifier(field.OnTarget.Name)
@@ -132,9 +142,33 @@ func generateColumn(field Field, modelName string) (string, string) {
 
 		// Length constraints → inline CHECK clauses.
 		parts = append(parts, lengthCheckClauses(colName, field)...)
+
+		// Enum-backed column → membership CHECK.
+		if clause := enumCheckClause(colName, field); clause != "" {
+			parts = append(parts, clause)
+		}
 	}
 
 	return strings.Join(parts, " "), foreignKey
+}
+
+// enumCheckClause returns an inline CHECK clause restricting an enum-backed
+// column to its allowed values. colName must already be a quoted identifier.
+func enumCheckClause(colName string, field Field) string {
+	if len(field.EnumValues) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("CHECK (%s IN (%s))", colName, quotedEnumValues(field.EnumValues))
+}
+
+// quotedEnumValues renders enum values as a comma-separated list of SQL string
+// literals: 'Admin', 'Member', 'Guest'.
+func quotedEnumValues(values []string) string {
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = "'" + v + "'"
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // lengthCheckClauses returns inline CHECK clauses for min_length/max_length
@@ -179,6 +213,66 @@ func createIndexSQL(tableName string, columns []string) string {
 		formatIdentifier(tableName),
 		strings.Join(cols, ", "),
 	)
+}
+
+// typeConstraintName builds a deterministic name for a type-level constraint.
+func typeConstraintName(tableName string, tc TypeConstraint) string {
+	table := lo.SnakeCase(tableName)
+	switch tc.Expression {
+	case "exclusive":
+		return strings.Join(append([]string{"uq", table}, tc.Columns...), "_")
+	case "pk":
+		return "pk_" + table
+	case "min_length", "max_length":
+		return strings.Join(append(append([]string{"chk", table}, tc.Columns...), tc.Expression), "_")
+	default:
+		return strings.Join(append([]string{"ck", table}, tc.Columns...), "_")
+	}
+}
+
+// typeConstraintBody renders the constraint definition (without the leading
+// CONSTRAINT <name>). Returns "" for unsupported/empty expressions.
+func typeConstraintBody(tc TypeConstraint) string {
+	if len(tc.Columns) == 0 {
+		return ""
+	}
+	cols := make([]string, len(tc.Columns))
+	for i, c := range tc.Columns {
+		cols[i] = formatIdentifier(c)
+	}
+
+	switch tc.Expression {
+	case "exclusive":
+		return fmt.Sprintf("UNIQUE (%s)", strings.Join(cols, ", "))
+	case "pk":
+		return fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(cols, ", "))
+	case "min_length", "max_length":
+		if len(tc.Args) == 0 {
+			return ""
+		}
+		op := ">="
+		if tc.Expression == "max_length" {
+			op = "<="
+		}
+		checks := make([]string, len(cols))
+		for i, c := range cols {
+			checks[i] = fmt.Sprintf("char_length(%s) %s %s", c, op, tc.Args[0])
+		}
+		return fmt.Sprintf("CHECK (%s)", strings.Join(checks, " AND "))
+	default:
+		return ""
+	}
+}
+
+// typeConstraintClause returns an inline table constraint clause for use inside
+// CREATE TABLE, e.g. `CONSTRAINT "uq_user_email_tenant_id" UNIQUE ("email", "tenant_id")`.
+// Returns "" for unsupported expressions.
+func typeConstraintClause(tableName string, tc TypeConstraint) string {
+	body := typeConstraintBody(tc)
+	if body == "" {
+		return ""
+	}
+	return fmt.Sprintf("CONSTRAINT %s %s", formatIdentifier(typeConstraintName(tableName, tc)), body)
 }
 
 // generateIndexes returns CREATE INDEX statements for all of a model's indexes.

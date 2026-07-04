@@ -30,6 +30,7 @@ type ResolvedType struct {
 	Links       map[string]*ResolvedLink
 	Computed    map[string]*ResolvedComputed
 	Indexes     []*ResolvedIndex
+	Constraints []*ResolvedTypeConstraint
 }
 
 // ResolvedProp is a resolved scalar property.
@@ -37,6 +38,7 @@ type ResolvedProp struct {
 	Name        string
 	Column      string // snake_case column name
 	SQLType     string // "TEXT", "INTEGER", "BOOLEAN", "UUID", "TIMESTAMPTZ"
+	EnumType    string // enum type name when the property is enum-backed; "" otherwise
 	IsRequired  bool
 	IsMulti     bool   // true → array or junction table
 	Default     string // SQL default expression
@@ -52,6 +54,7 @@ type ResolvedLink struct {
 	JunctionTable string // junction table name for multi links: "post_tags"
 	IsRequired    bool
 	IsMulti       bool
+	Constraints   []ResolvedConstraint // body constraints on the link column (e.g. exclusive)
 }
 
 // ResolvedComputed is a computed/derived property (not stored in DB).
@@ -69,4 +72,12 @@ type ResolvedIndex struct {
 type ResolvedConstraint struct {
 	Name string
 	Args []string
+}
+
+// ResolvedTypeConstraint is a resolved type-level constraint spanning one or
+// more columns (e.g. composite UNIQUE / PRIMARY KEY, or a length CHECK).
+type ResolvedTypeConstraint struct {
+	Expression string   // "exclusive", "pk", "min_length", "max_length"
+	Args       []string // e.g. ["6"] for length constraints
+	Columns    []string // snake_case column names the constraint applies to
 }

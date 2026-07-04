@@ -108,19 +108,25 @@ type User {
 
 ## Enum types
 
-Enums are stored as `TEXT` with a `CHECK` constraint.
+Enums are stored as `TEXT` with a `CHECK (col IN (...))` constraint restricting the column to the
+declared values.
 
 ```asl
 enum Role { Admin, Member, Guest }
 ```
 
-Use an enum as a property type:
+Use an enum as a property type. Reference an enum value in a default with the qualified
+`Enum.Member` form (a quoted literal `'Member'` is also accepted); the value is validated against the
+enum's declaration at `generate` time:
 
 ```asl
 type User {
-  required role: Role;
+  required role: Role { default := Role.Member; };
 }
 ```
+
+This emits `"role" TEXT NOT NULL DEFAULT 'Member' CHECK ("role" IN ('Admin', 'Member', 'Guest'))`.
+Generated Go/TS code uses the enum type for the field (`Role`) rather than a plain string.
 
 ---
 
@@ -239,6 +245,30 @@ type User {
 ```
 
 Each `index on (...)` declaration generates a `CREATE INDEX` statement in the migration SQL.
+
+---
+
+## Type-level constraints
+
+In addition to field-level constraints, a `constraint <expr> on (.a, .b);` declaration inside a type
+body applies a constraint across one or more columns. This is how you express composite constraints
+such as unique-together.
+
+```asl
+type Membership {
+  required user_id: uuid;
+  required org_id: uuid;
+  required code: str;
+
+  constraint exclusive on (.user_id, .org_id);   # composite UNIQUE (unique together)
+  constraint min_length(4) on (.code);           # CHECK on char_length
+}
+```
+
+Supported expressions: `exclusive` → composite `UNIQUE`, `pk` → composite `PRIMARY KEY`,
+`min_length(n)` / `max_length(n)` → `char_length` `CHECK`. Constraints are emitted with deterministic
+names (e.g. `uq_membership_user_id_org_id`) inside `CREATE TABLE`, and adding or removing one on an
+existing type generates an `ALTER TABLE ... ADD/DROP CONSTRAINT` in the migration SQL.
 
 ---
 

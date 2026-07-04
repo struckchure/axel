@@ -66,6 +66,13 @@ func (g *GoGenerator) BeginType(_ *codegen.Context, typ codegen.TypeDescriptor) 
 
 func (g *GoGenerator) OnProperty(_ *codegen.Context, p codegen.PropertyDescriptor) error {
 	goType := aqlToGoType(p.AQLType, !p.IsRequired)
+	if p.EnumType != "" {
+		// Enum-backed column → use the generated enum type (a string alias).
+		goType = p.EnumType
+		if !p.IsRequired {
+			goType = "*" + goType
+		}
+	}
 	fieldName := toGoFieldName(p.Name)
 	fmt.Fprintf(&g.models, "\t%s %s `json:%q db:%q`\n", fieldName, goType, p.Name, p.Column)
 	return nil
