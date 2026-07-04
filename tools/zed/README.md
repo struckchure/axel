@@ -61,11 +61,12 @@ Use the GitHub URL (the committed default) with the pushed commit SHA.
 ## Regenerating the parsers
 
 The generated `src/` is committed so consumers need no toolchain. To regenerate
-after editing a `grammar.js`:
+after editing a `grammar.js`, pin the parser ABI to **14** — Zed cannot compile
+the newer ABI 15 that recent `tree-sitter-cli` emits by default:
 
 ```sh
-cd tools/zed/grammars/asl && bunx tree-sitter-cli generate
-cd tools/zed/grammars/aql && bunx tree-sitter-cli generate
+cd tools/zed/grammars/asl && bunx tree-sitter-cli generate --abi 14
+cd tools/zed/grammars/aql && bunx tree-sitter-cli generate --abi 14
 ```
 
 Run the grammar corpus tests with `bunx tree-sitter-cli test` in either grammar dir.
