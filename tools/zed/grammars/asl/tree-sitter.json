@@ -1,0 +1,17 @@
+{
+  "grammars": [
+    {
+      "name": "asl",
+      "scope": "source.asl",
+      "path": ".",
+      "file-types": ["asl"],
+      "highlights": ["../../languages/asl/highlights.scm"]
+    }
+  ],
+  "metadata": {
+    "version": "0.0.1",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for the Axel Schema Language (.asl)",
+    "authors": [{ "name": "Mohammed Al-Ameen" }]
+  }
+}

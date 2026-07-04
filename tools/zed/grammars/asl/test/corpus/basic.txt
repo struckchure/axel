@@ -1,0 +1,26 @@
+==================
+enum and type with field
+==================
+
+enum Role { Admin, Member }
+type A { required x: str; }
+
+---
+
+(source_file
+  (enum_type
+    name: (type_identifier
+      (identifier))
+    (enum_value
+      (identifier))
+    (enum_value
+      (identifier)))
+  (type_definition
+    name: (type_identifier
+      (identifier))
+    (field_declaration
+      name: (field_identifier
+        (identifier))
+      (type_annotation
+        type: (type_identifier
+          (identifier))))))

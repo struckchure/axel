@@ -1,0 +1,17 @@
+{
+  "grammars": [
+    {
+      "name": "aql",
+      "scope": "source.aql",
+      "path": ".",
+      "file-types": ["aql"],
+      "highlights": ["../../languages/aql/highlights.scm"]
+    }
+  ],
+  "metadata": {
+    "version": "0.0.1",
+    "license": "MIT",
+    "description": "Tree-sitter grammar for the Axel Query Language (.aql)",
+    "authors": [{ "name": "Mohammed Al-Ameen" }]
+  }
+}

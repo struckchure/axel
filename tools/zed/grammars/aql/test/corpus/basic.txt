@@ -1,0 +1,29 @@
+==================
+select with nested shape and filter
+==================
+
+select A { x, y: { z } } filter .n = 1;
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier)))
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        shape: (shape
+          (shape_field
+            name: (field_identifier
+              (identifier))))))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (integer)))))

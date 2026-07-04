@@ -1,0 +1,19 @@
+{
+  "name": "tree-sitter-aql",
+  "version": "0.0.1",
+  "description": "Tree-sitter grammar for the Axel Query Language (.aql)",
+  "license": "MIT",
+  "main": "bindings/node",
+  "keywords": ["tree-sitter", "parser", "axel", "aql"],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.aql",
+      "file-types": ["aql"],
+      "highlights": ["../../languages/aql/highlights.scm"],
+      "injection-regex": "^aql$"
+    }
+  ]
+}

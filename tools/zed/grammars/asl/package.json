@@ -1,0 +1,19 @@
+{
+  "name": "tree-sitter-asl",
+  "version": "0.0.1",
+  "description": "Tree-sitter grammar for the Axel Schema Language (.asl)",
+  "license": "MIT",
+  "main": "bindings/node",
+  "keywords": ["tree-sitter", "parser", "axel", "asl"],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.asl",
+      "file-types": ["asl"],
+      "highlights": ["../../languages/asl/highlights.scm"],
+      "injection-regex": "^asl$"
+    }
+  ]
+}
