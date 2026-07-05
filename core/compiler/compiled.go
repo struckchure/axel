@@ -9,8 +9,9 @@ type CompiledSQL struct {
 
 // ParamInfo describes one named parameter in the query.
 type ParamInfo struct {
-	Name    string // "email", "min_age"
-	AQLType string // "str", "int32", "bool", "uuid" — inferred where possible
+	Name     string // "email", "min_age"
+	AQLType  string // "str", "int32", "bool", "uuid" — inferred where possible
+	Optional bool   // true when written as $name? — nullable, skipped-when-null in filters
 }
 
 // Header returns the SQL comment block that maps param names to positions.

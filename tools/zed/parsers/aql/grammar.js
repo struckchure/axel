@@ -27,7 +27,12 @@ module.exports = grammar({
 
     // select ( count(...) | Type shape? filter? order? limit? offset? ) ;?
     select_statement: ($) =>
-      seq("select", choice($.aggregate, $._object_select), optional(";")),
+      seq(
+        optional("multi"),
+        "select",
+        choice($.aggregate, $._object_select),
+        optional(";"),
+      ),
 
     _object_select: ($) =>
       seq(
@@ -183,7 +188,7 @@ module.exports = grammar({
     // .author.name
     path: ($) => repeat1(seq(".", field("step", $.field_identifier))),
 
-    parameter: ($) => seq("$", $.identifier),
+    parameter: ($) => seq("$", $.identifier, optional("?")),
 
     // User.id
     qualified_identifier: ($) =>

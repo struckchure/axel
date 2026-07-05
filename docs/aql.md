@@ -52,9 +52,36 @@ FROM "user" u
 WHERE u.email = $1 AND u.active = $2;
 ```
 
+### Optional parameters
+
+A trailing `?` marks a parameter optional (`$email?`). In a filter, an optional parameter is **skipped when its value is null** — the condition becomes a no-op — so a single query can support present/absent filters. The generated parameter type is nullable (Go `*T`, TypeScript `field?: T | null`).
+
+```aql
+multi select User { id, email }
+filter .email = $email?;
+```
+
+```sql
+-- $1: email
+SELECT u.id AS id, u.email AS email
+FROM "user" u
+WHERE ($1 IS NULL OR u.email = $1);
+```
+
+Passing `null` for `email` returns all users; passing a value filters by it.
+
 ---
 
 ## SELECT
+
+### Single vs multi
+
+A plain `select` returns a **single** row — Axel appends an implicit `LIMIT 1`, and code generation produces a single-row (`*Row`) result. Prefix the query with `multi` to return **all** matching rows (no implicit limit, a `[]Row` result). `limit`/`offset` are only allowed on a `multi select`.
+
+```aql
+select User { id, email };        -- one row  → LIMIT 1
+multi select User { id, email };  -- all rows → no implicit limit
+```
 
 ### Basic select
 
@@ -62,7 +89,7 @@ WHERE u.email = $1 AND u.active = $2;
 select User;
 ```
 
-Selects all scalar properties of the type.
+Selects all scalar properties of the type (a single row).
 
 ### Shape
 
@@ -78,7 +105,8 @@ select User {
 
 ```sql
 SELECT u.id AS id, u.email AS email, u.name AS name
-FROM "user" u;
+FROM "user" u
+LIMIT 1;
 ```
 
 ### Filter
@@ -92,7 +120,8 @@ filter .active = true and .age >= $min_age;
 -- $1: min_age
 SELECT u.id AS id, u.email AS email
 FROM "user" u
-WHERE u.active = true AND u.age >= $1;
+WHERE u.active = true AND u.age >= $1
+LIMIT 1;
 ```
 
 ### Order by
@@ -105,7 +134,8 @@ order by .created_at desc;
 ```sql
 SELECT u.id AS id, u.email AS email
 FROM "user" u
-ORDER BY u.created_at DESC;
+ORDER BY u.created_at DESC
+LIMIT 1;
 ```
 
 Multiple fields:
@@ -117,8 +147,10 @@ order by .active desc, .created_at asc;
 
 ### Limit and offset
 
+`limit`/`offset` require `multi select` (a plain select already returns a single row).
+
 ```aql
-select User { id, email }
+multi select User { id, email }
 order by .created_at desc
 limit $limit
 offset $offset;
@@ -137,7 +169,7 @@ OFFSET $2;
 ### Combining clauses
 
 ```aql
-select User { id, email, name }
+multi select User { id, email, name }
 filter .active = true and .age >= $min_age
 order by .created_at desc
 limit $limit

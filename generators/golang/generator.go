@@ -147,7 +147,7 @@ func (g *GoGenerator) OnQuery(ctx *codegen.Context, q codegen.QueryDescriptor) e
 	if len(q.Params) > 0 {
 		fmt.Fprintf(&body, "type %s struct {\n", paramsType)
 		for _, p := range q.Params {
-			fmt.Fprintf(&body, "\t%s %s\n", toGoExportedName(p.Name), aqlToGoType(p.AQLType, false))
+			fmt.Fprintf(&body, "\t%s %s\n", toGoExportedName(p.Name), aqlToGoType(p.AQLType, p.IsOptional))
 		}
 		fmt.Fprintf(&body, "}\n\n")
 	}

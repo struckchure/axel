@@ -146,7 +146,11 @@ func (g *TsGenerator) emitQueryFile(ctx *codegen.Context, q codegen.QueryDescrip
 	if hasParams {
 		fmt.Fprintf(&buf, "export interface %s {\n", paramsTypeName)
 		for _, p := range q.Params {
-			fmt.Fprintf(&buf, "  %s: %s;\n", toTsCamelCase(p.Name), aqlToTsType(p.AQLType, false))
+			if p.IsOptional {
+				fmt.Fprintf(&buf, "  %s?: %s;\n", toTsCamelCase(p.Name), aqlToTsType(p.AQLType, true))
+			} else {
+				fmt.Fprintf(&buf, "  %s: %s;\n", toTsCamelCase(p.Name), aqlToTsType(p.AQLType, false))
+			}
 		}
 		buf.WriteString("}\n\n")
 	}

@@ -2,11 +2,40 @@ package compiler
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/struckchure/axel/core/aql"
 	"github.com/struckchure/axel/core/asl"
 )
+
+// sortedProps returns a type's scalar properties ordered by property name.
+// This MUST match codegen's allPropsAsFields (core/codegen/descriptor.go) so
+// that the compiled SQL's column order lines up with the generated struct's
+// positional Scan. Keep the two in lockstep.
+func sortedProps(rt *asl.ResolvedType) []*asl.ResolvedProp {
+	names := make([]string, 0, len(rt.Properties))
+	for n := range rt.Properties {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]*asl.ResolvedProp, len(names))
+	for i, n := range names {
+		out[i] = rt.Properties[n]
+	}
+	return out
+}
+
+// returningColumns builds an explicit RETURNING column list (quoted, sorted) so
+// the result columns match the generated row struct / Scan order.
+func returningColumns(rt *asl.ResolvedType) string {
+	props := sortedProps(rt)
+	cols := make([]string, len(props))
+	for i, p := range props {
+		cols[i] = fmt.Sprintf("%q", p.Column)
+	}
+	return strings.Join(cols, ", ")
+}
 
 // Compile compiles a parsed AQL statement against a SchemaIR into SQL.
 func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
@@ -78,8 +107,9 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 			}
 		}
 	} else {
-		// No shape → select all scalar properties.
-		for _, prop := range rt.Properties {
+		// No shape → select all scalar properties, sorted to match the
+		// generated struct/Scan order (see sortedProps).
+		for _, prop := range sortedProps(rt) {
 			cols = append(cols, fmt.Sprintf("%s.%s", alias, prop.Column))
 		}
 	}
@@ -121,22 +151,29 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 		fmt.Fprintf(&sb, "\nORDER BY %s", strings.Join(parts, ", "))
 	}
 
-	// LIMIT
-	if body.Limit != nil {
-		limit, err := c.compileExpr(body.Limit, alias, rt)
-		if err != nil {
-			return "", err
+	// LIMIT / OFFSET.
+	// A plain select returns a single row (implicit LIMIT 1). `multi select`
+	// returns all rows and honours explicit limit/offset.
+	if stmt.Multi {
+		if body.Limit != nil {
+			limit, err := c.compileExpr(body.Limit, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&sb, "\nLIMIT %s", limit)
 		}
-		fmt.Fprintf(&sb, "\nLIMIT %s", limit)
-	}
-
-	// OFFSET
-	if body.Offset != nil {
-		offset, err := c.compileExpr(body.Offset, alias, rt)
-		if err != nil {
-			return "", err
+		if body.Offset != nil {
+			offset, err := c.compileExpr(body.Offset, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&sb, "\nOFFSET %s", offset)
 		}
-		fmt.Fprintf(&sb, "\nOFFSET %s", offset)
+	} else {
+		if body.Limit != nil || body.Offset != nil {
+			return "", fmt.Errorf("limit/offset require 'multi select' (a plain select returns a single row)")
+		}
+		sb.WriteString("\nLIMIT 1")
 	}
 
 	sb.WriteString(";")
@@ -393,8 +430,8 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		strings.Join(vals, ", "),
 	)
 	if topLevel {
-		sb.WriteString("\nRETURNING *;")
-		return "BEGIN;\n" + sb.String() + "\nCOMMIT;", nil
+		fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
+		return sb.String(), nil
 	}
 	sb.WriteString(" RETURNING id")
 	return sb.String(), nil
@@ -512,8 +549,8 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		}
 		fmt.Fprintf(&sb, "\nWHERE %s", where)
 	}
-	sb.WriteString("\nRETURNING *;")
-	return "BEGIN;\n" + sb.String() + "\nCOMMIT;", nil
+	fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
+	return sb.String(), nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -538,7 +575,7 @@ func (c *compiler) compileDelete(stmt *aql.DeleteStmt) (string, error) {
 		fmt.Fprintf(&sb, "\nWHERE %s", where)
 	}
 	sb.WriteString(";")
-	return "BEGIN;\n" + sb.String() + "\nCOMMIT;", nil
+	return sb.String(), nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -571,7 +608,18 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 	}
 
 	op := mapOp(expr.Op)
-	return fmt.Sprintf("%s %s %s", left, op, right), nil
+	result := fmt.Sprintf("%s %s %s", left, op, right)
+
+	// Optional params ($name?) make the comparison a no-op when the value is
+	// null, so an omitted filter matches all rows.
+	for _, operand := range []*aql.Primary{expr.Left, expr.Right} {
+		if operand != nil && operand.Param != nil && operand.Param.Optional {
+			ph := c.params.add(operand.Param.Name, "")
+			result = fmt.Sprintf("(%s IS NULL OR %s)", ph, result)
+		}
+	}
+
+	return result, nil
 }
 
 func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.ResolvedType) (string, error) {
@@ -605,7 +653,11 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		return c.compilePath(p.Path, alias, rt)
 
 	case p.Param != nil:
-		return c.params.add(*p.Param, ""), nil
+		ph := c.params.add(p.Param.Name, "")
+		if p.Param.Optional {
+			c.params.markOptional(p.Param.Name)
+		}
+		return ph, nil
 
 	case p.Null:
 		return "NULL", nil
@@ -780,7 +832,7 @@ func sqlToAQLType(sqlType string) string {
 // inferAssignmentParamType sets the param type when an assignment value is a bare $param.
 func inferAssignmentParamType(params *paramCollector, val *aql.Expr, aqlType string) {
 	if val != nil && val.Op == "" && val.Left != nil && val.Left.Param != nil {
-		params.setType(*val.Left.Param, aqlType)
+		params.setType(val.Left.Param.Name, aqlType)
 	}
 }
 
@@ -791,7 +843,7 @@ func inferFilterParamType(params *paramCollector, maybePath, maybeParam *aql.Pri
 	}
 	if maybePath.Path != nil && len(maybePath.Path.Steps) == 1 {
 		if prop, ok := rt.Properties[maybePath.Path.Steps[0]]; ok {
-			params.setType(*maybeParam.Param, sqlToAQLType(prop.SQLType))
+			params.setType(maybeParam.Param.Name, sqlToAQLType(prop.SQLType))
 		}
 	}
 }

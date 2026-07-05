@@ -26,6 +26,9 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 }
 
 func printSelect(b *strings.Builder, s *SelectStmt) {
+	if s.Multi {
+		b.WriteString("multi ")
+	}
 	b.WriteString("select ")
 	body := s.Body
 	if body.AggFunc != nil {
@@ -162,7 +165,10 @@ func printPrimary(b *strings.Builder, p *Primary) {
 	case p.Path != nil:
 		b.WriteString("." + strings.Join(p.Path.Steps, "."))
 	case p.Param != nil:
-		fmt.Fprintf(b, "$%s", *p.Param)
+		fmt.Fprintf(b, "$%s", p.Param.Name)
+		if p.Param.Optional {
+			b.WriteString("?")
+		}
 	case p.Null:
 		b.WriteString("null")
 	case p.True:

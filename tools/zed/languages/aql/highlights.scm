@@ -3,6 +3,7 @@
 
 ; Statement keywords
 [
+  "multi"
   "select"
   "insert"
   "update"

@@ -55,7 +55,7 @@ Full reference: [docs/asl.md](docs/asl.md)
 Write queries in `.aql` files and compile them to parameterized SQL:
 
 ```aql
-select User {
+multi select User {
   id,
   email,
   posts: {

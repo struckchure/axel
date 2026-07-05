@@ -94,9 +94,10 @@ type QueryDescriptor struct {
 
 // ParamDescriptor describes one named query parameter.
 type ParamDescriptor struct {
-	Name    string `json:"name"`
-	AQLType string `json:"aql_type"`
-	SQLPos  int    `json:"sql_pos"` // 1-based $N
+	Name       string `json:"name"`
+	AQLType    string `json:"aql_type"`
+	SQLPos     int    `json:"sql_pos"` // 1-based $N
+	IsOptional bool   `json:"is_optional,omitempty"`
 }
 
 // ResultDescriptor describes the shape of data returned by a query.
@@ -238,9 +239,10 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 	// Params
 	for i, p := range compiled.Params {
 		desc.Params = append(desc.Params, ParamDescriptor{
-			Name:    p.Name,
-			AQLType: p.AQLType,
-			SQLPos:  i + 1,
+			Name:       p.Name,
+			AQLType:    p.AQLType,
+			SQLPos:     i + 1,
+			IsOptional: p.Optional,
 		})
 	}
 
@@ -252,7 +254,7 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 		if body.AggFunc != nil {
 			desc.Result.IsScalar = true
 		} else {
-			desc.Result.IsMultiple = true
+			desc.Result.IsMultiple = stmt.Select.Multi
 			rt := ir.ObjectTypes[body.TypeName]
 			if rt != nil && body.Shape != nil {
 				desc.Result.Fields = buildShapeFields(body.Shape, rt, ir)
@@ -359,7 +361,10 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 	return fields
 }
 
-// allPropsAsFields returns all scalar properties of a type as ResultFields.
+// allPropsAsFields returns all scalar properties of a type as ResultFields,
+// sorted by property name. This order MUST match the compiler's sortedProps
+// (core/compiler/compiler.go) so RETURNING / shapeless-select column order
+// lines up with the generated struct's positional Scan.
 func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
 	names := make([]string, 0, len(rt.Properties))
 	for n := range rt.Properties {

@@ -21,6 +21,14 @@ func (p *paramCollector) setType(name, aqlType string) {
 	}
 }
 
+// markOptional flags an already-registered param as optional (nullable /
+// skipped-when-null). No-op if the param is unknown.
+func (p *paramCollector) markOptional(name string) {
+	if pos, ok := p.index[name]; ok {
+		p.params[pos-1].Optional = true
+	}
+}
+
 // add registers a named param and returns its positional placeholder ($1, $2, ...).
 // If the param was already registered, returns the same placeholder.
 func (p *paramCollector) add(name, aqlType string) string {

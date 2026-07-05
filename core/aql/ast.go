@@ -14,8 +14,9 @@ type Statement struct {
 //	select User { id, email } filter .active = true order by .created_at desc limit $n;
 //	select count(User filter .active = true);
 type SelectStmt struct {
-	Body *SelectBody `parser:"'select' @@"`
-	End  string      `parser:"';'?"`
+	Multi bool        `parser:"@'multi'? 'select'"`
+	Body  *SelectBody `parser:"@@"`
+	End   string      `parser:"';'?"`
 }
 
 // SelectBody holds the select content — either an aggregate or a typed shape query.
@@ -137,8 +138,8 @@ type Primary struct {
 	FuncCall *FuncCall `parser:"| @@"`
 	// Path expression: .email or .author.name
 	Path     *PathExpr `parser:"| @@"`
-	// Parameter: $email
-	Param    *string   `parser:"| '$' @Ident"`
+	// Parameter: $email or $email? (optional)
+	Param    *Param    `parser:"| @@"`
 	// Null literal
 	Null     bool      `parser:"| @'null'"`
 	// Bool literals
@@ -155,6 +156,14 @@ type Primary struct {
 	QualifiedIdent *QualifiedIdent `parser:"| @@"`
 	// Bare identifier (enum value, type name, etc.)
 	Ident    *string   `parser:"| @Ident"`
+}
+
+// Param is a query parameter: $email (required) or $email? (optional).
+// An optional param compiles to a filter condition that is skipped when the
+// value is null, and becomes a nullable type in generated code.
+type Param struct {
+	Name     string `parser:"'$' @Ident"`
+	Optional bool   `parser:"@'?'?"`
 }
 
 // FuncCall: funcName(expr, ...)

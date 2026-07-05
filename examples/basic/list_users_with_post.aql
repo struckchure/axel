@@ -1,4 +1,4 @@
-select User {
+multi select User {
   id,
   email,
   posts := (select Post { id, title } filter .author.id = User.id)
