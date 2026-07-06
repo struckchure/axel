@@ -242,18 +242,26 @@ axel codegen -g go -o ./gen --option package=myapp
 
 ### Setup
 
+The generated Go uses [pgx](https://github.com/jackc/pgx). `NewRunner` and the typed query
+functions take a `*pgxpool.Pool`.
+
 ```go
 import (
     "context"
-    "database/sql"
-    _ "github.com/lib/pq"
+
+    "github.com/jackc/pgx/v5/pgxpool"
 
     gen "myapp/gen"
 )
 
-db, _ := sql.Open("postgres", "postgres://user:pass@localhost:5432/mydb?sslmode=disable")
+db, _ := pgxpool.New(ctx, "postgres://user:pass@localhost:5432/mydb?sslmode=disable")
+defer db.Close()
 runner := gen.NewRunner(db)
 ```
+
+Rows are scanned into the generated structs with `pgx.RowToStructByName` (matched via the `db`
+struct tag), and nested `json_agg`/`row_to_json` columns decode straight into nested struct/slice
+fields.
 
 ### Typed AQL queries — `runner.Query`
 

@@ -21,6 +21,9 @@ func init() {
 	codegen.Register(&GoGenerator{})
 }
 
+// modulePath is the axel module import prefix used in generated imports.
+const modulePath = "github.com/struckchure/axel"
+
 // GoGenerator is the built-in Go codegen plugin.
 // It emits models.go (one struct per type), one .go file per AQL query, and runner.go.
 type GoGenerator struct {
@@ -170,12 +173,12 @@ func (g *GoGenerator) OnQuery(ctx *codegen.Context, q codegen.QueryDescriptor) e
 		if q.Result.IsScalar {
 			emitScalarFunc(&body, funcName, paramsType, q)
 		} else if q.Result.IsMultiple {
-			emitMultiRowFunc(&body, funcName, paramsType, rowType, rowFields, q)
+			emitMultiRowFunc(&body, funcName, paramsType, rowType, q)
 		} else {
-			emitSingleRowFunc(&body, funcName, paramsType, rowType, rowFields, q)
+			emitOneRowFunc(&body, funcName, paramsType, rowType, q)
 		}
 	case "insert", "update":
-		emitMutationFunc(&body, funcName, paramsType, rowType, rowFields, q)
+		emitOneRowFunc(&body, funcName, paramsType, rowType, q)
 	case "delete":
 		emitDeleteFunc(&body, funcName, paramsType, q)
 	}
@@ -183,14 +186,14 @@ func (g *GoGenerator) OnQuery(ctx *codegen.Context, q codegen.QueryDescriptor) e
 	// Build full file with package + imports.
 	bs := body.String()
 	importSet := map[string]bool{
-		"context":      true,
-		"database/sql": true,
+		"context":                         true,
+		"github.com/jackc/pgx/v5/pgxpool": true,
+	}
+	if strings.Contains(bs, "pgx.") {
+		importSet["github.com/jackc/pgx/v5"] = true
 	}
 	if strings.Contains(bs, "errors.Is") {
 		importSet["errors"] = true
-	}
-	if strings.Contains(bs, "json.Unmarshal") {
-		importSet["encoding/json"] = true
 	}
 	for _, imp := range neededImports(bs) {
 		importSet[imp] = true
@@ -225,8 +228,6 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 		return fmt.Errorf("marshaling schema: %w", err)
 	}
 
-	modulePath := "github.com/struckchure/axel"
-
 	var body bytes.Buffer
 
 	// Embedded schema constant
@@ -234,7 +235,7 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 
 	// Queries struct — holds all typed compiled-query methods.
 	fmt.Fprintf(&body, "type Queries struct {\n")
-	fmt.Fprintf(&body, "\tdb *sql.DB\n")
+	fmt.Fprintf(&body, "\tdb *pgxpool.Pool\n")
 	fmt.Fprintf(&body, "}\n\n")
 
 	for _, q := range g.queries {
@@ -273,13 +274,13 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 
 	// Runner struct
 	fmt.Fprintf(&body, "type Runner struct {\n")
-	fmt.Fprintf(&body, "\tdb    *sql.DB\n")
+	fmt.Fprintf(&body, "\tdb    *pgxpool.Pool\n")
 	fmt.Fprintf(&body, "\tinner *runner.Runner\n")
 	fmt.Fprintf(&body, "\tQuery *Queries\n")
 	fmt.Fprintf(&body, "}\n\n")
 
 	// NewRunner constructor — parses embedded schema, no arguments beyond db
-	fmt.Fprintf(&body, "func NewRunner(db *sql.DB) *Runner {\n")
+	fmt.Fprintf(&body, "func NewRunner(db *pgxpool.Pool) *Runner {\n")
 	fmt.Fprintf(&body, "\tvar sd codegen.SchemaDescriptor\n")
 	fmt.Fprintf(&body, "\tif err := json.Unmarshal([]byte(axelSchema), &sd); err != nil {\n")
 	fmt.Fprintf(&body, "\t\tpanic(\"axel: invalid embedded schema: \" + err.Error())\n")
@@ -303,8 +304,8 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 	fmt.Fprintf(&src, "package %s\n\n", g.pkgName)
 	fmt.Fprintf(&src, "import (\n")
 	fmt.Fprintf(&src, "\t\"context\"\n")
-	fmt.Fprintf(&src, "\t\"database/sql\"\n")
 	fmt.Fprintf(&src, "\t\"encoding/json\"\n\n")
+	fmt.Fprintf(&src, "\t%q\n", "github.com/jackc/pgx/v5/pgxpool")
 	fmt.Fprintf(&src, "\t%q\n", modulePath+"/core/codegen")
 	fmt.Fprintf(&src, "\t%q\n", modulePath+"/core/runner")
 	fmt.Fprintf(&src, ")\n\n")
@@ -352,17 +353,17 @@ func emitRowTypes(buf *bytes.Buffer, rootName string, fields []codegen.ResultFie
 		if len(f.SubFields) > 0 {
 			subType := rootName + toGoExportedName(f.Name)
 			if f.IsMultiple {
-				fmt.Fprintf(buf, "\t%s []%s `json:%q`\n", fieldName, subType, f.Name)
+				fmt.Fprintf(buf, "\t%s []%s `json:%q db:%q`\n", fieldName, subType, f.Name, f.Name)
 			} else {
 				nullable := ""
 				if f.IsNullable {
 					nullable = "*"
 				}
-				fmt.Fprintf(buf, "\t%s %s%s `json:%q`\n", fieldName, nullable, subType, f.Name)
+				fmt.Fprintf(buf, "\t%s %s%s `json:%q db:%q`\n", fieldName, nullable, subType, f.Name, f.Name)
 			}
 		} else {
 			goType := aqlToGoType(f.AQLType, f.IsNullable)
-			fmt.Fprintf(buf, "\t%s %s `json:%q`\n", fieldName, goType, f.Name)
+			fmt.Fprintf(buf, "\t%s %s `json:%q db:%q`\n", fieldName, goType, f.Name, f.Name)
 		}
 	}
 	fmt.Fprintf(buf, "}\n\n")
@@ -376,159 +377,65 @@ func emitRowTypes(buf *bytes.Buffer, rootName string, fields []codegen.ResultFie
 }
 
 func emitScalarFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.QueryDescriptor) {
-	hasParams := len(q.Params) > 0
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
 
-	if hasParams {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB, params %s) (int64, error) {\n", funcName, paramsType)
-	} else {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB) (int64, error) {\n", funcName)
-	}
+	fmt.Fprintf(buf, "func %s(%s) (int64, error) {\n", funcName, funcSig(q, paramsType))
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
 	fmt.Fprintf(buf, "\tvar count int64\n")
-	fmt.Fprintf(buf, "\terr := db.QueryRowContext(ctx, query%s).Scan(&count)\n", paramArgs)
+	fmt.Fprintf(buf, "\terr := db.QueryRow(ctx, query%s).Scan(&count)\n", paramArgs)
 	fmt.Fprintf(buf, "\treturn count, err\n")
 	fmt.Fprintf(buf, "}\n")
 }
 
-func emitSingleRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, fields []codegen.ResultField, q codegen.QueryDescriptor) {
-	hasParams := len(q.Params) > 0
+// emitOneRowFunc emits a function returning a single *Row via pgx struct
+// scanning. Used for single-row selects and INSERT/UPDATE ... RETURNING.
+func emitOneRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q codegen.QueryDescriptor) {
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
-	scanVars, scanTargets := buildScanVars(rowType, fields)
 
-	if hasParams {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB, params %s) (*%s, error) {\n", funcName, paramsType, rowType)
-	} else {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB) (*%s, error) {\n", funcName, rowType)
-	}
+	fmt.Fprintf(buf, "func %s(%s) (*%s, error) {\n", funcName, funcSig(q, paramsType), rowType)
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
-	fmt.Fprintf(buf, "\tvar r %s\n", rowType)
-	if len(scanVars) > 0 {
-		fmt.Fprintf(buf, "%s\n", scanVars)
-	}
-	fmt.Fprintf(buf, "\tif err := db.QueryRowContext(ctx, query%s).Scan(%s); err != nil {\n", paramArgs, scanTargets)
-	fmt.Fprintf(buf, "\t\tif errors.Is(err, sql.ErrNoRows) {\n\t\t\treturn nil, nil\n\t\t}\n")
-	fmt.Fprintf(buf, "\t\treturn nil, err\n")
-	fmt.Fprintf(buf, "\t}\n")
-	emitJSONUnmarshal(buf, fields)
+	fmt.Fprintf(buf, "\trows, err := db.Query(ctx, query%s)\n", paramArgs)
+	fmt.Fprintf(buf, "\tif err != nil {\n\t\treturn nil, err\n\t}\n")
+	fmt.Fprintf(buf, "\tr, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[%s])\n", rowType)
+	fmt.Fprintf(buf, "\tif err != nil {\n")
+	fmt.Fprintf(buf, "\t\tif errors.Is(err, pgx.ErrNoRows) {\n\t\t\treturn nil, nil\n\t\t}\n")
+	fmt.Fprintf(buf, "\t\treturn nil, err\n\t}\n")
 	fmt.Fprintf(buf, "\treturn &r, nil\n")
 	fmt.Fprintf(buf, "}\n")
 }
 
-func emitMultiRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, fields []codegen.ResultField, q codegen.QueryDescriptor) {
-	hasParams := len(q.Params) > 0
+func emitMultiRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q codegen.QueryDescriptor) {
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
-	scanVars, scanTargets := buildScanVars(rowType, fields)
 
-	if hasParams {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB, params %s) ([]%s, error) {\n", funcName, paramsType, rowType)
-	} else {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB) ([]%s, error) {\n", funcName, rowType)
-	}
+	fmt.Fprintf(buf, "func %s(%s) ([]%s, error) {\n", funcName, funcSig(q, paramsType), rowType)
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
-	fmt.Fprintf(buf, "\trows, err := db.QueryContext(ctx, query%s)\n", paramArgs)
+	fmt.Fprintf(buf, "\trows, err := db.Query(ctx, query%s)\n", paramArgs)
 	fmt.Fprintf(buf, "\tif err != nil {\n\t\treturn nil, err\n\t}\n")
-	fmt.Fprintf(buf, "\tdefer rows.Close()\n")
-	fmt.Fprintf(buf, "\tvar result []%s\n", rowType)
-	fmt.Fprintf(buf, "\tfor rows.Next() {\n")
-	fmt.Fprintf(buf, "\t\tvar r %s\n", rowType)
-	if len(scanVars) > 0 {
-		// indent scan vars inside loop
-		for _, line := range strings.Split(strings.TrimRight(scanVars, "\n"), "\n") {
-			fmt.Fprintf(buf, "\t%s\n", line)
-		}
-	}
-	fmt.Fprintf(buf, "\t\tif err := rows.Scan(%s); err != nil {\n\t\t\treturn nil, err\n\t\t}\n", scanTargets)
-	emitJSONUnmarshalIndented(buf, fields, "\t\t")
-	fmt.Fprintf(buf, "\t\tresult = append(result, r)\n")
-	fmt.Fprintf(buf, "\t}\n")
-	fmt.Fprintf(buf, "\treturn result, rows.Err()\n")
-	fmt.Fprintf(buf, "}\n")
-}
-
-func emitMutationFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, fields []codegen.ResultField, q codegen.QueryDescriptor) {
-	hasParams := len(q.Params) > 0
-	sqlLit := backtick(q.SQL)
-	paramArgs := buildParamArgs(q.Params)
-	scanVars, scanTargets := buildScanVars(rowType, fields)
-
-	if hasParams {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB, params %s) (*%s, error) {\n", funcName, paramsType, rowType)
-	} else {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB) (*%s, error) {\n", funcName, rowType)
-	}
-	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
-	fmt.Fprintf(buf, "\trows, err := db.QueryContext(ctx, query%s)\n", paramArgs)
-	fmt.Fprintf(buf, "\tif err != nil {\n\t\treturn nil, err\n\t}\n")
-	fmt.Fprintf(buf, "\tdefer rows.Close()\n")
-	fmt.Fprintf(buf, "\tif !rows.Next() {\n")
-	fmt.Fprintf(buf, "\t\tif err := rows.Err(); err != nil {\n\t\t\treturn nil, err\n\t\t}\n")
-	fmt.Fprintf(buf, "\t\treturn nil, nil\n")
-	fmt.Fprintf(buf, "\t}\n")
-	fmt.Fprintf(buf, "\tvar r %s\n", rowType)
-	if len(scanVars) > 0 {
-		fmt.Fprintf(buf, "%s\n", scanVars)
-	}
-	fmt.Fprintf(buf, "\tif err := rows.Scan(%s); err != nil {\n\t\treturn nil, err\n\t}\n", scanTargets)
-	emitJSONUnmarshal(buf, fields)
-	fmt.Fprintf(buf, "\treturn &r, rows.Err()\n")
+	fmt.Fprintf(buf, "\treturn pgx.CollectRows(rows, pgx.RowToStructByName[%s])\n", rowType)
 	fmt.Fprintf(buf, "}\n")
 }
 
 func emitDeleteFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.QueryDescriptor) {
-	hasParams := len(q.Params) > 0
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
 
-	if hasParams {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB, params %s) error {\n", funcName, paramsType)
-	} else {
-		fmt.Fprintf(buf, "func %s(ctx context.Context, db *sql.DB) error {\n", funcName)
-	}
+	fmt.Fprintf(buf, "func %s(%s) error {\n", funcName, funcSig(q, paramsType))
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
-	fmt.Fprintf(buf, "\t_, err := db.ExecContext(ctx, query%s)\n", paramArgs)
+	fmt.Fprintf(buf, "\t_, err := db.Exec(ctx, query%s)\n", paramArgs)
 	fmt.Fprintf(buf, "\treturn err\n")
 	fmt.Fprintf(buf, "}\n")
 }
 
-// buildScanVars returns:
-//   - declarations for intermediate JSON byte slices (one per nested field)
-//   - the scan target list: "&r.ID, &r.Email, &authorRaw, ..."
-func buildScanVars(rowType string, fields []codegen.ResultField) (decls string, targets string) {
-	var declBuf strings.Builder
-	var targetParts []string
-	for _, f := range fields {
-		fieldName := toGoExportedName(f.Name)
-		if len(f.SubFields) > 0 {
-			varName := strings.ToLower(f.Name) + "Raw"
-			fmt.Fprintf(&declBuf, "\tvar %s []byte\n", varName)
-			targetParts = append(targetParts, "&"+varName)
-		} else {
-			targetParts = append(targetParts, "&r."+fieldName)
-		}
+// funcSig builds the parameter list for a generated query function, always
+// taking a context and a *pgxpool.Pool, plus params if any.
+func funcSig(q codegen.QueryDescriptor, paramsType string) string {
+	if len(q.Params) > 0 {
+		return fmt.Sprintf("ctx context.Context, db *pgxpool.Pool, params %s", paramsType)
 	}
-	_ = rowType
-	return declBuf.String(), strings.Join(targetParts, ", ")
-}
-
-// emitJSONUnmarshal adds json.Unmarshal calls for nested JSON fields (single-row context).
-func emitJSONUnmarshal(buf *bytes.Buffer, fields []codegen.ResultField) {
-	emitJSONUnmarshalIndented(buf, fields, "\t")
-}
-
-func emitJSONUnmarshalIndented(buf *bytes.Buffer, fields []codegen.ResultField, indent string) {
-	for _, f := range fields {
-		if len(f.SubFields) > 0 {
-			varName := strings.ToLower(f.Name) + "Raw"
-			fieldName := toGoExportedName(f.Name)
-			fmt.Fprintf(buf, "%sif len(%s) > 0 {\n", indent, varName)
-			fmt.Fprintf(buf, "%s\tif err := json.Unmarshal(%s, &r.%s); err != nil {\n", indent, varName, fieldName)
-			fmt.Fprintf(buf, "%s\t\treturn nil, err\n%s\t}\n%s}\n", indent, indent, indent)
-		}
-	}
+	return "ctx context.Context, db *pgxpool.Pool"
 }
 
 // buildParamArgs builds the variadic args for db.QueryRowContext/db.QueryContext.

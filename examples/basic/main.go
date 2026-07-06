@@ -2,21 +2,21 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	generated "github.com/struckchure/axel/examples/basic/gen"
 )
 
 func main() {
 	ctx := context.Background()
-	db, err := sql.Open("postgres", "postgres://user:password@localhost:5432/db?sslmode=disable")
+	db, err := pgxpool.New(ctx, "postgres://user:password@localhost:5432/db?sslmode=disable")
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer db.Close()
 	r := generated.NewRunner(db)
 
 	// query := `#aql

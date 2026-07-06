@@ -4,7 +4,9 @@ package generated
 
 import (
 	"context"
-	"database/sql"
+	"errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 )
 
@@ -13,36 +15,30 @@ type CreateUserParams struct {
 }
 
 type CreateUserRow struct {
-	Active    *bool     `json:"active"`
-	Age       int32     `json:"age"`
-	CreatedAt time.Time `json:"created_at"`
-	Email     string    `json:"email"`
-	Health    int32     `json:"health"`
-	ID        string    `json:"id"`
-	Name      *string   `json:"name"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Active    *bool     `json:"active" db:"active"`
+	Age       int32     `json:"age" db:"age"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	Email     string    `json:"email" db:"email"`
+	Health    int32     `json:"health" db:"health"`
+	ID        string    `json:"id" db:"id"`
+	Name      *string   `json:"name" db:"name"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
-func CreateUser(ctx context.Context, db *sql.DB, params CreateUserParams) (*CreateUserRow, error) {
-	const query = `BEGIN;
-INSERT INTO "user" ("email", "age", "health")
+func CreateUser(ctx context.Context, db *pgxpool.Pool, params CreateUserParams) (*CreateUserRow, error) {
+	const query = `INSERT INTO "user" ("email", "age", "health")
 VALUES ($1, 100, 100)
-RETURNING *;
-COMMIT;`
-	rows, err := db.QueryContext(ctx, query, params.Email)
+RETURNING "active", "age", "created_at", "email", "health", "id", "name", "updated_at";`
+	rows, err := db.Query(ctx, query, params.Email)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return nil, err
+	r, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[CreateUserRow])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
 		}
-		return nil, nil
-	}
-	var r CreateUserRow
-	if err := rows.Scan(&r.Active, &r.Age, &r.CreatedAt, &r.Email, &r.Health, &r.ID, &r.Name, &r.UpdatedAt); err != nil {
 		return nil, err
 	}
-	return &r, rows.Err()
+	return &r, nil
 }

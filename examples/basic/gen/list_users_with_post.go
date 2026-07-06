@@ -4,45 +4,30 @@ package generated
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ListUsersWithPostRow struct {
-	ID    string                      `json:"id"`
-	Email string                      `json:"email"`
-	Posts []ListUsersWithPostRowPosts `json:"posts"`
+	ID    string                      `json:"id" db:"id"`
+	Email string                      `json:"email" db:"email"`
+	Posts []ListUsersWithPostRowPosts `json:"posts" db:"posts"`
 }
 
 type ListUsersWithPostRowPosts struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID    string `json:"id" db:"id"`
+	Title string `json:"title" db:"title"`
 }
 
-func ListUsersWithPost(ctx context.Context, db *sql.DB) ([]ListUsersWithPostRow, error) {
+func ListUsersWithPost(ctx context.Context, db *pgxpool.Pool) ([]ListUsersWithPostRow, error) {
 	const query = `SELECT
   u.id AS id,
   u.email AS email,
   (SELECT json_agg(row_to_json(p_posts_sub)) FROM (SELECT p.id AS id, p.title AS title FROM "post" p WHERE p.author = u.id) p_posts_sub) AS posts
 FROM "user" u;`
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []ListUsersWithPostRow
-	for rows.Next() {
-		var r ListUsersWithPostRow
-		var postsRaw []byte
-		if err := rows.Scan(&r.ID, &r.Email, &postsRaw); err != nil {
-			return nil, err
-		}
-		if len(postsRaw) > 0 {
-			if err := json.Unmarshal(postsRaw, &r.Posts); err != nil {
-				return nil, err
-			}
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByName[ListUsersWithPostRow])
 }

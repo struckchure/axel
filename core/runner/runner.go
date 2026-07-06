@@ -2,9 +2,10 @@ package runner
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/struckchure/axel/core/aql"
 	"github.com/struckchure/axel/core/asl"
@@ -13,16 +14,16 @@ import (
 
 // Runner executes AQL queries at runtime against a live database.
 type Runner struct {
-	db     *sql.DB
+	db     *pgxpool.Pool
 	schema *asl.SchemaIR
 }
 
-// New returns a Runner bound to db and schema.
-func New(db *sql.DB, schema *asl.SchemaIR) *Runner {
+// New returns a Runner bound to a pgx pool and schema.
+func New(db *pgxpool.Pool, schema *asl.SchemaIR) *Runner {
 	return &Runner{db: db, schema: schema}
 }
 
-// Row is a single result row as an ordered key-value map.
+// Row is a single result row as a key-value map.
 type Row map[string]any
 
 // Result holds the outcome of a Run call.
@@ -48,38 +49,28 @@ func (r *Runner) Run(ctx context.Context, aqlQuery string, params map[string]any
 
 	args := buildArgs(compiled.Params, params)
 
-	switch {
-	case stmt.Select != nil:
-		return r.queryRows(ctx, compiled.SQL, args)
-	case stmt.Delete != nil:
-		return r.exec(ctx, compiled.SQL, args)
-	default:
-		return r.queryRows(ctx, compiled.SQL, args)
+	// DELETE (and any statement without RETURNING) → command tag only.
+	if stmt.Delete != nil {
+		tag, err := r.db.Exec(ctx, compiled.SQL, args...)
+		if err != nil {
+			return nil, err
+		}
+		return &Result{RowsAffected: tag.RowsAffected()}, nil
 	}
-}
 
-// RunTx is like Run but executes within a caller-managed transaction.
-func (r *Runner) RunTx(ctx context.Context, tx *sql.Tx, aqlQuery string, params map[string]any) (*Result, error) {
-	stmt, err := aql.ParseString(aqlQuery)
+	rows, err := r.db.Query(ctx, compiled.SQL, args...)
 	if err != nil {
-		return nil, fmt.Errorf("axel/runner: parse: %w", err)
+		return nil, err
 	}
-
-	compiled, err := compiler.Compile(stmt, r.schema)
+	maps, err := pgx.CollectRows(rows, pgx.RowToMap)
 	if err != nil {
-		return nil, fmt.Errorf("axel/runner: compile: %w", err)
+		return nil, err
 	}
-
-	args := buildArgs(compiled.Params, params)
-
-	switch {
-	case stmt.Select != nil:
-		return queryRowsTx(ctx, tx, compiled.SQL, args)
-	case stmt.Delete != nil:
-		return execTx(ctx, tx, compiled.SQL, args)
-	default:
-		return queryRowsTx(ctx, tx, compiled.SQL, args)
+	result := make([]Row, len(maps))
+	for i, m := range maps {
+		result[i] = Row(m)
 	}
+	return &Result{Rows: result}, nil
 }
 
 // buildArgs maps named params to the positional order required by compiled SQL.
@@ -89,78 +80,4 @@ func buildArgs(paramInfos []compiler.ParamInfo, named map[string]any) []any {
 		args[i] = named[p.Name]
 	}
 	return args
-}
-
-func (r *Runner) queryRows(ctx context.Context, query string, args []any) (*Result, error) {
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanRows(rows)
-}
-
-func (r *Runner) exec(ctx context.Context, query string, args []any) (*Result, error) {
-	res, err := r.db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	n, _ := res.RowsAffected()
-	return &Result{RowsAffected: n}, nil
-}
-
-func queryRowsTx(ctx context.Context, tx *sql.Tx, query string, args []any) (*Result, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanRows(rows)
-}
-
-func execTx(ctx context.Context, tx *sql.Tx, query string, args []any) (*Result, error) {
-	res, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	n, _ := res.RowsAffected()
-	return &Result{RowsAffected: n}, nil
-}
-
-func scanRows(rows *sql.Rows) (*Result, error) {
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	var result []Row
-	for rows.Next() {
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			return nil, err
-		}
-		for i, v := range vals {
-			if b, ok := v.([]byte); ok {
-				var decoded any
-				if json.Unmarshal(b, &decoded) == nil {
-					vals[i] = decoded
-				} else {
-					vals[i] = string(b)
-				}
-			}
-		}
-		row := make(Row, len(cols))
-		for i, col := range cols {
-			row[col] = vals[i]
-		}
-		result = append(result, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return &Result{Rows: result}, nil
 }

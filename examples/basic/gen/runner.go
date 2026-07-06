@@ -4,26 +4,51 @@ package generated
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/struckchure/axel/core/codegen"
 	"github.com/struckchure/axel/core/runner"
 )
 
 const axelSchema = `{"scalars":null,"enums":null,"types":[{"name":"Base","table":"","is_abstract":true,"properties":[{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}]},{"name":"Comment","table":"comment","is_abstract":false,"properties":[{"name":"content","column":"content","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}],"links":[{"name":"author","target_type":"User","join_column":"author","is_required":true,"is_multi":false},{"name":"post","target_type":"Post","join_column":"post","is_required":true,"is_multi":false}]},{"name":"Post","table":"post","is_abstract":false,"properties":[{"name":"content","column":"content","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"title","column":"title","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}],"links":[{"name":"author","target_type":"User","join_column":"author","is_required":true,"is_multi":false},{"name":"likes","target_type":"User","junction_table":"post_likes","is_required":false,"is_multi":true}]},{"name":"User","table":"user","is_abstract":false,"properties":[{"name":"active","column":"active","aql_type":"bool","sql_type":"BOOLEAN","is_required":false,"is_multi":false,"default":"true"},{"name":"age","column":"age","aql_type":"int32","sql_type":"INTEGER","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"email","column":"email","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false,"constraints":[{"name":"exclusive"},{"name":"min_length","args":["10"]},{"name":"max_length","args":["100"]}]},{"name":"health","column":"health","aql_type":"int32","sql_type":"INTEGER","is_required":true,"is_multi":false},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"name","column":"name","aql_type":"str","sql_type":"TEXT","is_required":false,"is_multi":false,"default":"'n/a'"},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}]}]}`
 
-type Runner struct {
-	db    *sql.DB
-	inner *runner.Runner
+type Queries struct {
+	db *pgxpool.Pool
 }
 
-func NewRunner(db *sql.DB) *Runner {
+func (q *Queries) CreatePost(ctx context.Context, params CreatePostParams) (*CreatePostRow, error) {
+	return CreatePost(ctx, q.db, params)
+}
+
+func (q *Queries) CreateUser(ctx context.Context, params CreateUserParams) (*CreateUserRow, error) {
+	return CreateUser(ctx, q.db, params)
+}
+
+func (q *Queries) ListPost(ctx context.Context) ([]ListPostRow, error) {
+	return ListPost(ctx, q.db)
+}
+
+func (q *Queries) ListUsersWithPost(ctx context.Context) ([]ListUsersWithPostRow, error) {
+	return ListUsersWithPost(ctx, q.db)
+}
+
+type Runner struct {
+	db    *pgxpool.Pool
+	inner *runner.Runner
+	Query *Queries
+}
+
+func NewRunner(db *pgxpool.Pool) *Runner {
 	var sd codegen.SchemaDescriptor
 	if err := json.Unmarshal([]byte(axelSchema), &sd); err != nil {
 		panic("axel: invalid embedded schema: " + err.Error())
 	}
-	return &Runner{db: db, inner: runner.New(db, codegen.ToSchemaIR(sd))}
+	return &Runner{
+		db:    db,
+		inner: runner.New(db, codegen.ToSchemaIR(sd)),
+		Query: &Queries{db: db},
+	}
 }
 
 func (r *Runner) Run(ctx context.Context, aqlQuery string, params map[string]any) ([]runner.Row, error) {
@@ -32,20 +57,4 @@ func (r *Runner) Run(ctx context.Context, aqlQuery string, params map[string]any
 		return nil, err
 	}
 	return res.Rows, nil
-}
-
-func (r *Runner) CreatePost(ctx context.Context, params CreatePostParams) (*CreatePostRow, error) {
-	return CreatePost(ctx, r.db, params)
-}
-
-func (r *Runner) CreateUser(ctx context.Context, params CreateUserParams) (*CreateUserRow, error) {
-	return CreateUser(ctx, r.db, params)
-}
-
-func (r *Runner) ListPost(ctx context.Context) ([]ListPostRow, error) {
-	return ListPost(ctx, r.db)
-}
-
-func (r *Runner) ListUsersWithPost(ctx context.Context) ([]ListUsersWithPostRow, error) {
-	return ListUsersWithPost(ctx, r.db)
 }

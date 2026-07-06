@@ -4,7 +4,9 @@ package generated
 
 import (
 	"context"
-	"database/sql"
+	"errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 )
 
@@ -14,33 +16,27 @@ type CreatePostParams struct {
 }
 
 type CreatePostRow struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Content   string    `json:"content" db:"content"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ID        string    `json:"id" db:"id"`
+	Title     string    `json:"title" db:"title"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
-func CreatePost(ctx context.Context, db *sql.DB, params CreatePostParams) (*CreatePostRow, error) {
-	const query = `BEGIN;
-INSERT INTO "post" ("title", "content", "author")
+func CreatePost(ctx context.Context, db *pgxpool.Pool, params CreatePostParams) (*CreatePostRow, error) {
+	const query = `INSERT INTO "post" ("title", "content", "author")
 VALUES ($1, $2, (SELECT u.id FROM "user" u WHERE u.email = 'user@mail.com' LIMIT 1))
-RETURNING *;
-COMMIT;`
-	rows, err := db.QueryContext(ctx, query, params.Title, params.Content)
+RETURNING "content", "created_at", "id", "title", "updated_at";`
+	rows, err := db.Query(ctx, query, params.Title, params.Content)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return nil, err
+	r, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[CreatePostRow])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
 		}
-		return nil, nil
-	}
-	var r CreatePostRow
-	if err := rows.Scan(&r.Content, &r.CreatedAt, &r.ID, &r.Title, &r.UpdatedAt); err != nil {
 		return nil, err
 	}
-	return &r, rows.Err()
+	return &r, nil
 }

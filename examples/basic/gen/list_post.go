@@ -4,45 +4,30 @@ package generated
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ListPostRow struct {
-	ID     string            `json:"id"`
-	Title  string            `json:"title"`
-	Author ListPostRowAuthor `json:"author"`
+	ID     string            `json:"id" db:"id"`
+	Title  string            `json:"title" db:"title"`
+	Author ListPostRowAuthor `json:"author" db:"author"`
 }
 
 type ListPostRowAuthor struct {
-	ID   string  `json:"id"`
-	Name *string `json:"name"`
+	ID   string  `json:"id" db:"id"`
+	Name *string `json:"name" db:"name"`
 }
 
-func ListPost(ctx context.Context, db *sql.DB) ([]ListPostRow, error) {
+func ListPost(ctx context.Context, db *pgxpool.Pool) ([]ListPostRow, error) {
 	const query = `SELECT
   p.id AS id,
   p.title AS title,
   (SELECT row_to_json(u_author_sub) FROM (SELECT u_author.id AS id, u_author.name AS name FROM "user" u_author WHERE u_author.id = p.author LIMIT 1) u_author_sub) AS author
 FROM "post" p;`
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []ListPostRow
-	for rows.Next() {
-		var r ListPostRow
-		var authorRaw []byte
-		if err := rows.Scan(&r.ID, &r.Title, &authorRaw); err != nil {
-			return nil, err
-		}
-		if len(authorRaw) > 0 {
-			if err := json.Unmarshal(authorRaw, &r.Author); err != nil {
-				return nil, err
-			}
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByName[ListPostRow])
 }
