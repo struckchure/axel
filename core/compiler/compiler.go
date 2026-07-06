@@ -120,7 +120,30 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 	var laterals []string
 
 	if body.Shape != nil {
+		// Collect explicitly-named fields so a `*` splat can skip them (explicit
+		// selections win over the splat expansion).
+		explicit := make(map[string]bool)
 		for _, f := range body.Shape.Fields {
+			if !f.Star {
+				explicit[f.Name] = true
+			}
+		}
+		for _, f := range body.Shape.Fields {
+			if f.Star {
+				// Expand to all scalar props + single-link FK columns not named
+				// explicitly elsewhere in the shape.
+				for _, prop := range sortedProps(rt) {
+					if !explicit[prop.Name] {
+						cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, prop.Column, prop.Name))
+					}
+				}
+				for _, link := range sortedSingleLinks(rt) {
+					if !explicit[link.Name] {
+						cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, link.JoinColumn, link.JoinColumn))
+					}
+				}
+				continue
+			}
 			col, lateral, err := c.compileShapeField(f, rt, alias)
 			if err != nil {
 				return "", err
@@ -254,13 +277,13 @@ func (c *compiler) compileShapeField(f *aql.ShapeField, parentType *asl.Resolved
 
 	// Check links.
 	if link, ok := parentType.Links[f.Name]; ok {
-		return c.compileLinkField(f, link, parentAlias)
+		return c.compileLinkField(f, link, parentType, parentAlias)
 	}
 
 	return "", "", fmt.Errorf("type %q has no field %q", parentType.Name, f.Name)
 }
 
-func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, parentAlias string) (string, string, error) {
+func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, parentType *asl.ResolvedType, parentAlias string) (string, string, error) {
 	targetType, err := c.resolveType(link.TargetType)
 	if err != nil {
 		return "", "", err
@@ -284,7 +307,10 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 	}
 
 	if link.IsMulti {
-		// Multi-link → json_agg over junction table join.
+		// Multi-link → a correlated json_agg scalar subquery. The junction table
+		// has one FK column per side named after the referenced table (see
+		// generateJunctionTable): targetType.Table (e.g. "user") and
+		// parentType.Table (e.g. "project"). No LATERAL is needed.
 		var inner string
 		if link.JunctionTable != "" {
 			jAlias := "jt_" + f.Name
@@ -293,12 +319,12 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 				joinField = "id"
 			}
 			inner = fmt.Sprintf(
-				"SELECT %s\n      FROM \"%s\" %s\n      JOIN \"%s\" %s ON %s.id = %s.%s_id\n      WHERE %s.%s_id = %s.id",
+				"SELECT %s FROM \"%s\" %s JOIN \"%s\" %s ON %s.%s = %s.%s WHERE %s.%s = %s.id",
 				strings.Join(subCols, ", "),
 				link.JunctionTable, jAlias,
 				targetType.Table, tAlias,
-				tAlias, jAlias, strings.ToLower(link.TargetType),
-				jAlias, strings.ToLower(parentAlias), parentAlias,
+				tAlias, joinField, jAlias, targetType.Table,
+				jAlias, parentType.Table, parentAlias,
 			)
 		} else {
 			// Direct FK on the target side (rare for multi).
@@ -310,19 +336,11 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 			)
 		}
 
-		lateral := fmt.Sprintf(
-			"    LATERAL (\n      SELECT COALESCE(json_agg(row_to_json(%s_sub)), '[]')\n      FROM (\n        %s\n      ) %s_sub\n    ) AS %s",
+		col := fmt.Sprintf(
+			"(SELECT COALESCE(json_agg(row_to_json(%s_sub)), '[]') FROM (%s) %s_sub) AS %s",
 			tAlias, inner, tAlias, f.Name,
 		)
-		// The SELECT column is a bare reference to the lateral subquery alias.
-		return fmt.Sprintf("(SELECT COALESCE(json_agg(row_to_json(%s_sub)), '[]') FROM (SELECT %s FROM \"%s\" %s WHERE %s.%s_id = %s.id) %s_sub) AS %s",
-			tAlias,
-			strings.Join(subCols, ", "),
-			targetType.Table, tAlias,
-			tAlias, strings.ToLower(link.TargetType), parentAlias,
-			tAlias,
-			f.Name,
-		), lateral, nil
+		return col, "", nil
 	}
 
 	// Single link → correlated scalar subquery.

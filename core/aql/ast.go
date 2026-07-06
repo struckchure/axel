@@ -106,11 +106,13 @@ type Shape struct {
 
 // ShapeField is one entry in a shape.
 //
+//	*                → splat: all scalar props + single-link FK columns
 //	id               → leaf field
 //	posts: { title } → nested link with sub-shape
 //	posts := (...)   → inline computed field
 type ShapeField struct {
-	Name     string `parser:"@Ident"`
+	Star     bool   `parser:"(   @'*'"`
+	Name     string `parser:"  | @Ident )"`
 	SubShape *Shape `parser:"( ':' @@ )?"`
 	Computed *Expr  `parser:"( ':=' @@ )?"`
 }

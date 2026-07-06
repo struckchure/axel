@@ -20,6 +20,7 @@ var aqlLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Eq", Pattern: `=`},
 	{Name: "Lt", Pattern: `<`},
 	{Name: "Gt", Pattern: `>`},
+	{Name: "Star", Pattern: `\*`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
 	{Name: "String", Pattern: `'[^']*'`},
 	{Name: "Float", Pattern: `[0-9]+\.[0-9]+`},

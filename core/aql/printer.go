@@ -118,7 +118,11 @@ func printShape(b *strings.Builder, s *Shape) {
 	b.WriteString("{\n")
 	for i, f := range s.Fields {
 		b.WriteString("  ")
-		b.WriteString(f.Name)
+		if f.Star {
+			b.WriteString("*")
+		} else {
+			b.WriteString(f.Name)
+		}
 		if f.SubShape != nil {
 			b.WriteString(": ")
 			printShape(b, f.SubShape)

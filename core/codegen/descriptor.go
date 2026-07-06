@@ -321,8 +321,21 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 
 // buildShapeFields recursively resolves AQL shape fields against the schema.
 func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) []ResultField {
+	// Fields named explicitly are skipped by a `*` splat (explicit wins).
+	explicit := make(map[string]bool)
+	for _, sf := range shape.Fields {
+		if !sf.Star {
+			explicit[sf.Name] = true
+		}
+	}
+
 	var fields []ResultField
 	for _, sf := range shape.Fields {
+		// Splat: all scalar props + single-link FK columns not named explicitly.
+		if sf.Star {
+			fields = append(fields, scalarAndLinkFields(rt, explicit)...)
+			continue
+		}
 		// Inline computed field: name := expr
 		if sf.Computed != nil {
 			if sf.Computed.Op == "" && sf.Computed.Left != nil && sf.Computed.Left.SubQuery != nil {
@@ -400,6 +413,14 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 // compiler's sortedProps + sortedSingleLinks (core/compiler/compiler.go) so
 // RETURNING / shapeless-select columns line up with the generated struct.
 func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
+	return scalarAndLinkFields(rt, nil)
+}
+
+// scalarAndLinkFields returns a type's scalar properties followed by its
+// single-link FK reference columns (keyed by the FK column so the db tag matches
+// the returned column). Names present in skip are omitted — used to expand a
+// shape `*` splat while letting explicitly-listed fields win.
+func scalarAndLinkFields(rt *asl.ResolvedType, skip map[string]bool) []ResultField {
 	names := make([]string, 0, len(rt.Properties))
 	for n := range rt.Properties {
 		names = append(names, n)
@@ -408,6 +429,9 @@ func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
 	var fields []ResultField
 	for _, n := range names {
 		p := rt.Properties[n]
+		if skip[p.Name] {
+			continue
+		}
 		fields = append(fields, ResultField{
 			Name:       p.Name,
 			AQLType:    sqlTypeToAQLType(p.SQLType),
@@ -415,8 +439,6 @@ func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
 			IsNullable: !p.IsRequired,
 		})
 	}
-	// Single-link FK reference columns (e.g. `application`), keyed by the FK
-	// column so the db tag matches the column returned by `select *`.
 	linkNames := make([]string, 0, len(rt.Links))
 	for n, l := range rt.Links {
 		if l.IsMulti {
@@ -427,6 +449,9 @@ func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
 	sort.Strings(linkNames)
 	for _, n := range linkNames {
 		l := rt.Links[n]
+		if skip[l.Name] {
+			continue
+		}
 		fields = append(fields, ResultField{
 			Name:       l.JoinColumn,
 			AQLType:    "uuid",
