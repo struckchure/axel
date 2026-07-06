@@ -84,12 +84,37 @@ type ConstraintDescriptor struct {
 
 // QueryDescriptor describes one compiled AQL query file.
 type QueryDescriptor struct {
-	Name      string            `json:"name"`      // camelCase function name
-	File      string            `json:"file"`      // source .aql file path
-	SQL       string            `json:"sql"`       // compiled parameterized SQL
-	Operation string            `json:"operation"` // "select", "insert", "update", "delete"
-	Params    []ParamDescriptor `json:"params,omitempty"`
-	Result    ResultDescriptor  `json:"result"`
+	Name       string            `json:"name"`      // camelCase function name
+	File       string            `json:"file"`      // source .aql file path
+	SQL        string            `json:"sql"`       // compiled parameterized SQL
+	Operation  string            `json:"operation"` // "select", "insert", "update", "delete"
+	Params     []ParamDescriptor `json:"params,omitempty"`
+	Result     ResultDescriptor  `json:"result"`
+	Directives map[string]string `json:"directives,omitempty"` // @name/@request/@response, etc.
+}
+
+// Directive returns the value of the named directive and whether it was set.
+func (q QueryDescriptor) Directive(name string) (string, bool) {
+	v, ok := q.Directives[name]
+	return v, ok
+}
+
+// RequestType returns the params struct/interface name: the @request directive
+// value if set, otherwise defaultName.
+func (q QueryDescriptor) RequestType(defaultName string) string {
+	if v, ok := q.Directives["request"]; ok && v != "" {
+		return v
+	}
+	return defaultName
+}
+
+// ResponseType returns the row struct/interface name: the @response directive
+// value if set, otherwise defaultName.
+func (q QueryDescriptor) ResponseType(defaultName string) string {
+	if v, ok := q.Directives["response"]; ok && v != "" {
+		return v
+	}
+	return defaultName
 }
 
 // ParamDescriptor describes one named query parameter.
@@ -227,14 +252,21 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 
 // BuildQueryDescriptor converts a parsed+compiled AQL query into a QueryDescriptor.
 func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *compiler.CompiledSQL, ir *asl.SchemaIR) (QueryDescriptor, error) {
+	directives := stmt.DirectiveMap()
+
+	// Name resolution: @name directive > passed-in name > file-derived name.
+	if v, ok := directives["name"]; ok && v != "" {
+		name = v
+	}
 	if name == "" {
 		name = queryNameFromFile(file)
 	}
 
 	desc := QueryDescriptor{
-		Name:  name,
-		File:  file,
-		SQL:   compiled.SQL,
+		Name:       name,
+		File:       file,
+		SQL:        compiled.SQL,
+		Directives: directives,
 	}
 
 	// Params
@@ -363,10 +395,10 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 	return fields
 }
 
-// allPropsAsFields returns all scalar properties of a type as ResultFields,
-// sorted by property name. This order MUST match the compiler's sortedProps
-// (core/compiler/compiler.go) so RETURNING / shapeless-select column order
-// lines up with the generated struct's positional Scan.
+// allPropsAsFields returns all scalar properties of a type followed by its
+// single-link FK reference columns, as ResultFields. This MUST match the
+// compiler's sortedProps + sortedSingleLinks (core/compiler/compiler.go) so
+// RETURNING / shapeless-select columns line up with the generated struct.
 func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
 	names := make([]string, 0, len(rt.Properties))
 	for n := range rt.Properties {
@@ -381,6 +413,25 @@ func allPropsAsFields(rt *asl.ResolvedType, _ *asl.SchemaIR) []ResultField {
 			AQLType:    sqlTypeToAQLType(p.SQLType),
 			SQLType:    p.SQLType,
 			IsNullable: !p.IsRequired,
+		})
+	}
+	// Single-link FK reference columns (e.g. `application`), keyed by the FK
+	// column so the db tag matches the column returned by `select *`.
+	linkNames := make([]string, 0, len(rt.Links))
+	for n, l := range rt.Links {
+		if l.IsMulti {
+			continue
+		}
+		linkNames = append(linkNames, n)
+	}
+	sort.Strings(linkNames)
+	for _, n := range linkNames {
+		l := rt.Links[n]
+		fields = append(fields, ResultField{
+			Name:       l.JoinColumn,
+			AQLType:    "uuid",
+			SQLType:    "UUID",
+			IsNullable: !l.IsRequired,
 		})
 	}
 	return fields

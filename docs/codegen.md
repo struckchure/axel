@@ -59,14 +59,32 @@ axel -d ./myproject codegen -g go -o ./gen
 axel codegen -g go -o ./gen -q 'queries/*.aql' extra.aql
 ```
 
-### Query name annotation
+### Directives
 
-By default the function name is derived from the filename (`list_post.aql` → `listPost`). Override it with a `# @name` annotation on the first line:
+Directives are `@<name> <value>` declarations placed before a query. They carry codegen
+metadata and are parsed as part of the AQL AST (not comments). Recognized directives:
+
+| Directive | Effect |
+|-----------|--------|
+| `@name <Name>` | Sets the query/function name (overrides the filename-derived default) |
+| `@request <Name>` | Names the params struct/interface (default: `<Query>Params`) |
+| `@response <Name>` | Names the row struct/interface (default: `<Query>Row`) |
 
 ```aql
-# @name GetActiveUsers
-select User { id, email } filter .active = true;
+@name CreateUser
+@request CreateUserInput
+@response User
+
+insert User { email := $email, name := $name };
 ```
+
+> `@name` replaces the older `# @name` comment annotation, which is no longer recognized.
+
+Directive-named types are **shared and deduplicated** across query files: a name used by more
+than one query (or one matching an existing schema type) is emitted **once** and reused. If two
+queries claim the same name but describe **different fields**, codegen **aborts** with an error
+naming both sources — so a shared type can never silently diverge. All parsed directives are
+also exposed to external generators as the `directives` object on each query descriptor.
 
 ---
 

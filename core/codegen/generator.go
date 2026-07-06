@@ -53,6 +53,12 @@ type Generator interface {
 //	OnQuery (each AQL query)
 //	EndSchema
 func Walk(schema SchemaDescriptor, queries []QueryDescriptor, gen Generator, ctx *Context) error {
+	// Enforce @request/@response type-name consistency before running any
+	// generator, so a conflict aborts cleanly regardless of the target language.
+	if err := validateDirectives(schema, queries); err != nil {
+		return err
+	}
+
 	if err := gen.BeginSchema(ctx, schema); err != nil {
 		return fmt.Errorf("[%s] BeginSchema: %w", gen.Name(), err)
 	}

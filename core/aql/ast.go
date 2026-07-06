@@ -1,12 +1,37 @@
 package aql
 
 // Statement is the top-level AQL query node.
-// Only one field will be non-nil per parsed statement.
+// Optional directives may precede the statement; exactly one of the statement
+// fields will be non-nil per parsed statement.
 type Statement struct {
-	Select *SelectStmt `parser:"  @@"`
-	Insert *InsertStmt `parser:"| @@"`
-	Update *UpdateStmt `parser:"| @@"`
-	Delete *DeleteStmt `parser:"| @@"`
+	Directives []*Directive `parser:"@@*"`
+	Select     *SelectStmt  `parser:"( @@"`
+	Insert     *InsertStmt  `parser:"| @@"`
+	Update     *UpdateStmt  `parser:"| @@"`
+	Delete     *DeleteStmt  `parser:"| @@ )"`
+}
+
+// Directive is a leading `@name value` declaration that carries codegen metadata
+// (e.g. @response User, @request CreateUserInput, @name CreateUser). Unknown
+// directives are parsed and preserved but ignored by the compiler.
+type Directive struct {
+	Name  string `parser:"'@' @Ident"`
+	Value string `parser:"@( Ident | String | Int )"`
+}
+
+// DirectiveMap returns the statement's directives as a name→value map
+// (first occurrence wins). String directive values keep their surrounding quotes.
+func (s *Statement) DirectiveMap() map[string]string {
+	if len(s.Directives) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(s.Directives))
+	for _, d := range s.Directives {
+		if _, exists := m[d.Name]; !exists {
+			m[d.Name] = d.Value
+		}
+	}
+	return m
 }
 
 // SelectStmt handles both regular selects and aggregate selects.

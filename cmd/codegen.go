@@ -107,8 +107,7 @@ External generators (any language):
 			if err != nil {
 				return fmt.Errorf("reading %q: %w", path, err)
 			}
-			name, aqlSrc := extractQueryName(string(src), path)
-			stmt, err := aql.ParseString(aqlSrc)
+			stmt, err := aql.ParseString(string(src))
 			if err != nil {
 				return fmt.Errorf("parsing AQL %q: %w", path, err)
 			}
@@ -116,7 +115,9 @@ External generators (any language):
 			if err != nil {
 				return fmt.Errorf("compiling %q: %w", path, err)
 			}
-			qd, err := codegen.BuildQueryDescriptor(name, path, stmt, compiled, ir)
+			// Name is resolved inside BuildQueryDescriptor from the @name
+			// directive, falling back to the file name.
+			qd, err := codegen.BuildQueryDescriptor("", path, stmt, compiled, ir)
 			if err != nil {
 				return fmt.Errorf("building descriptor for %q: %w", path, err)
 			}
@@ -231,18 +232,4 @@ func dedupe(paths []string) []string {
 		}
 	}
 	return out
-}
-
-// extractQueryName checks for a "# @name Foo" annotation on the first line.
-// Returns (name, aqlSource). If no annotation, name is derived from path.
-func extractQueryName(src, path string) (string, string) {
-	line, rest, _ := strings.Cut(src, "\n")
-	line = strings.TrimSpace(line)
-	if after, ok := strings.CutPrefix(line, "# @name"); ok {
-		name := strings.TrimSpace(after)
-		if name != "" {
-			return name, rest
-		}
-	}
-	return "", src
 }

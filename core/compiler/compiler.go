@@ -11,8 +11,9 @@ import (
 
 // sortedProps returns a type's scalar properties ordered by property name.
 // This MUST match codegen's allPropsAsFields (core/codegen/descriptor.go) so
-// that the compiled SQL's column order lines up with the generated struct's
-// positional Scan. Keep the two in lockstep.
+// that the compiled SQL's columns line up with the generated struct's fields.
+// Single-link FK columns are appended after the scalar properties by
+// sortedSingleLinks; keep all three in lockstep.
 func sortedProps(rt *asl.ResolvedType) []*asl.ResolvedProp {
 	names := make([]string, 0, len(rt.Properties))
 	for n := range rt.Properties {
@@ -26,13 +27,36 @@ func sortedProps(rt *asl.ResolvedType) []*asl.ResolvedProp {
 	return out
 }
 
-// returningColumns builds an explicit RETURNING column list (quoted, sorted) so
-// the result columns match the generated row struct / Scan order.
+// sortedSingleLinks returns a type's single (non-multi) links ordered by link
+// name. Their FK columns are part of "all columns" for `select *` / RETURNING
+// so reference fields are not omitted from the row. Multi-links live in
+// junction tables and have no FK column here, so they are excluded.
+func sortedSingleLinks(rt *asl.ResolvedType) []*asl.ResolvedLink {
+	names := make([]string, 0, len(rt.Links))
+	for n, l := range rt.Links {
+		if l.IsMulti {
+			continue
+		}
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]*asl.ResolvedLink, len(names))
+	for i, n := range names {
+		out[i] = rt.Links[n]
+	}
+	return out
+}
+
+// returningColumns builds an explicit RETURNING column list (quoted) covering
+// scalar properties followed by single-link FK columns, so the result columns
+// match the generated row struct.
 func returningColumns(rt *asl.ResolvedType) string {
-	props := sortedProps(rt)
-	cols := make([]string, len(props))
-	for i, p := range props {
-		cols[i] = fmt.Sprintf("%q", p.Column)
+	var cols []string
+	for _, p := range sortedProps(rt) {
+		cols = append(cols, fmt.Sprintf("%q", p.Column))
+	}
+	for _, l := range sortedSingleLinks(rt) {
+		cols = append(cols, fmt.Sprintf("%q", l.JoinColumn))
 	}
 	return strings.Join(cols, ", ")
 }
@@ -107,10 +131,14 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 			}
 		}
 	} else {
-		// No shape → select all scalar properties, sorted to match the
-		// generated struct/Scan order (see sortedProps).
+		// No shape → select all scalar properties plus single-link FK columns,
+		// so `select *` returns reference fields too (see sortedProps /
+		// sortedSingleLinks and codegen's allPropsAsFields).
 		for _, prop := range sortedProps(rt) {
 			cols = append(cols, fmt.Sprintf("%s.%s", alias, prop.Column))
+		}
+		for _, link := range sortedSingleLinks(rt) {
+			cols = append(cols, fmt.Sprintf("%s.%s", alias, link.JoinColumn))
 		}
 	}
 

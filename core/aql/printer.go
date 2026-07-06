@@ -13,6 +13,9 @@ func Print(stmt *Statement) string {
 }
 
 func printStmt(b *strings.Builder, stmt *Statement) {
+	for _, d := range stmt.Directives {
+		fmt.Fprintf(b, "@%s %s\n", d.Name, d.Value)
+	}
 	switch {
 	case stmt.Select != nil:
 		printSelect(b, stmt.Select)
