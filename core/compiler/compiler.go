@@ -413,7 +413,7 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		if err != nil {
 			return "", err
 		}
-		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType))
+		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
 		cols = append(cols, fmt.Sprintf("%q", prop.Column))
 		vals = append(vals, val)
 	}
@@ -535,7 +535,7 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType))
+		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
 		sets = append(sets, fmt.Sprintf("%s = %s", prop.Column, val))
 	}
 
@@ -653,7 +653,17 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		return c.compilePath(p.Path, alias, rt)
 
 	case p.Param != nil:
-		ph := c.params.add(p.Param.Name, "")
+		aqlType, enumType, err := c.resolveParamType(p.Param.Name, p.Param.Type)
+		if err != nil {
+			return "", err
+		}
+		ph := c.params.add(p.Param.Name, aqlType)
+		if aqlType != "" {
+			c.params.setExplicitType(p.Param.Name, aqlType)
+		}
+		if enumType != "" {
+			c.params.setEnumType(p.Param.Name, enumType)
+		}
 		if p.Param.Optional {
 			c.params.markOptional(p.Param.Name)
 		}
@@ -808,6 +818,30 @@ func mapOp(op string) string {
 	}
 }
 
+// resolveParamType classifies an inline param annotation ($name<type>) against
+// the schema. It accepts any declared value type — a builtin scalar, a scalar
+// alias, or an enum — and rejects object types (tables), since a param is a
+// value, not a row. Returns (aqlBaseType, enumTypeName, error). An empty
+// annotation yields ("", "", nil) so type inference can fill it in later.
+func (c *compiler) resolveParamType(name, annot string) (string, string, error) {
+	if annot == "" {
+		return "", "", nil
+	}
+	if _, ok := asl.BuiltinSQLType(annot); ok {
+		return annot, "", nil
+	}
+	if e, ok := c.schema.EnumTypes[annot]; ok {
+		return "str", e.Name, nil
+	}
+	if s, ok := c.schema.ScalarTypes[annot]; ok {
+		return s.Base, "", nil
+	}
+	if _, ok := c.schema.ObjectTypes[annot]; ok {
+		return "", "", fmt.Errorf("$%s: %q is an object type (table), not usable as a parameter type", name, annot)
+	}
+	return "", "", fmt.Errorf("$%s: unknown parameter type %q", name, annot)
+}
+
 // sqlToAQLType maps a SQL type string back to an AQL type name.
 func sqlToAQLType(sqlType string) string {
 	switch sqlType {
@@ -829,10 +863,14 @@ func sqlToAQLType(sqlType string) string {
 	}
 }
 
-// inferAssignmentParamType sets the param type when an assignment value is a bare $param.
-func inferAssignmentParamType(params *paramCollector, val *aql.Expr, aqlType string) {
+// inferAssignmentParamType sets the param type (and enum type, when the target
+// column is enum-backed) when an assignment value is a bare $param.
+func inferAssignmentParamType(params *paramCollector, val *aql.Expr, aqlType, enumType string) {
 	if val != nil && val.Op == "" && val.Left != nil && val.Left.Param != nil {
 		params.setType(val.Left.Param.Name, aqlType)
+		if enumType != "" {
+			params.setEnumType(val.Left.Param.Name, enumType)
+		}
 	}
 }
 
@@ -844,6 +882,9 @@ func inferFilterParamType(params *paramCollector, maybePath, maybeParam *aql.Pri
 	if maybePath.Path != nil && len(maybePath.Path.Steps) == 1 {
 		if prop, ok := rt.Properties[maybePath.Path.Steps[0]]; ok {
 			params.setType(maybeParam.Param.Name, sqlToAQLType(prop.SQLType))
+			if prop.EnumType != "" {
+				params.setEnumType(maybeParam.Param.Name, prop.EnumType)
+			}
 		}
 	}
 }

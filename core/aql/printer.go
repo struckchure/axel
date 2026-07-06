@@ -166,6 +166,9 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString("." + strings.Join(p.Path.Steps, "."))
 	case p.Param != nil:
 		fmt.Fprintf(b, "$%s", p.Param.Name)
+		if p.Param.Type != "" {
+			fmt.Fprintf(b, "<%s>", p.Param.Type)
+		}
 		if p.Param.Optional {
 			b.WriteString("?")
 		}

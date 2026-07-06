@@ -188,7 +188,18 @@ module.exports = grammar({
     // .author.name
     path: ($) => repeat1(seq(".", field("step", $.field_identifier))),
 
-    parameter: ($) => seq("$", $.identifier, optional("?")),
+    // $name, $name?, $name<type>, $name<type>?
+    // prec.right so a "<" right after a parameter is greedily taken as the start
+    // of a type annotation rather than reduced and treated as a binary operator.
+    parameter: ($) =>
+      prec.right(
+        seq(
+          "$",
+          field("name", $.identifier),
+          optional(seq("<", field("param_type", $.type_identifier), ">")),
+          optional("?"),
+        ),
+      ),
 
     // User.id
     qualified_identifier: ($) =>

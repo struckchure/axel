@@ -41,9 +41,11 @@
 ((aggregate function: (identifier) @function.builtin)
   (#eq? @function.builtin "count"))
 
-; Query parameters ($name)
+; Query parameters ($name, $name<type>). The <type> annotation's name is a
+; type_identifier (highlighted as @type above); its "<" ">" fall through to the
+; operator rule below.
 (parameter "$" @punctuation.special)
-(parameter (identifier) @variable.parameter)
+(parameter name: (identifier) @variable.parameter)
 
 ; Literals
 (string) @string

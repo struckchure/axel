@@ -11,6 +11,7 @@ type CompiledSQL struct {
 type ParamInfo struct {
 	Name     string // "email", "min_age"
 	AQLType  string // "str", "int32", "bool", "uuid" — inferred where possible
+	EnumType string // enum type name when the param is enum-backed; "" otherwise
 	Optional bool   // true when written as $name? — nullable, skipped-when-null in filters
 }
 

@@ -27,3 +27,35 @@ select A { x, y: { z } } filter .n = 1;
           step: (field_identifier
             (identifier)))
         (integer)))))
+
+==================
+typed parameters with annotations
+==================
+
+multi select A { id } filter .s = $s<Status> limit $n<int32>?;
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (parameter
+          name: (identifier)
+          param_type: (type_identifier
+            (identifier)))))
+    (limit_clause
+      (expression
+        (parameter
+          name: (identifier)
+          param_type: (type_identifier
+            (identifier)))))))

@@ -21,6 +21,22 @@ func (p *paramCollector) setType(name, aqlType string) {
 	}
 }
 
+// setExplicitType forces the AQLType from an inline annotation ($name<type>),
+// overriding any previously inferred type. No-op if the param is unknown.
+func (p *paramCollector) setExplicitType(name, aqlType string) {
+	if pos, ok := p.index[name]; ok && aqlType != "" {
+		p.params[pos-1].AQLType = aqlType
+	}
+}
+
+// setEnumType records the enum type name for an already-registered param.
+// No-op if the param is unknown or already has an enum type.
+func (p *paramCollector) setEnumType(name, enumType string) {
+	if pos, ok := p.index[name]; ok && enumType != "" && p.params[pos-1].EnumType == "" {
+		p.params[pos-1].EnumType = enumType
+	}
+}
+
 // markOptional flags an already-registered param as optional (nullable /
 // skipped-when-null). No-op if the param is unknown.
 func (p *paramCollector) markOptional(name string) {

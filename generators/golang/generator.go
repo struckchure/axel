@@ -150,7 +150,15 @@ func (g *GoGenerator) OnQuery(ctx *codegen.Context, q codegen.QueryDescriptor) e
 	if len(q.Params) > 0 {
 		fmt.Fprintf(&body, "type %s struct {\n", paramsType)
 		for _, p := range q.Params {
-			fmt.Fprintf(&body, "\t%s %s\n", toGoExportedName(p.Name), aqlToGoType(p.AQLType, p.IsOptional))
+			goType := aqlToGoType(p.AQLType, p.IsOptional)
+			if p.EnumType != "" {
+				// Enum-backed param → use the generated enum type (a string alias).
+				goType = p.EnumType
+				if p.IsOptional {
+					goType = "*" + goType
+				}
+			}
+			fmt.Fprintf(&body, "\t%s %s\n", toGoExportedName(p.Name), goType)
 		}
 		fmt.Fprintf(&body, "}\n\n")
 	}

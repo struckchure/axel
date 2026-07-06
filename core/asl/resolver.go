@@ -24,6 +24,13 @@ var builtinTypes = map[string]string{
 	"decimal":  "NUMERIC",
 }
 
+// BuiltinSQLType returns the SQL type for a builtin scalar name (e.g. "str" →
+// "TEXT") and whether name is a builtin scalar at all.
+func BuiltinSQLType(name string) (string, bool) {
+	s, ok := builtinTypes[name]
+	return s, ok
+}
+
 // Resolver builds a SchemaIR from a parsed SourceFile.
 type Resolver struct{}
 

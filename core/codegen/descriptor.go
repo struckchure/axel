@@ -96,7 +96,8 @@ type QueryDescriptor struct {
 type ParamDescriptor struct {
 	Name       string `json:"name"`
 	AQLType    string `json:"aql_type"`
-	SQLPos     int    `json:"sql_pos"` // 1-based $N
+	EnumType   string `json:"enum_type,omitempty"` // enum type name when enum-backed
+	SQLPos     int    `json:"sql_pos"`             // 1-based $N
 	IsOptional bool   `json:"is_optional,omitempty"`
 }
 
@@ -241,6 +242,7 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 		desc.Params = append(desc.Params, ParamDescriptor{
 			Name:       p.Name,
 			AQLType:    p.AQLType,
+			EnumType:   p.EnumType,
 			SQLPos:     i + 1,
 			IsOptional: p.Optional,
 		})

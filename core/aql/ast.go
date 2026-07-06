@@ -161,8 +161,13 @@ type Primary struct {
 // Param is a query parameter: $email (required) or $email? (optional).
 // An optional param compiles to a filter condition that is skipped when the
 // value is null, and becomes a nullable type in generated code.
+//
+// An optional inline type annotation ($email<str>, $limit<int32>?) names the
+// param's type explicitly. The type may be any declared ASL value type — a
+// builtin scalar, a scalar alias, or an enum — but not an object type.
 type Param struct {
 	Name     string `parser:"'$' @Ident"`
+	Type     string `parser:"( '<' @Ident '>' )?"`
 	Optional bool   `parser:"@'?'?"`
 }
 
