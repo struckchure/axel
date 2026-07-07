@@ -16,6 +16,7 @@ export default defineConfig({
         items: [
           { text: "Introduction", link: "/" },
           { text: "Installation", link: "/installation" },
+          { text: "Editor setup", link: "/editors" },
         ],
       },
       {
@@ -34,6 +35,7 @@ export default defineConfig({
         items: [
           { text: "Introduction", link: "/" },
           { text: "Installation", link: "/installation" },
+          { text: "Editor setup", link: "/editors" },
         ],
       },
       {
