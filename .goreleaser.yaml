@@ -28,7 +28,7 @@ builds:
       - "-X 'main.buildDate={{.Date}}'"
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -40,7 +40,12 @@ archives:
     # use zip for windows archives
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
+
+# Update the GitHub release in place when the tag already exists (e.g. a forced
+# re-tag), replacing artifacts instead of failing.
+release:
+  mode: replace
 
 changelog:
   use: github
