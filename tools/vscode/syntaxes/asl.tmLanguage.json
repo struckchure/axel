@@ -1,0 +1,101 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Axel Schema",
+  "scopeName": "source.asl",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#enum-block" },
+    { "include": "#constraint-name" },
+    { "include": "#keywords" },
+    { "include": "#builtins" },
+    { "include": "#default-functions" },
+    { "include": "#booleans" },
+    { "include": "#types" },
+    { "include": "#properties" },
+    { "include": "#field-ref" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.asl"
+    },
+    "strings": {
+      "match": "'[^']*'",
+      "name": "string.quoted.single.asl"
+    },
+    "enum-block": {
+      "begin": "\\b(enum)\\s+([A-Z]\\w*)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "storage.type.asl" },
+        "2": { "name": "entity.name.type.asl" },
+        "3": { "name": "punctuation.bracket.asl" }
+      },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.bracket.asl" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "match": "\\b[A-Za-z_]\\w*\\b", "name": "constant.other.enum.asl" },
+        { "match": ",", "name": "punctuation.delimiter.asl" }
+      ]
+    },
+    "constraint-name": {
+      "match": "\\b(constraint)\\s+([A-Za-z_]\\w*)",
+      "captures": {
+        "1": { "name": "keyword.control.asl" },
+        "2": { "name": "entity.name.function.asl" }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        { "match": "\\b(scalar|type|model|enum|abstract)\\b", "name": "storage.type.asl" },
+        { "match": "\\b(required|multi|single|property|link)\\b", "name": "storage.modifier.asl" },
+        { "match": "\\b(extends|extending|constraint|index|on|computed|default|func)\\b", "name": "keyword.control.asl" }
+      ]
+    },
+    "builtins": {
+      "match": "\\b(str|int16|int32|int64|float32|float64|bool|uuid|datetime|date|time|json|bytes|decimal)\\b",
+      "name": "support.type.builtin.asl"
+    },
+    "default-functions": {
+      "match": "\\b(gen_uuid|gen_random_uuid|now|datetime_current)\\b",
+      "name": "support.function.builtin.asl"
+    },
+    "booleans": {
+      "match": "\\b(true|false)\\b",
+      "name": "constant.language.boolean.asl"
+    },
+    "types": {
+      "match": "\\b[A-Z]\\w*\\b",
+      "name": "entity.name.type.asl"
+    },
+    "properties": {
+      "match": "\\b[a-z_]\\w*\\b(?=\\s*:)",
+      "name": "variable.other.property.asl"
+    },
+    "field-ref": {
+      "match": "(\\.)([A-Za-z_]\\w*)",
+      "captures": {
+        "1": { "name": "punctuation.delimiter.asl" },
+        "2": { "name": "variable.other.property.asl" }
+      }
+    },
+    "numbers": {
+      "match": "\\b\\d+\\b",
+      "name": "constant.numeric.asl"
+    },
+    "operators": {
+      "match": ":=|\\?\\?|@",
+      "name": "keyword.operator.asl"
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": "[{}()]", "name": "punctuation.bracket.asl" },
+        { "match": "[;,:.]", "name": "punctuation.delimiter.asl" }
+      ]
+    }
+  }
+}

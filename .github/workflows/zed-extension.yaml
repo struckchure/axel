@@ -1,0 +1,49 @@
+name: Zed Extension
+
+on:
+  # Rebuild when the extension (or this workflow) changes on main.
+  push:
+    branches: [main]
+    tags: [v*]
+    paths:
+      - 'tools/zed/**'
+      - '.github/workflows/zed-extension.yaml'
+  # Attach the zip to a published release.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ github.event.release.tag_name || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Zip Zed extension
+        run: |
+          # Bundle the extension dir (extension.toml at the zip root) so users can
+          # unzip and "install dev extension" in Zed. `grammars/` is Zed's own
+          # clone dir (git-ignored) and is excluded if present.
+          cd tools/zed
+          zip -r "$GITHUB_WORKSPACE/axel-zed.zip" . -x 'grammars/*'
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axel-zed-extension
+          path: axel-zed.zip
+
+      - name: Attach to release
+        if: github.ref_type == 'tag' || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: axel-zed.zip
+          fail_on_unmatched_files: true

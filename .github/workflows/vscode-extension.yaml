@@ -1,0 +1,56 @@
+name: VSCode Extension
+
+on:
+  # Rebuild when the extension (or this workflow) changes on main.
+  push:
+    branches: [main]
+    tags: [v*]
+    paths:
+      - 'tools/vscode/**'
+      - '.github/workflows/vscode-extension.yaml'
+  # Attach the .vsix to a published release.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      TAG_NAME: ${{ github.event.release.tag_name || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Package VSIX
+        working-directory: tools/vscode
+        run: |
+          npm install -g @vscode/vsce
+          # On a tagged/released build, stamp the version to match the tag.
+          case "$TAG_NAME" in
+            v*) npm version "${TAG_NAME#v}" --no-git-tag-version --allow-same-version ;;
+          esac
+          vsce package --no-dependencies --out axel-vscode.vsix
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axel-vscode-extension
+          path: tools/vscode/axel-vscode.vsix
+
+      - name: Attach to release
+        if: github.ref_type == 'tag' || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: tools/vscode/axel-vscode.vsix
+          fail_on_unmatched_files: true

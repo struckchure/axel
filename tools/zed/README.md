@@ -1,13 +1,27 @@
 # Axel — Zed extension
 
-Syntax highlighting, comment toggling, bracket matching, and outlines for the two
-Axel languages:
+Syntax highlighting, comment toggling, bracket matching, outlines, **and a language
+server** (diagnostics, hover, go-to-definition, completion) for the two Axel languages:
 
 - **Axel Schema** — `.asl` (types, enums, links, constraints, indexes)
 - **Axel Query** — `.aql` (`select` / `insert` / `update` / `delete`)
 
-Both are backed by small Tree-sitter grammars that mirror the parsers in
+Highlighting is backed by small Tree-sitter grammars that mirror the parsers in
 `core/asl` and `core/aql`.
+
+## Language server
+
+The extension launches the `axel` CLI as `axel lsp` (see `src/lib.rs`). **You must have
+the `axel` binary installed and on your `PATH`** — install it from
+<https://github.com/struckchure/axel>. If `axel` isn't found, Zed shows an error and only
+highlighting is active. To point at a specific binary, set it in your Zed settings:
+
+```json
+{ "lsp": { "axel": { "binary": { "path": "/absolute/path/to/axel" } } } }
+```
+
+The extension is a compiled Rust crate (`Cargo.toml`, `src/lib.rs`); Zed builds it to WASM
+automatically when you install it (needs a Rust toolchain — Zed adds the wasm target itself).
 
 ## Layout
 

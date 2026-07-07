@@ -85,3 +85,5 @@ cache
 
 # Zed clones extension grammars here during dev-extension builds
 tools/zed/grammars/
+
+*.vsix

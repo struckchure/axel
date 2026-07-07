@@ -1,10 +1,16 @@
 id = "axel"
 name = "Axel"
-version = "0.0.2"
+version = "0.0.4"
 schema_version = 1
 authors = ["Mohammed Al-Ameen"]
-description = "Syntax highlighting for Axel Schema (.asl) and Query (.aql) languages."
+description = "Syntax highlighting and language server for Axel Schema (.asl) and Query (.aql)."
 repository = "https://github.com/struckchure/axel"
+
+# Language server — launches the system-installed `axel` CLI as `axel lsp`.
+# See src/lib.rs. Requires the `axel` binary on PATH (or lsp.axel.binary.path).
+[language_servers.axel]
+name = "Axel"
+languages = ["Axel Schema", "Axel Query"]
 
 # Grammar sources live at tools/zed/parsers/<name> (NOT under grammars/, which
 # Zed clones into and manages itself). `rev` must point at a commit that contains

@@ -15,7 +15,15 @@ module.exports = grammar({
   extras: ($) => [/\s/, $.comment],
 
   rules: {
-    source_file: ($) => repeat($._statement),
+    source_file: ($) => repeat(choice($.directive, $._statement)),
+
+    // Leading metadata declaration: @name CreateUser / @request Foo / @response User
+    directive: ($) =>
+      seq(
+        "@",
+        field("name", $.identifier),
+        field("value", choice($.type_identifier, $.string, $.integer)),
+      ),
 
     _statement: ($) =>
       choice(
@@ -105,13 +113,17 @@ module.exports = grammar({
         "}",
       ),
 
+    // "*" splat expands to all scalar props + single-link FK columns.
     shape_field: ($) =>
-      seq(
-        field("name", $.field_identifier),
-        optional(
-          choice(
-            seq(":", field("shape", $.shape)),
-            seq(":=", field("value", $.expression)),
+      choice(
+        "*",
+        seq(
+          field("name", $.field_identifier),
+          optional(
+            choice(
+              seq(":", field("shape", $.shape)),
+              seq(":=", field("value", $.expression)),
+            ),
           ),
         ),
       ),

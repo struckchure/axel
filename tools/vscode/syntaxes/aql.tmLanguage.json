@@ -1,0 +1,97 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Axel Query",
+  "scopeName": "source.aql",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#directives" },
+    { "include": "#parameters" },
+    { "include": "#keywords" },
+    { "include": "#operator-keywords" },
+    { "include": "#constants" },
+    { "include": "#splat" },
+    { "include": "#functions" },
+    { "include": "#types" },
+    { "include": "#path" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.aql"
+    },
+    "strings": {
+      "match": "'[^']*'",
+      "name": "string.quoted.single.aql"
+    },
+    "directives": {
+      "match": "(@)([A-Za-z_]\\w*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.keyword.aql" },
+        "2": { "name": "keyword.control.directive.aql" }
+      }
+    },
+    "parameters": {
+      "match": "(\\$)([A-Za-z_]\\w*)(?:\\s*(<)\\s*([A-Za-z_]\\w*)\\s*(>))?",
+      "captures": {
+        "1": { "name": "punctuation.definition.variable.aql" },
+        "2": { "name": "variable.parameter.aql" },
+        "3": { "name": "punctuation.definition.typeparameters.begin.aql" },
+        "4": { "name": "entity.name.type.aql" },
+        "5": { "name": "punctuation.definition.typeparameters.end.aql" }
+      }
+    },
+    "keywords": {
+      "match": "\\b(multi|select|insert|update|delete|filter|order|by|limit|offset|set)\\b",
+      "name": "keyword.control.aql"
+    },
+    "operator-keywords": {
+      "match": "\\b(and|or|in|like|ilike|asc|desc)\\b",
+      "name": "keyword.operator.word.aql"
+    },
+    "constants": {
+      "patterns": [
+        { "match": "\\b(true|false)\\b", "name": "constant.language.boolean.aql" },
+        { "match": "\\bnull\\b", "name": "constant.language.null.aql" }
+      ]
+    },
+    "splat": {
+      "match": "\\*",
+      "name": "keyword.operator.star.aql"
+    },
+    "functions": {
+      "patterns": [
+        { "match": "\\b(count)\\b(?=\\s*\\()", "name": "support.function.builtin.aql" },
+        { "match": "\\b[a-z_]\\w*\\b(?=\\s*\\()", "name": "entity.name.function.aql" }
+      ]
+    },
+    "types": {
+      "match": "\\b[A-Z]\\w*\\b",
+      "name": "entity.name.type.aql"
+    },
+    "path": {
+      "match": "(\\.)([A-Za-z_]\\w*)",
+      "captures": {
+        "1": { "name": "punctuation.delimiter.aql" },
+        "2": { "name": "variable.other.property.aql" }
+      }
+    },
+    "numbers": {
+      "match": "\\b\\d+(\\.\\d+)?\\b",
+      "name": "constant.numeric.aql"
+    },
+    "operators": {
+      "match": "!=|<=|>=|:=|\\?\\?|=|<|>",
+      "name": "keyword.operator.aql"
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": "[{}()]", "name": "punctuation.bracket.aql" },
+        { "match": "[;,:.]", "name": "punctuation.delimiter.aql" }
+      ]
+    }
+  }
+}

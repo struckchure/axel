@@ -59,3 +59,30 @@ multi select A { id } filter .s = $s<Status> limit $n<int32>?;
           name: (identifier)
           param_type: (type_identifier
             (identifier)))))))
+
+==================
+directives and shape splat
+==================
+
+@response User
+multi select Project { *, members: { id } };
+
+---
+
+(source_file
+  (directive
+    name: (identifier)
+    value: (type_identifier
+      (identifier)))
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field)
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        shape: (shape
+          (shape_field
+            name: (field_identifier
+              (identifier))))))))

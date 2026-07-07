@@ -1,0 +1,102 @@
+{
+  "name": "axel",
+  "displayName": "Axel",
+  "description": "Syntax highlighting and language server for Axel Schema (.asl) and Axel Query (.aql).",
+  "version": "0.0.2",
+  "publisher": "struckchure",
+  "author": "Mohammed Al-Ameen",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "axel",
+    "asl",
+    "aql",
+    "schema",
+    "query"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/struckchure/axel"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:asl",
+    "onLanguage:aql"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "asl",
+        "aliases": [
+          "Axel Schema",
+          "asl"
+        ],
+        "extensions": [
+          ".asl"
+        ],
+        "configuration": "./language-configuration/asl.json"
+      },
+      {
+        "id": "aql",
+        "aliases": [
+          "Axel Query",
+          "aql"
+        ],
+        "extensions": [
+          ".aql"
+        ],
+        "configuration": "./language-configuration/aql.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "asl",
+        "scopeName": "source.asl",
+        "path": "./syntaxes/asl.tmLanguage.json"
+      },
+      {
+        "language": "aql",
+        "scopeName": "source.aql",
+        "path": "./syntaxes/aql.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Axel",
+      "properties": {
+        "axel.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the `axel` CLI used for the language server. When empty, `axel` is looked up on your `PATH`."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "axel.restartServer",
+        "title": "Axel: Restart Language Server"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "npm run compile -- --sourcemap --watch",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.82.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  }
+}

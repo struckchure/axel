@@ -1,6 +1,11 @@
 ; Comments
 (comment) @comment
 
+; Directives (@name / @request / @response). The value is a type_identifier,
+; highlighted as @type by the rule below.
+(directive "@" @punctuation.special)
+(directive name: (identifier) @keyword)
+
 ; Statement keywords
 [
   "multi"
@@ -46,6 +51,9 @@
 ; operator rule below.
 (parameter "$" @punctuation.special)
 (parameter name: (identifier) @variable.parameter)
+
+; Shape splat (select all fields)
+"*" @punctuation.special
 
 ; Literals
 (string) @string
