@@ -2,8 +2,20 @@ name: Build and Release
 
 on:
   push:
+    # Tag pushes always run and publish a release. Path filters are ignored for
+    # tag pushes, so a tag on a docs/branding commit still releases.
     tags:
       - v*
+    # Branch pushes only build (no release) and only when Go sources or the build
+    # config change — docs/branding/tooling changes don't trigger a binary build.
+    branches:
+      - main
+    paths:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+      - .goreleaser.yaml
+      - .github/workflows/build-and-release.yaml
 
 jobs:
   release:
@@ -20,7 +32,8 @@ jobs:
         with:
           go-version: stable
 
-      - name: Run GoReleaser
+      - name: Release (tag push)
+        if: github.ref_type == 'tag'
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -28,3 +41,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build check (branch push)
+        if: github.ref_type != 'tag'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: build --snapshot --clean
