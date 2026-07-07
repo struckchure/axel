@@ -1,5 +1,7 @@
 package asl
 
+import "github.com/alecthomas/participle/v2/lexer"
+
 // SourceFile is the root AST node for a .asl schema file.
 type SourceFile struct {
 	Definitions []*Definition `parser:"@@*"`
@@ -16,16 +18,20 @@ type Definition struct {
 //
 //	scalar type EmailStr extending str;
 type ScalarTypeDef struct {
+	Pos     lexer.Position
 	Name    string `parser:"'scalar' 'type' @Ident"`
 	Extends string `parser:"'extending' @Ident ';'"`
+	EndPos  lexer.Position
 }
 
 // EnumTypeDef defines an enum type.
 //
 //	enum Role { Admin, Member, Guest }
 type EnumTypeDef struct {
+	Pos    lexer.Position
 	Name   string   `parser:"'enum' @Ident '{'"`
 	Values []string `parser:"@Ident ( ',' @Ident )* ','? '}'"`
+	EndPos lexer.Position
 }
 
 // TypeDef defines a concrete or abstract type (or model — backward compat).
@@ -33,10 +39,12 @@ type EnumTypeDef struct {
 //	abstract type User extending Timestamped { ... }
 //	model User extends Base { ... }
 type TypeDef struct {
+	Pos       lexer.Position
 	Abstract  bool      `parser:"@'abstract'?"`
 	Name      string    `parser:"( 'type' | 'model' ) @Ident"`
 	Extending []string  `parser:"( ( 'extends' | 'extending' ) @Ident ( ',' @Ident )* )?"`
 	Members   []*Member `parser:"'{' @@* '}'"`
+	EndPos    lexer.Position
 }
 
 // Member is any declaration inside a type body.
@@ -54,6 +62,7 @@ type Member struct {
 // Property:  required property email: str { constraint exclusive; };
 // Bare prop: required age: int32;
 type FieldDecl struct {
+	Pos         lexer.Position
 	Required    bool      `parser:"@'required'?"`
 	Multi       bool      `parser:"@'multi'?"`
 	Single      bool      `parser:"@'single'?"`
@@ -62,7 +71,8 @@ type FieldDecl struct {
 	Name        string    `parser:"@Ident"`
 	TypeSpec    *TypeSpec `parser:"@@?"`
 	// ";" is always consumed here — attached after optional body
-	Body *FieldBody `parser:"( '{' @@ '}' )? ';'"`
+	Body   *FieldBody `parser:"( '{' @@ '}' )? ';'"`
+	EndPos lexer.Position
 }
 
 // TypeSpec holds the type annotation for a field.
@@ -88,6 +98,7 @@ type FieldBodyItem struct {
 // FieldConstraintDecl: constraint exclusive; / constraint min_length(10);
 // Trailing semicolon is optional (some single-item bodies omit it).
 type FieldConstraintDecl struct {
+	Pos  lexer.Position
 	Name string   `parser:"'constraint' @Ident"`
 	Args []string `parser:"( '(' @( Ident | Int | String ) ( ',' @( Ident | Int | String ) )* ')' )? ';'?"`
 }
@@ -121,6 +132,7 @@ type OnClause struct {
 //
 //	computed display_name := .name ?? .email;
 type ComputedDecl struct {
+	Pos   lexer.Position
 	Name  string   `parser:"'computed' @Ident ':='"`
 	Parts []string `parser:"@( Ident | '.' | '??' | String | Int )+ ';'"`
 }
@@ -130,6 +142,7 @@ type ComputedDecl struct {
 //	constraint <expression> on (.email);
 //	constraint <expression> on (.active, .age);
 type ConstraintDecl struct {
+	Pos        lexer.Position
 	Expression string   `parser:"'constraint' @Ident"`
 	Args       []string `parser:"( '(' @( Ident | Int | String ) ( ',' @( Ident | Int | String ) )* ')' )?"`
 	Fields     []string `parser:"'on' '(' '.' @Ident ( ',' '.' @Ident )* ')' ';'"`
@@ -140,5 +153,6 @@ type ConstraintDecl struct {
 //	index on (.email);
 //	index on (.active, .age);
 type IndexDecl struct {
+	Pos    lexer.Position
 	Fields []string `parser:"'index' 'on' '(' '.' @Ident ( ',' '.' @Ident )* ')' ';'"`
 }

@@ -1,22 +1,28 @@
 package aql
 
+import "github.com/alecthomas/participle/v2/lexer"
+
 // Statement is the top-level AQL query node.
 // Optional directives may precede the statement; exactly one of the statement
 // fields will be non-nil per parsed statement.
 type Statement struct {
+	Pos        lexer.Position
 	Directives []*Directive `parser:"@@*"`
 	Select     *SelectStmt  `parser:"( @@"`
 	Insert     *InsertStmt  `parser:"| @@"`
 	Update     *UpdateStmt  `parser:"| @@"`
 	Delete     *DeleteStmt  `parser:"| @@ )"`
+	EndPos     lexer.Position
 }
 
 // Directive is a leading `@name value` declaration that carries codegen metadata
 // (e.g. @response User, @request CreateUserInput, @name CreateUser). Unknown
 // directives are parsed and preserved but ignored by the compiler.
 type Directive struct {
-	Name  string `parser:"'@' @Ident"`
-	Value string `parser:"@( Ident | String | Int )"`
+	Pos    lexer.Position
+	Name   string `parser:"'@' @Ident"`
+	Value  string `parser:"@( Ident | String | Int )"`
+	EndPos lexer.Position
 }
 
 // DirectiveMap returns the statement's directives as a name→value map
@@ -39,6 +45,7 @@ func (s *Statement) DirectiveMap() map[string]string {
 //	select User { id, email } filter .active = true order by .created_at desc limit $n;
 //	select count(User filter .active = true);
 type SelectStmt struct {
+	Pos   lexer.Position
 	Multi bool        `parser:"@'multi'? 'select'"`
 	Body  *SelectBody `parser:"@@"`
 	End   string      `parser:"';'?"`
@@ -69,6 +76,7 @@ type AggExpr struct {
 
 // InsertStmt: insert TypeName { field := expr, ... };
 type InsertStmt struct {
+	Pos         lexer.Position
 	TypeName    string        `parser:"'insert' @Ident"`
 	Assignments []*Assignment `parser:"'{' @@ ( ',' @@ )* ','? '}'"`
 	End         string        `parser:"';'?"`
@@ -84,6 +92,7 @@ type InsertBody struct {
 
 // UpdateStmt: update TypeName filter expr set { field := expr, ... };
 type UpdateStmt struct {
+	Pos         lexer.Position
 	TypeName    string        `parser:"'update' @Ident"`
 	Filter      *Filter       `parser:"@@?"`
 	Assignments []*Assignment `parser:"'set' '{' @@ ( ',' @@ )* ','? '}'"`
@@ -92,6 +101,7 @@ type UpdateStmt struct {
 
 // DeleteStmt: delete TypeName filter expr;
 type DeleteStmt struct {
+	Pos      lexer.Position
 	TypeName string  `parser:"'delete' @Ident"`
 	Filter   *Filter `parser:"@@?"`
 	End      string  `parser:"';'?"`
@@ -111,6 +121,7 @@ type Shape struct {
 //	posts: { title } → nested link with sub-shape
 //	posts := (...)   → inline computed field
 type ShapeField struct {
+	Pos      lexer.Position
 	Star     bool   `parser:"(   @'*'"`
 	Name     string `parser:"  | @Ident )"`
 	SubShape *Shape `parser:"( ':' @@ )?"`
@@ -119,6 +130,7 @@ type ShapeField struct {
 
 // QualifiedIdent is a TypeName.field reference used in expressions (e.g. User.id).
 type QualifiedIdent struct {
+	Pos      lexer.Position
 	TypeName string `parser:"@Ident '.'"`
 	Field    string `parser:"@Ident"`
 }
@@ -127,6 +139,7 @@ type QualifiedIdent struct {
 //
 //	email := $email
 type Assignment struct {
+	Pos   lexer.Position
 	Field string `parser:"@Ident ':='"`
 	Value *Expr  `parser:"@@"`
 }
@@ -193,9 +206,11 @@ type Primary struct {
 // param's type explicitly. The type may be any declared ASL value type — a
 // builtin scalar, a scalar alias, or an enum — but not an object type.
 type Param struct {
+	Pos      lexer.Position
 	Name     string `parser:"'$' @Ident"`
 	Type     string `parser:"( '<' @Ident '>' )?"`
 	Optional bool   `parser:"@'?'?"`
+	EndPos   lexer.Position
 }
 
 // FuncCall: funcName(expr, ...)
@@ -206,5 +221,6 @@ type FuncCall struct {
 
 // PathExpr is a dotted path: .email / .author.name
 type PathExpr struct {
+	Pos   lexer.Position
 	Steps []string `parser:"( '.' @Ident )+"`
 }
