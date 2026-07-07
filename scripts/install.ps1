@@ -6,14 +6,28 @@ $LatestReleaseApi = "https://api.github.com/repos/$Repo/releases/latest"
 # ── Version resolution ─────────────────────────────────────────────────────────
 $Version = $args[0]
 if (-not $Version) {
+    # Prefer the releases/latest redirect (not rate-limited): follow it and read
+    # the tag from the final URL. Fall back to the GitHub API if that fails.
     try {
-        $ReleaseInfo = Invoke-RestMethod -Uri $LatestReleaseApi -Headers @{ Accept = "application/vnd.github+json" }
-        $Version = $ReleaseInfo.tag_name
-        if (-not $Version) {
-            throw "Missing tag_name in GitHub API response"
-        }
-    } catch {
-        Write-Error "Failed to resolve latest release version: $($_.Exception.Message)"
+        $req = [System.Net.WebRequest]::Create("https://github.com/$Repo/releases/latest")
+        $req.Method = "HEAD"
+        $req.AllowAutoRedirect = $false
+        $req.UserAgent = "axel-installer"
+        $resp = $req.GetResponse()
+        $location = $resp.Headers["Location"]
+        $resp.Close()
+        if ($location -match "/tag/(.+)$") { $Version = $Matches[1] }
+    } catch { }
+
+    if (-not $Version) {
+        try {
+            $ReleaseInfo = Invoke-RestMethod -Uri $LatestReleaseApi -Headers @{ Accept = "application/vnd.github+json"; "User-Agent" = "axel-installer" }
+            $Version = $ReleaseInfo.tag_name
+        } catch { }
+    }
+
+    if (-not $Version) {
+        Write-Error "Failed to resolve latest release version"
         exit 1
     }
 }

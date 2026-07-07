@@ -16,11 +16,18 @@ trap cleanup EXIT
 # ── Version resolution ─────────────────────────────────────────────────────────
 resolve_latest_version() {
     local v
-    v=$(curl -fsSL "$LATEST_RELEASE_API" \
-        | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | head -n 1)
+    # Prefer the releases/latest redirect (not rate-limited); the final URL ends
+    # in /releases/tag/<version>. Fall back to the GitHub API if that fails.
+    v=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+        "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+        | sed -n 's#.*/releases/tag/##p' | tr -d '[:space:]')
     if [ -z "$v" ]; then
-        echo "error: could not resolve latest version from GitHub API" >&2
+        v=$(curl -fsSL "$LATEST_RELEASE_API" \
+            | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
+            | head -n 1)
+    fi
+    if [ -z "$v" ]; then
+        echo "error: could not resolve latest version from GitHub" >&2
         exit 1
     fi
     echo "$v"
