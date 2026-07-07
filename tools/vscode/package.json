@@ -83,11 +83,11 @@
     ]
   },
   "scripts": {
-    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
-    "watch": "npm run compile -- --sourcemap --watch",
+    "compile": "bun run esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "bun run compile -- --sourcemap --watch",
     "typecheck": "tsc --noEmit",
-    "vscode:prepublish": "npm run compile",
-    "package": "vsce package"
+    "vscode:prepublish": "bun run compile",
+    "package": "bun run compile && bunx @vscode/vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

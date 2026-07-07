@@ -26,20 +26,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Package VSIX
         working-directory: tools/vscode
         run: |
-          npm install -g @vscode/vsce
+          bun install --frozen-lockfile
           # On a tagged/released build, stamp the version to match the tag.
           case "$TAG_NAME" in
-            v*) npm version "${TAG_NAME#v}" --no-git-tag-version --allow-same-version ;;
+            v*) jq --arg v "${TAG_NAME#v}" '.version=$v' package.json > package.json.tmp && mv package.json.tmp package.json ;;
           esac
-          vsce package --no-dependencies --out axel-vscode.vsix
+          bun run compile
+          bunx @vscode/vsce package --no-dependencies --out axel-vscode.vsix
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

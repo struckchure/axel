@@ -48,12 +48,12 @@ More detail: `tools/zed/README.md`.
 
 ## VS Code
 
-Build a `.vsix` and install it with the `code` CLI. Requires [Node.js](https://nodejs.org).
+Build a `.vsix` and install it with the `code` CLI. Requires [Bun](https://bun.sh).
 
 ```sh
 cd tools/vscode
-npm install
-npm run package                     # produces axel-<version>.vsix
+bun install
+bun run package                     # produces axel-<version>.vsix
 code --install-extension axel-*.vsix
 ```
 
@@ -67,7 +67,7 @@ To use a specific `axel` binary, set it in **Settings** (`axel.path`):
 
 **Developing the extension:** open the `tools/vscode` folder in VS Code and press `F5` to launch
 an Extension Development Host with the extension loaded; after editing the source, re-run
-`npm run package` and reinstall. Use the **Axel: Restart Language Server** command to reconnect
+`bun run package` and reinstall. Use the **Axel: Restart Language Server** command to reconnect
 after installing or updating `axel`.
 
 More detail: `tools/vscode/README.md`.

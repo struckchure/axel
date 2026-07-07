@@ -39,8 +39,8 @@ tools/vscode/
 
 ```sh
 cd tools/vscode
-npm install
-npm run compile
+bun install
+bun run compile
 ```
 
 Then open `tools/vscode` in VS Code and press **F5** to launch an Extension
@@ -50,8 +50,8 @@ Development Host, and open any `.asl` / `.aql` file (e.g. under `examples/basic/
 
 ```sh
 cd tools/vscode
-npm install
-npm run package     # runs vsce package (compiles via vscode:prepublish)
+bun install
+bun run package     # bun run compile + vsce package --no-dependencies
 ```
 
 Install the resulting `.vsix` with the `code` CLI:
