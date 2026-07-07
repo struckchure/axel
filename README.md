@@ -1,4 +1,10 @@
-# Axel
+<p align="center">
+  <img src="docs/public/logo.svg" alt="Axel logo" width="96" height="96">
+</p>
+
+<h1 align="center">Axel</h1>
+
+<p align="center">Schema and query languages for PostgreSQL, compiled to SQL.</p>
 
 **Axel** is a schema and query language tool for PostgreSQL. You define your data model in **ASL** (Axel Schema Language) and write queries in **AQL** (Axel Query Language). Axel compiles both to SQL — migrations from ASL, parameterized query strings from AQL.
 

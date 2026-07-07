@@ -5,7 +5,7 @@ export default defineConfig({
   title: "Axel",
   description: "Schema and query language tool for PostgreSQL",
 
-  head: [["link", { rel: "icon", href: "/favicon.ico" }]],
+  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/axel/logo.svg" }]],
 
   themeConfig: {
     logo: "/logo.svg",

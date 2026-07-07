@@ -39,7 +39,11 @@
         "extensions": [
           ".asl"
         ],
-        "configuration": "./language-configuration/asl.json"
+        "configuration": "./language-configuration/asl.json",
+        "icon": {
+          "light": "./icons/asl.svg",
+          "dark": "./icons/asl.svg"
+        }
       },
       {
         "id": "aql",
@@ -50,7 +54,11 @@
         "extensions": [
           ".aql"
         ],
-        "configuration": "./language-configuration/aql.json"
+        "configuration": "./language-configuration/aql.json",
+        "icon": {
+          "light": "./icons/aql.svg",
+          "dark": "./icons/aql.svg"
+        }
       }
     ],
     "grammars": [
