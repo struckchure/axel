@@ -657,11 +657,25 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 	result := fmt.Sprintf("%s %s %s", left, op, right)
 
 	// Optional params ($name?) make the comparison a no-op when the value is
-	// null, so an omitted filter matches all rows.
+	// null, so an omitted filter matches all rows. The standalone `$N IS NULL`
+	// occurrence carries no type, so cast it to the SQL type of the column it's
+	// compared against — otherwise Postgres can't determine the parameter type
+	// when the value is null (42P08). Casting to the column type keeps the cast
+	// consistent with the comparison (avoiding e.g. a str-vs-uuid conflict).
 	for _, operand := range []*aql.Primary{expr.Left, expr.Right} {
 		if operand != nil && operand.Param != nil && operand.Param.Optional {
 			ph := c.params.add(operand.Param.Name, "")
-			result = fmt.Sprintf("(%s IS NULL OR %s)", ph, result)
+			other := expr.Right
+			if operand == expr.Right {
+				other = expr.Left
+			}
+			cast := ""
+			if t := filterOperandSQLType(other, rt); t != "" {
+				cast = "::" + t
+			} else if bt, ok := asl.BuiltinSQLType(paramAQLType(c.params, operand.Param.Name)); ok {
+				cast = "::" + bt
+			}
+			result = fmt.Sprintf("(%s%s IS NULL OR %s)", ph, cast, result)
 		}
 	}
 
@@ -933,6 +947,32 @@ func inferFilterParamType(params *paramCollector, maybePath, maybeParam *aql.Pri
 			}
 		}
 	}
+}
+
+// filterOperandSQLType returns the SQL type of a single-step path operand — a
+// scalar property's SQL type, or UUID for a link's FK column. Used to cast an
+// optional param's `IS NULL` check so its type is known even when null.
+func filterOperandSQLType(p *aql.Primary, rt *asl.ResolvedType) string {
+	if p == nil || rt == nil || p.Path == nil || len(p.Path.Steps) != 1 {
+		return ""
+	}
+	name := p.Path.Steps[0]
+	if prop, ok := rt.Properties[name]; ok {
+		return prop.SQLType
+	}
+	if _, ok := rt.Links[name]; ok {
+		return "UUID" // FK columns reference the target's uuid id
+	}
+	return ""
+}
+
+// paramAQLType returns the collected AQL type of a named param (e.g. "str"), or
+// "" if unknown.
+func paramAQLType(params *paramCollector, name string) string {
+	if pos, ok := params.index[name]; ok {
+		return params.params[pos-1].AQLType
+	}
+	return ""
 }
 
 // expandComputedExpr replaces `.field` references with `alias.field` in a

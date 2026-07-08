@@ -48,8 +48,10 @@ func buildQueryDesc(t *testing.T, ir *asl.SchemaIR, name, file, query string) co
 
 func TestOptionalParamSkipsWhenNull(t *testing.T) {
 	c := compileAQL(t, paramSchema, `select User { id } filter .email = $email?;`)
-	if !strings.Contains(c.SQL, "($1 IS NULL OR u.email = $1)") {
-		t.Errorf("expected skip-when-null wrap, got:\n%s", c.SQL)
+	// The IS NULL check casts the param to the compared column's SQL type so
+	// Postgres can determine its type even when the value is null (avoids 42P08).
+	if !strings.Contains(c.SQL, "($1::TEXT IS NULL OR u.email = $1)") {
+		t.Errorf("expected skip-when-null wrap with cast, got:\n%s", c.SQL)
 	}
 	if len(c.Params) != 1 || c.Params[0].Name != "email" || !c.Params[0].Optional {
 		t.Errorf("expected one optional param 'email', got %+v", c.Params)

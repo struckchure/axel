@@ -81,3 +81,20 @@ func TestShapeSplatExplicitFieldWins(t *testing.T) {
 		t.Errorf("explicit owner should compile to a nested object subquery:\n%s", c.SQL)
 	}
 }
+
+// An optional filter param casts its IS NULL check to the compared column's SQL
+// type so Postgres can determine the param type when the value is null (42P08).
+func TestOptionalFilterParamCastsToColumnType(t *testing.T) {
+	// Link filter → cast to the FK column type (UUID), regardless of a mismatched
+	// annotation, so the cast agrees with `a.owner = $1`.
+	c := compileAQL(t, relSchema, `multi select Project filter .owner = $owner<str>?;`)
+	if !strings.Contains(c.SQL, "($1::UUID IS NULL OR") {
+		t.Errorf("link optional filter should cast the param to UUID:\n%s", c.SQL)
+	}
+
+	// Scalar filter → cast to the property's own SQL type.
+	c = compileAQL(t, relSchema, `multi select Project filter .name = $name<str>?;`)
+	if !strings.Contains(c.SQL, "($1::TEXT IS NULL OR") {
+		t.Errorf("scalar optional filter should cast the param to TEXT:\n%s", c.SQL)
+	}
+}
