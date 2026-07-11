@@ -97,6 +97,9 @@ WHERE ($1 IS NULL OR u.email = $1);
 
 Passing `null` for `email` returns all users; passing a value filters by it.
 
+In an `update` `set` clause an optional parameter behaves differently — `null` writes `NULL` to the
+column rather than being skipped. See [Partial updates](#partial-updates).
+
 ### Typed parameters
 
 By default a parameter's type is **inferred** from the property it's compared against (`.email = $email` → `str`) or the column it's assigned to. Params with no such anchor — most commonly `limit` / `offset` — have no inferable type and would otherwise generate a loose `any` field.
@@ -421,6 +424,38 @@ UPDATE "user" u SET
 WHERE u.id = $3
 RETURNING *;
 ```
+
+### Partial updates
+
+An optional parameter (`$name?`) in a `set` clause is plain nullable: when the value is `null`, the
+column is **written to `NULL`**. (This differs from an optional parameter in a *filter*, where `null`
+skips the condition.)
+
+To leave a column **unchanged** when a value is absent, coalesce the parameter to the column's
+current value with `?? .field`:
+
+```aql
+update Application
+filter .id = $id
+set {
+  status              := $status?,                        -- null → sets the column to NULL
+  build_system        := $build_system? ?? .build_system  -- null → keeps the current value
+};
+```
+
+```sql
+-- $1: status
+-- $2: build_system
+-- $3: id
+UPDATE "application" a SET
+  status = $1,
+  build_system = COALESCE($2::TEXT, a.build_system)
+WHERE a.id = $3
+RETURNING *;
+```
+
+The `??` cast (`$2::TEXT` here) is the column's SQL type, so the parameter's type is determinable
+even when its value is `null`.
 
 ---
 

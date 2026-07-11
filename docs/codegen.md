@@ -110,6 +110,9 @@ also exposed to external generators as the `directives` object on each query des
 | `datetime`    | `Date`           | `Date \| null`           |
 | `json`        | `unknown`        | `unknown`                |
 
+An **enum**-backed column or parameter generates as its enum union type (e.g. `Role`, or
+`Role | null` when nullable) rather than `string`, and is imported from `models.ts`.
+
 ### Setup
 
 The generator targets Bun's SQL client. The generated `DB` interface is:
@@ -248,7 +251,10 @@ const user = await runner
 | `datetime` | `time.Time`   | `*time.Time`     |
 | `json`     | `interface{}` | `interface{}`    |
 
-### Options
+An **enum**-backed column or parameter generates as its enum type (e.g. `Role`, or `*Role` when
+nullable) rather than `string`. The type is defined in `models.go` in the same package.
+
+### Setup
 
 | Option    | Default     | Description |
 |-----------|-------------|-------------|
@@ -439,9 +445,10 @@ interface QueryDescriptor {
 }
 
 interface ParamDescriptor {
-  name:     string;  // e.g. "email"
-  aql_type: string;  // e.g. "str"
-  sql_pos:  number;  // 1-based $N position in the SQL string
+  name:       string;  // e.g. "email"
+  aql_type:   string;  // e.g. "str"
+  enum_type?: string;  // enum type name when the param is enum-backed
+  sql_pos:    number;  // 1-based $N position in the SQL string
 }
 
 interface ResultDescriptor {
@@ -454,6 +461,7 @@ interface ResultField {
   name:          string;
   aql_type?:     string;
   sql_type?:     string;
+  enum_type?:    string;    // enum type name when the column is enum-backed
   is_nullable:   boolean;
   is_multiple:   boolean;   // true → JSON array (multi-link or computed sub-select)
   target_type?:  string;    // set for link fields

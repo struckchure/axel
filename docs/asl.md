@@ -108,8 +108,8 @@ type User {
 
 ## Enum types
 
-Enums are stored as `TEXT` with a `CHECK (col IN (...))` constraint restricting the column to the
-declared values.
+Enums are stored as `TEXT` with a named `CHECK (col IN (...))` constraint (`chk_<table>_<col>_enum`)
+restricting the column to the declared values.
 
 ```asl
 enum Role { Admin, Member, Guest }
@@ -125,8 +125,10 @@ type User {
 }
 ```
 
-This emits `"role" TEXT NOT NULL DEFAULT 'Member' CHECK ("role" IN ('Admin', 'Member', 'Guest'))`.
-Generated Go/TS code uses the enum type for the field (`Role`) rather than a plain string.
+This emits `"role" TEXT NOT NULL DEFAULT 'Member' CONSTRAINT "chk_user_role_enum" CHECK ("role" IN ('Admin', 'Member', 'Guest'))`.
+Generated Go/TS code uses the enum type for the field (`Role`) rather than a plain string — for
+model structs, query **parameters**, and query **result columns** alike (including columns pulled in
+by a `*` splat and inside nested sub-select rows).
 
 ---
 
@@ -173,12 +175,12 @@ id: uuid {
 };
 ```
 
-`min_length(n)` and `max_length(n)` apply to string columns and are emitted as
-`CHECK (char_length("col") >= n)` / `<= n` in the migration SQL. Inside
-`CREATE TABLE` these checks are inline and unnamed; a length constraint added to
-an existing column later is emitted via `ALTER TABLE ... ADD CONSTRAINT
-chk_<table>_<column>_<min|max>_length CHECK (...)` so it can be dropped on
-rollback.
+`min_length(n)` and `max_length(n)` apply to string columns and are emitted as a named
+`CHECK (char_length("col") >= n)` / `<= n`. All field-level constraints carry a deterministic name
+— enum and length `CHECK`s (`chk_<table>_<column>_<kind>`), single-column `UNIQUE`
+(`uq_<table>_<column>`), primary keys (`pk_<table>`), and foreign keys (`fk_<table>_<column>`).
+That same name is used both inside `CREATE TABLE` and in any later `ALTER TABLE ... ADD/DROP CONSTRAINT`,
+so a constraint created with a table can be dropped by name on a schema change or rollback.
 
 ---
 
