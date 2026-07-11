@@ -113,9 +113,19 @@ also exposed to external generators as the `directives` object on each query des
 An **enum**-backed column or parameter generates as its enum union type (e.g. `Role`, or
 `Role | null` when nullable) rather than `string`, and is imported from `models.ts`.
 
-### Setup
+### Options
 
-The generator targets Bun's SQL client. The generated `DB` interface is:
+| Option   | Default | Description |
+|----------|---------|-------------|
+| `client` | `bun`   | Database driver the generated code targets: `bun` (Bun's SQL class) or `pg` (node-postgres) |
+
+```sh
+axel codegen -g ts -o ./gen --option client=pg
+```
+
+### Setup — Bun (default)
+
+The default client targets Bun's SQL class. The generated `DB` interface is:
 
 ```ts
 export interface DB {
@@ -134,6 +144,29 @@ const runner = new Runner(sql);
 ```
 
 Any other client works as long as it implements the `DB` interface.
+
+### Setup — node-postgres (`--option client=pg`)
+
+With `client=pg` the generated query functions and `Runner` take a
+[node-postgres](https://node-postgres.com) `Pool` directly and read rows off
+`db.query(...).rows` — there is no `DB` interface. Install `pg` and its types
+(`bun add pg @types/pg`), then:
+
+```ts
+import { Pool } from "pg";
+import { Runner } from "./gen/runner.ts";
+
+const pool = new Pool({ connectionString: "postgres://user:pass@localhost:5432/mydb" });
+const runner = new Runner(pool);
+```
+
+The typed query functions accept the same `Pool`:
+
+```ts
+import { getUser } from "./gen/get_user.ts";
+
+const user = await getUser(pool, { id: "..." }); // GetUserRow | null
+```
 
 ### Typed AQL queries — `runner.query`
 

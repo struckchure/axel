@@ -158,6 +158,86 @@ func TestTsCodegenEnumResultField(t *testing.T) {
 	}
 }
 
+// With `--option client=pg`, the TS generator targets node-postgres: query
+// functions and the Runner take a pg.Pool and read rows off db.query(...).rows,
+// with no Bun DB interface.
+func TestTsCodegenPgClient(t *testing.T) {
+	ir := parseSchema(t, directiveSchema)
+	schema := codegen.FromSchemaIR(ir)
+
+	get := buildQueryDesc(t, ir, "getUser", "get_user.aql", "select User { id, email } filter .id = $id<uuid>;")
+	del := buildQueryDesc(t, ir, "delUser", "del_user.aql", "delete User filter .id = $id<uuid>;")
+
+	dir := t.TempDir()
+	ctx := &codegen.Context{OutDir: dir, Options: map[string]string{"client": "pg"}}
+	if err := codegen.Walk(schema, []codegen.QueryDescriptor{get, del}, &typescript.TsGenerator{}, ctx); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+
+	query := readFile(t, filepath.Join(dir, "get_user.ts"))
+	for _, want := range []string{
+		`import type { Pool } from "pg";`,
+		"getUser(db: Pool,",
+		"db.query(query, [params.id]).then((r) => r.rows as GetUserRow[])",
+	} {
+		if !strings.Contains(query, want) {
+			t.Errorf("pg query file missing %q:\n%s", want, query)
+		}
+	}
+	if strings.Contains(query, "db.unsafe") {
+		t.Errorf("pg query file should not use Bun's db.unsafe:\n%s", query)
+	}
+
+	del2 := readFile(t, filepath.Join(dir, "del_user.ts"))
+	if !strings.Contains(del2, "await db.query(query, [params.id]);") {
+		t.Errorf("pg delete should call db.query without reading rows:\n%s", del2)
+	}
+
+	runner := readFile(t, filepath.Join(dir, "runner.ts"))
+	if !strings.Contains(runner, `import type { Pool } from "pg";`) {
+		t.Errorf("runner should import Pool from pg:\n%s", runner)
+	}
+	if strings.Contains(runner, "export interface DB {") {
+		t.Errorf("pg runner should not declare the Bun DB interface:\n%s", runner)
+	}
+	if !strings.Contains(runner, "constructor(private db: Pool)") {
+		t.Errorf("Runner should take a pg.Pool:\n%s", runner)
+	}
+}
+
+// Default (no client option) stays on the Bun DB interface.
+func TestTsCodegenDefaultBunClient(t *testing.T) {
+	ir := parseSchema(t, directiveSchema)
+	schema := codegen.FromSchemaIR(ir)
+
+	get := buildQueryDesc(t, ir, "getUser", "get_user.aql", "select User { id, email } filter .id = $id<uuid>;")
+	dir := t.TempDir()
+	if err := codegen.Walk(schema, []codegen.QueryDescriptor{get}, &typescript.TsGenerator{}, &codegen.Context{OutDir: dir}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	query := readFile(t, filepath.Join(dir, "get_user.ts"))
+	if !strings.Contains(query, "getUser(db: DB,") || !strings.Contains(query, "db.unsafe<GetUserRow>(query, [params.id])") {
+		t.Errorf("default client should use the Bun DB interface:\n%s", query)
+	}
+	if strings.Contains(query, `from "pg"`) {
+		t.Errorf("default client should not import pg:\n%s", query)
+	}
+}
+
+// An invalid client option is a clear error, not silent bad output.
+func TestTsCodegenUnknownClientErrors(t *testing.T) {
+	ir := parseSchema(t, directiveSchema)
+	schema := codegen.FromSchemaIR(ir)
+	q := buildQueryDesc(t, ir, "getUser", "get_user.aql", "select User { id } filter .id = $id<uuid>;")
+	err := codegen.Walk(schema, []codegen.QueryDescriptor{q}, &typescript.TsGenerator{}, &codegen.Context{OutDir: t.TempDir(), Options: map[string]string{"client": "sqlite"}})
+	if err == nil {
+		t.Fatal("expected an error for an unknown client option")
+	}
+	if !strings.Contains(err.Error(), "sqlite") {
+		t.Errorf("error should name the bad option, got: %v", err)
+	}
+}
+
 func TestTsCodegenDirectiveImport(t *testing.T) {
 	ir := parseSchema(t, directiveSchema)
 	schema := codegen.FromSchemaIR(ir)
