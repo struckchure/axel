@@ -98,6 +98,20 @@ func TestDirectiveResponseConflictAborts(t *testing.T) {
 	}
 }
 
+// A shapeless `@response Application` over a type with enum columns must still
+// reuse the schema type: the enum type must appear on both the schema-type and
+// result-shape signatures (regression — fieldsSig and typeSig must agree on enums).
+func TestDirectiveReuseSchemaTypeWithEnums(t *testing.T) {
+	ir := parseSchema(t, enumRowSchema)
+	schema := codegen.FromSchemaIR(ir)
+
+	q := buildQueryDesc(t, ir, "", "list_applications.aql",
+		"@response Application\nmulti select Application filter .status = $status<ApplicationStatus>?;")
+	if err := codegen.Walk(schema, []codegen.QueryDescriptor{q}, &golang.GoGenerator{}, &codegen.Context{OutDir: t.TempDir(), Options: map[string]string{"package": "generated"}}); err != nil {
+		t.Fatalf("enum-bearing shape should reuse the schema type, got: %v", err)
+	}
+}
+
 func TestDirectiveReuseSchemaTypeWhenIdentical(t *testing.T) {
 	ir := parseSchema(t, directiveSchema)
 	schema := codegen.FromSchemaIR(ir)
@@ -112,6 +126,35 @@ func TestDirectiveReuseSchemaTypeWhenIdentical(t *testing.T) {
 	bad := buildQueryDesc(t, ir, "", "partial.aql", "@response User\nselect User { id } filter .id = $id<uuid>;")
 	if err := codegen.Walk(schema, []codegen.QueryDescriptor{bad}, &golang.GoGenerator{}, &codegen.Context{OutDir: t.TempDir()}); err == nil {
 		t.Fatal("expected conflict when @response name collides with a schema type of a different shape")
+	}
+}
+
+// An enum-backed result column must generate as the enum union type in TS and be
+// imported from models.ts (mirrors the enum-param path).
+func TestTsCodegenEnumResultField(t *testing.T) {
+	ir := parseSchema(t, enumRowSchema)
+	schema := codegen.FromSchemaIR(ir)
+
+	q := buildQueryDesc(t, ir, "", "get_application.aql", `select Application {
+      *,
+      network := (select Network filter .application = Application.id)
+    } filter .id = $id<uuid>;`)
+
+	dir := t.TempDir()
+	if err := codegen.Walk(schema, []codegen.QueryDescriptor{q}, &typescript.TsGenerator{}, &codegen.Context{OutDir: dir}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+
+	query := readFile(t, filepath.Join(dir, "get_application.ts"))
+	if !strings.Contains(query, "status: ApplicationStatus | null") {
+		t.Errorf("row interface missing enum-typed status:\n%s", query)
+	}
+	if !strings.Contains(query, "protocol: NetworkProtocol") {
+		t.Errorf("nested row interface missing enum-typed protocol:\n%s", query)
+	}
+	if !strings.Contains(query, "ApplicationStatus") || !strings.Contains(query, "NetworkProtocol") ||
+		!strings.Contains(query, `from "./models.ts"`) {
+		t.Errorf("query file should import enum types from models.ts:\n%s", query)
 	}
 }
 

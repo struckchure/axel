@@ -165,9 +165,17 @@ func (g *TsGenerator) emitQueryFile(ctx *codegen.Context, q codegen.QueryDescrip
 	hasParams := len(q.Params) > 0
 	hasRow := !q.Result.IsScalar && len(q.Result.Fields) > 0
 
-	// Types imported from models.ts: enum types used by params, plus any
-	// directive-named request/response types (which are hoisted there).
+	// Types imported from models.ts: enum types used by params and result
+	// fields, plus any directive-named request/response types (hoisted there).
 	modelsImports := paramEnumTypes(q.Params)
+	// Enum imports are only needed when the row interface is emitted inline here;
+	// a @response-named row is hoisted into models.ts (alongside the enums) and
+	// the query file imports the row type instead.
+	if hasRow && !rowNamed {
+		for _, e := range rowEnumTypes(q.Result.Fields) {
+			modelsImports = appendUnique(modelsImports, e)
+		}
+	}
 	if hasParams && paramsNamed {
 		modelsImports = appendUnique(modelsImports, paramsTypeName)
 	}
@@ -974,7 +982,14 @@ func emitTsRowInterface(buf *bytes.Buffer, name string, fields []codegen.ResultF
 			}
 			fmt.Fprintf(buf, "  %s: %s;\n", fieldName, tsType)
 		} else {
-			fmt.Fprintf(buf, "  %s: %s;\n", fieldName, aqlToTsType(f.AQLType, f.IsNullable))
+			tsType := aqlToTsType(f.AQLType, f.IsNullable)
+			if f.EnumType != "" {
+				tsType = f.EnumType
+				if f.IsNullable {
+					tsType += " | null"
+				}
+			}
+			fmt.Fprintf(buf, "  %s: %s;\n", fieldName, tsType)
 		}
 	}
 	fmt.Fprintf(buf, "}\n\n")
@@ -1029,6 +1044,27 @@ func paramEnumTypes(params []codegen.ParamDescriptor) []string {
 			names = append(names, p.EnumType)
 		}
 	}
+	return names
+}
+
+// rowEnumTypes collects the enum types referenced by a query's result fields,
+// recursing into nested sub-rows, so they can be imported from models.ts.
+func rowEnumTypes(fields []codegen.ResultField) []string {
+	var names []string
+	seen := map[string]bool{}
+	var walk func([]codegen.ResultField)
+	walk = func(fs []codegen.ResultField) {
+		for _, f := range fs {
+			if f.EnumType != "" && !seen[f.EnumType] {
+				seen[f.EnumType] = true
+				names = append(names, f.EnumType)
+			}
+			if len(f.SubFields) > 0 {
+				walk(f.SubFields)
+			}
+		}
+	}
+	walk(fields)
 	return names
 }
 

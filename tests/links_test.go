@@ -16,8 +16,8 @@ type Thing {
 }
 `)
 
-	// The FK column carries UNIQUE inline...
-	if !strings.Contains(up, `"application" UUID NOT NULL UNIQUE`) {
+	// The FK column carries a named UNIQUE inline...
+	if !strings.Contains(up, `"application" UUID NOT NULL CONSTRAINT "uq_thing_application" UNIQUE`) {
 		t.Errorf("up SQL missing UNIQUE on link column:\n%s", up)
 	}
 	// ...and still emits the foreign key row.

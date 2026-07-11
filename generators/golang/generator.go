@@ -428,6 +428,13 @@ func emitRowTypes(buf *bytes.Buffer, rootName string, fields []codegen.ResultFie
 			}
 		} else {
 			goType := aqlToGoType(f.AQLType, f.IsNullable)
+			if f.EnumType != "" {
+				// Enum-backed column → use the generated enum type (a string alias).
+				goType = f.EnumType
+				if f.IsNullable {
+					goType = "*" + goType
+				}
+			}
 			fmt.Fprintf(buf, "\t%s %s `json:%q db:%q`\n", fieldName, goType, f.Name, f.Name)
 		}
 	}

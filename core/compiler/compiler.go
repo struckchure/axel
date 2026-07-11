@@ -653,6 +653,15 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 		inferFilterParamType(c.params, expr.Right, expr.Left, rt)
 	}
 
+	// Null-coalesce ($x ?? .field) is a function, not an infix operator: emit
+	// COALESCE(left, right). A param operand is cast to the SQL type of the
+	// opposite operand so its type is determinable when the value is null.
+	if expr.Op == "??" {
+		lc := left + c.paramCastSuffix(expr.Left, expr.Right, rt)
+		rc := right + c.paramCastSuffix(expr.Right, expr.Left, rt)
+		return fmt.Sprintf("COALESCE(%s, %s)", lc, rc), nil
+	}
+
 	op := mapOp(expr.Op)
 	result := fmt.Sprintf("%s %s %s", left, op, right)
 
@@ -669,13 +678,7 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 			if operand == expr.Right {
 				other = expr.Left
 			}
-			cast := ""
-			if t := filterOperandSQLType(other, rt); t != "" {
-				cast = "::" + t
-			} else if bt, ok := asl.BuiltinSQLType(paramAQLType(c.params, operand.Param.Name)); ok {
-				cast = "::" + bt
-			}
-			result = fmt.Sprintf("(%s%s IS NULL OR %s)", ph, cast, result)
+			result = fmt.Sprintf("(%s%s IS NULL OR %s)", ph, c.paramCastSuffix(operand, other, rt), result)
 		}
 	}
 
@@ -871,8 +874,6 @@ func mapOp(op string) string {
 		return "AND"
 	case "or":
 		return "OR"
-	case "??":
-		return "IS NOT DISTINCT FROM" // coalesce-like; actually use COALESCE in practice
 	default:
 		return op
 	}
@@ -962,6 +963,24 @@ func filterOperandSQLType(p *aql.Primary, rt *asl.ResolvedType) string {
 	}
 	if _, ok := rt.Links[name]; ok {
 		return "UUID" // FK columns reference the target's uuid id
+	}
+	return ""
+}
+
+// paramCastSuffix returns a "::<sqltype>" cast for operand when it is a param, so
+// its type stays determinable when the value is null (COALESCE args and optional
+// `IS NULL` checks). The type is taken from the opposite operand's column when
+// available, else from the param's own resolved AQL type. Returns "" when operand
+// is not a param.
+func (c *compiler) paramCastSuffix(operand, other *aql.Primary, rt *asl.ResolvedType) string {
+	if operand == nil || operand.Param == nil {
+		return ""
+	}
+	if t := filterOperandSQLType(other, rt); t != "" {
+		return "::" + t
+	}
+	if bt, ok := asl.BuiltinSQLType(paramAQLType(c.params, operand.Param.Name)); ok {
+		return "::" + bt
 	}
 	return ""
 }

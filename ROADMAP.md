@@ -5,13 +5,15 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Phase 1: Core Foundation (In Progress)
 
 ### Schema Definition & Type Safety
+
 - [x] Design and implement schema definition language (SDL)
-- [ ] Create Go type generation from schema definitions
+- [x] Create Go type generation from schema definitions
 - [ ] Implement type-safe query client generation
 - [x] Support for basic data types (String, Int, Boolean, DateTime, Float, JSON)
 - [x] Relationship modeling (One-to-One, One-to-Many, Many-to-Many)
 
 ### SQL Migration Generation
+
 - [x] Build migration engine core
 - [x] Implement CREATE TABLE generation
 - [x] Implement ALTER TABLE operations
@@ -21,6 +23,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [x] Rollback capability
 
 ### Type-Safe Query Client
+
 - [ ] Basic CRUD operations (Create, Read, Update, Delete)
 - [ ] Query builder with fluent API
 - [ ] Type-safe select projections
@@ -32,15 +35,17 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Phase 2: Advanced Modeling Features
 
 ### Enhanced Schema Capabilities
-- [ ] Field-level validation rules
+
+- [x] Field-level validation rules
 - [ ] Custom field modifiers and decorators
 - [ ] Default values and auto-generated fields
-- [ ] Computed fields
+- [x] Computed fields
 - [ ] Field encryption support
 - [ ] Soft deletes
 - [ ] Timestamps (createdAt, updatedAt)
 
 ### Advanced Query Features
+
 - [ ] Aggregation functions (count, sum, avg, min, max)
 - [ ] Grouping and having clauses
 - [ ] Subquery support
@@ -50,6 +55,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [ ] Raw query execution with type safety
 
 ### Database Features
+
 - [ ] PostgreSQL and SQLite3 backend support
 - [ ] Connection pooling
 - [ ] Seed file generation and execution
@@ -59,6 +65,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Phase 3: Developer Experience
 
 ### CLI Tools
+
 - [ ] `axel init` - Initialize new project
 - [x] `axel generate` - Generate migrations and types
 - [x] `axel up` - Run pending migrations
@@ -67,6 +74,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [x] `axel validate` - Validate schema
 
 ### Code Generation
+
 - [ ] Multi-language support (TypeScript, JavaScript, Python)
 - [ ] Generate API routes from schema
 - [ ] Generate GraphQL types and resolvers
@@ -74,6 +82,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [ ] Generate test fixtures
 
 ### Documentation & IDE Support
+
 - [ ] IntelliSense support for VSCode
 - [ ] Schema validation and linting
 - [ ] Helpful error messages
@@ -83,6 +92,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Phase 4: Advanced Features
 
 ### Performance & Optimization
+
 - [ ] Query optimization suggestions
 - [ ] Automatic index recommendations
 - [ ] Query performance monitoring
@@ -90,6 +100,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [ ] Caching layer support
 
 ### Extensibility
+
 - [ ] Custom field type support
 - [ ] Plugin system for extensions
 - [ ] Custom validation rules
@@ -97,6 +108,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [ ] Custom generators
 
 ### Enterprise Features
+
 - [ ] Multi-tenancy support
 - [ ] Audit logging
 - [ ] Row-level security (RLS)
@@ -106,12 +118,14 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Phase 5: Ecosystem & Community
 
 ### Integrations
+
 - [ ] Popular ORM integrations
 - [ ] API framework integrations (Express, Fastify, Next.js, NestJS)
 - [ ] CLI framework integrations
 - [ ] Testing framework integrations
 
 ### Community & Tooling
+
 - [ ] Package registry/marketplace
 - [ ] Template repositories
 - [ ] Community schema library
@@ -123,6 +137,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 ## Priority Matrix
 
 ### High Priority (Core)
+
 - Schema definition language
 - Type generation
 - SQL migration generation
@@ -130,12 +145,14 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - CLI tools
 
 ### Medium Priority (Essential)
+
 - Advanced query features
 - Multiple database backends
 - IDE support
 - Documentation
 
 ### Low Priority (Nice-to-have)
+
 - Performance monitoring
 - Enterprise features
 - Ecosystem integrations

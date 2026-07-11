@@ -138,6 +138,7 @@ type ResultField struct {
 	Name       string        `json:"name"`
 	AQLType    string        `json:"aql_type,omitempty"`
 	SQLType    string        `json:"sql_type,omitempty"`
+	EnumType   string        `json:"enum_type,omitempty"` // enum type name when enum-backed
 	IsNullable bool          `json:"is_nullable"`
 	IsMultiple bool          `json:"is_multiple"` // multi-link → json array
 	TargetType string        `json:"target_type,omitempty"`
@@ -390,6 +391,7 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 					Name:       sf.Name,
 					AQLType:    sqlTypeToAQLType(prop.SQLType),
 					SQLType:    prop.SQLType,
+					EnumType:   prop.EnumType,
 					IsNullable: !prop.IsRequired,
 				})
 			} else if link, ok := rt.Links[sf.Name]; ok {
@@ -436,6 +438,7 @@ func scalarAndLinkFields(rt *asl.ResolvedType, skip map[string]bool) []ResultFie
 			Name:       p.Name,
 			AQLType:    sqlTypeToAQLType(p.SQLType),
 			SQLType:    p.SQLType,
+			EnumType:   p.EnumType,
 			IsNullable: !p.IsRequired,
 		})
 	}

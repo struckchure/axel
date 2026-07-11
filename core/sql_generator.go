@@ -105,20 +105,21 @@ func generateColumn(field Field, modelName string) (string, string) {
 		for _, constraint := range field.Constraints {
 			switch constraint.Name {
 			case "exclusive":
-				parts = append(parts, "UNIQUE")
+				parts = append(parts, namedConstraint(uniqueConstraintName(modelName, field.Name), "UNIQUE"))
 			case "pk":
-				parts = append(parts, "PRIMARY KEY")
+				parts = append(parts, namedConstraint(pkConstraintName(modelName), "PRIMARY KEY"))
 			}
 		}
 
 		// Generate foreign key constraint
 		refTable := formatIdentifier(field.Type)
 		refColumn := formatIdentifier(field.OnTarget.Name)
-		foreignKey = fmt.Sprintf(`FOREIGN KEY (%s) REFERENCES %s(%s)`, colName, refTable, refColumn)
+		fkBody := fmt.Sprintf(`FOREIGN KEY (%s) REFERENCES %s(%s)`, colName, refTable, refColumn)
 
 		if field.OnTarget.Name != "" {
-			foreignKey += " ON DELETE CASCADE"
+			fkBody += " ON DELETE CASCADE"
 		}
+		foreignKey = namedConstraint(fkConstraintName(modelName, field.Name), fkBody)
 	} else {
 		// Regular column
 		if field.IsRequired {
@@ -134,17 +135,17 @@ func generateColumn(field Field, modelName string) (string, string) {
 		for _, constraint := range field.Constraints {
 			switch constraint.Name {
 			case "exclusive":
-				parts = append(parts, "UNIQUE")
+				parts = append(parts, namedConstraint(uniqueConstraintName(modelName, field.Name), "UNIQUE"))
 			case "pk":
-				parts = append(parts, "PRIMARY KEY")
+				parts = append(parts, namedConstraint(pkConstraintName(modelName), "PRIMARY KEY"))
 			}
 		}
 
-		// Length constraints → inline CHECK clauses.
-		parts = append(parts, lengthCheckClauses(colName, field)...)
+		// Length constraints → named CHECK clauses.
+		parts = append(parts, lengthCheckClauses(modelName, field)...)
 
-		// Enum-backed column → membership CHECK.
-		if clause := enumCheckClause(colName, field); clause != "" {
+		// Enum-backed column → named membership CHECK.
+		if clause := enumCheckClause(modelName, field); clause != "" {
 			parts = append(parts, clause)
 		}
 	}
@@ -152,13 +153,15 @@ func generateColumn(field Field, modelName string) (string, string) {
 	return strings.Join(parts, " "), foreignKey
 }
 
-// enumCheckClause returns an inline CHECK clause restricting an enum-backed
-// column to its allowed values. colName must already be a quoted identifier.
-func enumCheckClause(colName string, field Field) string {
+// enumCheckClause returns a named CHECK clause restricting an enum-backed column
+// to its allowed values, e.g. `CONSTRAINT "chk_user_role_enum" CHECK ("role" IN (…))`.
+func enumCheckClause(tableName string, field Field) string {
 	if len(field.EnumValues) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("CHECK (%s IN (%s))", colName, quotedEnumValues(field.EnumValues))
+	colName := formatIdentifier(field.Name)
+	body := fmt.Sprintf("CHECK (%s IN (%s))", colName, quotedEnumValues(field.EnumValues))
+	return namedConstraint(enumConstraintName(tableName, field.Name), body)
 }
 
 // quotedEnumValues renders enum values as a comma-separated list of SQL string
@@ -171,13 +174,16 @@ func quotedEnumValues(values []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-// lengthCheckClauses returns inline CHECK clauses for min_length/max_length
-// constraints on a string column. colName must already be a quoted identifier.
+// lengthCheckClauses returns named CHECK clauses for min_length/max_length
+// constraints on a string column, e.g.
+// `CONSTRAINT "chk_user_email_min_length" CHECK (char_length("email") >= 6)`.
 // Non-string columns are skipped since char_length only applies to text.
-func lengthCheckClauses(colName string, field Field) []string {
+func lengthCheckClauses(tableName string, field Field) []string {
 	if field.Type != "str" {
 		return nil
 	}
+
+	colName := formatIdentifier(field.Name)
 
 	var clauses []string
 	for _, constraint := range field.Constraints {
@@ -186,9 +192,11 @@ func lengthCheckClauses(colName string, field Field) []string {
 		}
 		switch constraint.Name {
 		case "min_length":
-			clauses = append(clauses, fmt.Sprintf("CHECK (char_length(%s) >= %s)", colName, constraint.Args[0]))
+			body := fmt.Sprintf("CHECK (char_length(%s) >= %s)", colName, constraint.Args[0])
+			clauses = append(clauses, namedConstraint(lengthConstraintName(tableName, field.Name, "min_length"), body))
 		case "max_length":
-			clauses = append(clauses, fmt.Sprintf("CHECK (char_length(%s) <= %s)", colName, constraint.Args[0]))
+			body := fmt.Sprintf("CHECK (char_length(%s) <= %s)", colName, constraint.Args[0])
+			clauses = append(clauses, namedConstraint(lengthConstraintName(tableName, field.Name, "max_length"), body))
 		}
 	}
 
@@ -213,6 +221,34 @@ func createIndexSQL(tableName string, columns []string) string {
 		formatIdentifier(tableName),
 		strings.Join(cols, ", "),
 	)
+}
+
+// namedConstraint renders `CONSTRAINT "<name>" <body>`, quoting the name. Used so
+// every constraint carries a deterministic name and can be dropped by a later
+// migration, whether it was born in a CREATE TABLE or an ALTER TABLE.
+func namedConstraint(name, body string) string {
+	return fmt.Sprintf("CONSTRAINT %s %s", formatIdentifier(name), body)
+}
+
+// fkConstraintName names a single-column foreign key: fk_<table>_<col>.
+func fkConstraintName(tableName, colName string) string {
+	return fmt.Sprintf("fk_%s_%s", lo.SnakeCase(tableName), lo.SnakeCase(colName))
+}
+
+// uniqueConstraintName names a single-column unique constraint: uq_<table>_<col>.
+// Consistent with the type-level uq_<table>_<cols…> from typeConstraintName.
+func uniqueConstraintName(tableName, colName string) string {
+	return fmt.Sprintf("uq_%s_%s", lo.SnakeCase(tableName), lo.SnakeCase(colName))
+}
+
+// pkConstraintName names a primary key: pk_<table>. Matches the type-level scheme.
+func pkConstraintName(tableName string) string {
+	return "pk_" + lo.SnakeCase(tableName)
+}
+
+// enumConstraintName names an enum-membership CHECK: chk_<table>_<col>_enum.
+func enumConstraintName(tableName, colName string) string {
+	return fmt.Sprintf("chk_%s_%s_enum", lo.SnakeCase(tableName), lo.SnakeCase(colName))
 }
 
 // typeConstraintName builds a deterministic name for a type-level constraint.
@@ -288,22 +324,30 @@ func generateIndexes(model Model) []string {
 }
 
 func generateJunctionTable(modelName string, field Field) string {
-	tableName := formatIdentifier(fmt.Sprintf("%s_%s", lo.SnakeCase(modelName), lo.SnakeCase(field.Name)))
+	junction := fmt.Sprintf("%s_%s", lo.SnakeCase(modelName), lo.SnakeCase(field.Name))
+	tableName := formatIdentifier(junction)
 	refTable := formatIdentifier(field.Type)
 	modelTable := formatIdentifier(modelName)
+
+	pk := namedConstraint(pkConstraintName(junction),
+		fmt.Sprintf("PRIMARY KEY (%s, %s)", formatIdentifier(modelName), formatIdentifier(field.Type)))
+	fkModel := namedConstraint(fkConstraintName(junction, modelName),
+		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(modelName), modelTable, "id"))
+	fkTarget := namedConstraint(fkConstraintName(junction, field.Type),
+		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(field.Type), refTable, "id"))
 
 	return fmt.Sprintf(`CREATE TABLE %s (
   %s UUID NOT NULL,
   %s UUID NOT NULL,
-  PRIMARY KEY (%s, %s),
-  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE,
-  FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE
+  %s,
+  %s,
+  %s
 );`,
 		tableName,
 		formatIdentifier(modelName), formatIdentifier(field.Type),
-		formatIdentifier(modelName), formatIdentifier(field.Type),
-		formatIdentifier(modelName), modelTable, "id", // TODO: should be the reference field
-		formatIdentifier(field.Type), refTable, "id", // TODO: should be the reference field
+		pk,       // TODO: reference fields assumed to be "id"
+		fkModel,  // TODO: should be the reference field
+		fkTarget, // TODO: should be the reference field
 	)
 }
 

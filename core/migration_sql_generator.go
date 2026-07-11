@@ -292,14 +292,14 @@ func generateAddColumn(tableName string, field Field) string {
 	for _, constraint := range field.Constraints {
 		switch constraint.Name {
 		case "exclusive":
-			parts = append(parts, "UNIQUE")
+			parts = append(parts, namedConstraint(uniqueConstraintName(tableName, field.Name), "UNIQUE"))
 		}
 	}
 
-	// Length + enum constraints → inline CHECK clauses.
+	// Length + enum constraints → named CHECK clauses.
 	if !isLink {
-		parts = append(parts, lengthCheckClauses(formatIdentifier(field.Name), field)...)
-		if clause := enumCheckClause(formatIdentifier(field.Name), field); clause != "" {
+		parts = append(parts, lengthCheckClauses(tableName, field)...)
+		if clause := enumCheckClause(tableName, field); clause != "" {
 			parts = append(parts, clause)
 		}
 	}
@@ -310,8 +310,10 @@ func generateAddColumn(tableName string, field Field) string {
 	if isLink {
 		refTable := lo.SnakeCase(field.Type)
 		refColumn := lo.SnakeCase(field.OnTarget.Name)
-		stmt += fmt.Sprintf("\nALTER TABLE \"%s\" ADD CONSTRAINT fk_%s_%s FOREIGN KEY (%s) REFERENCES \"%s\"(%s) ON DELETE CASCADE;",
-			tableName, tableName, colName, colName, refTable, refColumn)
+		stmt += fmt.Sprintf("\nALTER TABLE \"%s\" ADD %s;",
+			tableName,
+			namedConstraint(fkConstraintName(tableName, field.Name),
+				fmt.Sprintf("FOREIGN KEY (%s) REFERENCES \"%s\"(%s) ON DELETE CASCADE", colName, refTable, refColumn)))
 	}
 
 	return stmt
@@ -374,7 +376,7 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 			continue
 		}
 
-		name := lengthConstraintName(tableName, colName, kind)
+		name := formatIdentifier(lengthConstraintName(tableName, colName, kind))
 		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
 
 		if hasNew {
@@ -399,7 +401,7 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 
 	// Enum membership change (add / remove / change of allowed values).
 	if !slices.Equal(oldField.EnumValues, newField.EnumValues) {
-		name := fmt.Sprintf("chk_%s_%s_enum", tableName, colName)
+		name := formatIdentifier(enumConstraintName(tableName, colName))
 		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
 		addNew := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s IN (%s));",
 			tableName, name, formatIdentifier(newField.Name), quotedEnumValues(newField.EnumValues))
@@ -467,9 +469,10 @@ func lengthConstraintMap(field Field) map[string]string {
 }
 
 // lengthConstraintName builds the deterministic name for a named length CHECK
-// constraint added via ALTER TABLE. tableName and colName are snake_case.
+// constraint: chk_<table>_<col>_<kind>. Snakes its inputs so raw or already-snake
+// names both yield the same result.
 func lengthConstraintName(tableName, colName, kind string) string {
-	return fmt.Sprintf("chk_%s_%s_%s", tableName, colName, kind)
+	return fmt.Sprintf("chk_%s_%s_%s", lo.SnakeCase(tableName), lo.SnakeCase(colName), kind)
 }
 
 // lengthCheckOp returns the comparison operator for a length constraint kind.

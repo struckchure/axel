@@ -71,6 +71,9 @@ func fieldsSig(fields []ResultField) string {
 	toks := make([]string, 0, len(fields))
 	for _, f := range fields {
 		t := f.AQLType
+		if f.EnumType != "" {
+			t = f.EnumType
+		}
 		if len(f.SubFields) > 0 {
 			t = "{" + fieldsSig(f.SubFields) + "}"
 		}
@@ -86,7 +89,11 @@ func fieldsSig(fields []ResultField) string {
 func typeSig(td TypeDescriptor) string {
 	toks := make([]string, 0, len(td.Properties)+len(td.Links))
 	for _, p := range td.Properties {
-		toks = append(toks, fmt.Sprintf("%s:%s:%t:%t", p.Name, p.AQLType, !p.IsRequired, p.IsMulti))
+		t := p.AQLType
+		if p.EnumType != "" {
+			t = p.EnumType
+		}
+		toks = append(toks, fmt.Sprintf("%s:%s:%t:%t", p.Name, t, !p.IsRequired, p.IsMulti))
 	}
 	for _, l := range td.Links {
 		if l.IsMulti {
