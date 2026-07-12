@@ -1,11 +1,17 @@
 import { defineConfig } from "vitepress";
 
+import { aql, asl } from "./languages";
+
 export default defineConfig({
   base: "/axel/",
   title: "Axel",
   description: "Schema and query language tool for PostgreSQL",
 
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/axel/logo.svg" }]],
+
+  markdown: {
+    languages: [asl, aql],
+  },
 
   themeConfig: {
     logo: "/logo.svg",
@@ -16,6 +22,7 @@ export default defineConfig({
         items: [
           { text: "Introduction", link: "/" },
           { text: "Installation", link: "/installation" },
+          { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
         ],
       },
@@ -35,6 +42,7 @@ export default defineConfig({
         items: [
           { text: "Introduction", link: "/" },
           { text: "Installation", link: "/installation" },
+          { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
         ],
       },
