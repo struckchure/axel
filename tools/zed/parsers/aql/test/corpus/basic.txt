@@ -86,3 +86,36 @@ multi select Project { *, members: { id } };
           (shape_field
             name: (field_identifier
               (identifier))))))))
+
+==================
+boolean filter with grouping
+==================
+
+select A { x } filter (.n = 1 or .m = 2) and .k = 3;
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))))
+    (filter
+      (expression
+        (parenthesized_expression
+          (expression
+            (path
+              step: (field_identifier
+                (identifier)))
+            (integer)
+            (path
+              step: (field_identifier
+                (identifier)))
+            (integer)))
+        (path
+          step: (field_identifier
+            (identifier)))
+        (integer)))))

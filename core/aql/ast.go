@@ -157,11 +157,46 @@ type Order struct {
 	Dir  string `parser:"@( 'asc' | 'desc' )?"`
 }
 
-// Expr is an AQL expression with an optional binary operation.
+// Expr is a boolean expression: one or more and-groups joined by `or`.
+//
+// `and` binds tighter than `or`, so `a or b and c` means `a or (b and c)`.
+// Parenthesize to override — a group is a Primary (see Primary.SubExpr), so it
+// nests to any depth: (a or b) and (c or d) and e
 type Expr struct {
+	Left *AndExpr   `parser:"@@"`
+	Rest []*AndExpr `parser:"( 'or' @@ )*"`
+}
+
+// AndExpr is one or more comparisons joined by `and`.
+type AndExpr struct {
+	Left *Cmp   `parser:"@@"`
+	Rest []*Cmp `parser:"( 'and' @@ )*"`
+}
+
+// Cmp is a single comparison, or a bare operand when Op is empty.
+type Cmp struct {
 	Left  *Primary `parser:"@@"`
-	Op    string   `parser:"( @( '!=' | '<=' | '>=' | '=' | '<' | '>' | 'and' | 'or' | '??' | 'in' | 'like' | 'ilike' )"`
+	Op    string   `parser:"( @( '!=' | '<=' | '>=' | '=' | '<' | '>' | '??' | 'in' | 'like' | 'ilike' )"`
 	Right *Primary `parser:"@@ )?"`
+}
+
+// SingleCmp returns the lone comparison when the expression does not chain
+// and/or, else nil.
+func (e *Expr) SingleCmp() *Cmp {
+	if e == nil || len(e.Rest) != 0 || e.Left == nil || len(e.Left.Rest) != 0 {
+		return nil
+	}
+	return e.Left.Left
+}
+
+// SoloPrimary returns the lone operand when the expression is a single operand
+// with no operator (e.g. a bare `(select ...)` or `$param`), else nil.
+func (e *Expr) SoloPrimary() *Primary {
+	c := e.SingleCmp()
+	if c == nil || c.Op != "" {
+		return nil
+	}
+	return c.Left
 }
 
 // Primary is a single expression operand.

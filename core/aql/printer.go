@@ -144,10 +144,32 @@ func printExpr(b *strings.Builder, e *Expr) {
 	if e == nil {
 		return
 	}
-	printPrimary(b, e.Left)
-	if e.Op != "" {
-		fmt.Fprintf(b, " %s ", e.Op)
-		printPrimary(b, e.Right)
+	printAndExpr(b, e.Left)
+	for _, a := range e.Rest {
+		b.WriteString(" or ")
+		printAndExpr(b, a)
+	}
+}
+
+func printAndExpr(b *strings.Builder, a *AndExpr) {
+	if a == nil {
+		return
+	}
+	printCmp(b, a.Left)
+	for _, c := range a.Rest {
+		b.WriteString(" and ")
+		printCmp(b, c)
+	}
+}
+
+func printCmp(b *strings.Builder, c *Cmp) {
+	if c == nil {
+		return
+	}
+	printPrimary(b, c.Left)
+	if c.Op != "" {
+		fmt.Fprintf(b, " %s ", c.Op)
+		printPrimary(b, c.Right)
 	}
 }
 
