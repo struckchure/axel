@@ -367,6 +367,7 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 	// falls through to scalar compilation below.
 	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField == "" {
 		sq := p.SubQuery
+		multi := p.SubQueryMulti
 		sqRT, err := c.resolveType(sq.TypeName)
 		if err != nil {
 			return "", "", err
@@ -409,7 +410,14 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 		}
 
 		sub := sqAlias + "_" + f.Name + "_sub"
-		col := fmt.Sprintf(`(SELECT json_agg(row_to_json(%s)) FROM (%s) %s) AS %s`, sub, innerSQL, sub, f.Name)
+		var col string
+		if multi {
+			// multi select → JSON array (empty array, not null, when nothing matches).
+			col = fmt.Sprintf(`(SELECT COALESCE(json_agg(row_to_json(%s)), '[]') FROM (%s) %s) AS %s`, sub, innerSQL, sub, f.Name)
+		} else {
+			// select → single JSON object (null when nothing matches).
+			col = fmt.Sprintf(`(SELECT row_to_json(%s) FROM (%s LIMIT 1) %s) AS %s`, sub, innerSQL, sub, f.Name)
+		}
 		return col, "", nil
 	}
 
@@ -769,6 +777,9 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 
 	switch {
 	case p.SubQuery != nil:
+		if p.SubQueryMulti && p.SubQueryField != "" {
+			return "", fmt.Errorf("cannot project field %q from a `multi select` (it yields a set, not a row)", p.SubQueryField)
+		}
 		return c.compileSubQuery(p.SubQuery, p.SubQueryField, p.SubQueryFieldType)
 
 	case p.SubInsert != nil:

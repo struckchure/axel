@@ -181,6 +181,7 @@ module.exports = grammar({
       prec.right(
         seq(
           "(",
+          optional("multi"),
           "select",
           $._object_select,
           ")",
