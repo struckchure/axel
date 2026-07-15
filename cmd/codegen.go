@@ -121,6 +121,9 @@ External generators (any language):
 			if err != nil {
 				return fmt.Errorf("building descriptor for %q: %w", path, err)
 			}
+			for _, w := range qd.Warnings {
+				fmt.Fprintf(os.Stderr, "warning: %s: %s\n", path, w)
+			}
 			queries = append(queries, qd)
 		}
 

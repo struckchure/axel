@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -91,6 +92,7 @@ type QueryDescriptor struct {
 	Params     []ParamDescriptor `json:"params,omitempty"`
 	Result     ResultDescriptor  `json:"result"`
 	Directives map[string]string `json:"directives,omitempty"` // @name/@request/@response, etc.
+	Warnings   []string          `json:"warnings,omitempty"`   // non-fatal codegen notes (e.g. untyped computed fields)
 }
 
 // Directive returns the value of the named directive and whether it was set.
@@ -292,7 +294,7 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 			desc.Result.IsMultiple = stmt.Select.Multi
 			rt := ir.ObjectTypes[body.TypeName]
 			if rt != nil && body.Shape != nil {
-				desc.Result.Fields = buildShapeFields(body.Shape, rt, ir)
+				desc.Result.Fields = buildShapeFields(body.Shape, rt, ir, &desc.Warnings)
 			} else if rt != nil {
 				// No explicit shape — all properties
 				desc.Result.Fields = allPropsAsFields(rt, ir)
@@ -321,7 +323,9 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 }
 
 // buildShapeFields recursively resolves AQL shape fields against the schema.
-func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) []ResultField {
+// warnings accumulates non-fatal notes (e.g. a computed field whose type could
+// not be inferred and needs an explicit cast).
+func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, warnings *[]string) []ResultField {
 	// Fields named explicitly are skipped by a `*` splat (explicit wins).
 	explicit := make(map[string]bool)
 	for _, sf := range shape.Fields {
@@ -360,7 +364,7 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 				var subFields []ResultField
 				if targetRT != nil {
 					if sq.Shape != nil {
-						subFields = buildShapeFields(sq.Shape, targetRT, ir)
+						subFields = buildShapeFields(sq.Shape, targetRT, ir, warnings)
 					} else {
 						subFields = allPropsAsFields(targetRT, ir)
 					}
@@ -373,7 +377,34 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 					TargetType: sq.TypeName,
 					SubFields:  subFields,
 				})
+			} else if p := sf.Computed.SoloPrimary(); p != nil && p.Path != nil {
+				// Path computed field. Precedence: explicit cast > inferred type >
+				// `any` (json) with a warning.
+				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+				if p.Path.Cast != "" {
+					if sqlType, aqlType, enumType, ok := castResultType(ir, p.Path.Cast); ok {
+						rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+					}
+				} else if aqlType, sqlType, enumType, ok := inferPathType(ir, rt, p.Path.Steps); ok {
+					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+				} else {
+					*warnings = append(*warnings, fmt.Sprintf(
+						"computed field %q: could not infer a type for .%s; add a cast (e.g. .%s<uuid>) — typed as `any` for now",
+						sf.Name, strings.Join(p.Path.Steps, "."), strings.Join(p.Path.Steps, ".")))
+				}
+				fields = append(fields, rf)
+			} else if p := sf.Computed.SoloPrimary(); p != nil && p.SubExpr != nil && p.SubExprCast != "" {
+				// Cast on a parenthesized expression — name := (expr)<type>.
+				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+				if sqlType, aqlType, enumType, ok := castResultType(ir, p.SubExprCast); ok {
+					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+				}
+				fields = append(fields, rf)
 			} else {
+				// A computed expression we can't statically type (coalesce, function
+				// call, arithmetic, …). Fall back to `any` and tell the user.
+				*warnings = append(*warnings, fmt.Sprintf(
+					"computed field %q: could not infer a type; wrap it in a cast, e.g. (expr)<type> — typed as `any` for now", sf.Name))
 				fields = append(fields, ResultField{
 					Name:       sf.Name,
 					AQLType:    "json",
@@ -397,7 +428,7 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 				TargetType: link.TargetType,
 			}
 			if targetRT != nil {
-				rf.SubFields = buildShapeFields(sf.SubShape, targetRT, ir)
+				rf.SubFields = buildShapeFields(sf.SubShape, targetRT, ir, warnings)
 			}
 			fields = append(fields, rf)
 		} else {
@@ -593,6 +624,37 @@ func castResultType(ir *asl.SchemaIR, annot string) (sqlType, aqlType, enumType 
 		if st, found := asl.BuiltinSQLType(s.Base); found {
 			return st, s.Base, "", true
 		}
+	}
+	return "", "", "", false
+}
+
+// inferPathType resolves a dotted path against a starting type through the
+// schema and returns the terminal (aqlType, sqlType, enumType). A path ending on
+// a scalar property yields that property's type; a path ending on a link yields
+// its FK type (uuid). ok is false when a step can't be resolved as a link/property
+// or the path passes through something non-traversable (e.g. a computed field) —
+// the caller then falls back to `any` with a warning.
+func inferPathType(ir *asl.SchemaIR, rt *asl.ResolvedType, steps []string) (aqlType, sqlType, enumType string, ok bool) {
+	cur := rt
+	for i, step := range steps {
+		last := i == len(steps)-1
+		if cur == nil {
+			return "", "", "", false
+		}
+		if prop, found := cur.Properties[step]; found {
+			if !last {
+				return "", "", "", false // a scalar can't be traversed further
+			}
+			return sqlTypeToAQLType(prop.SQLType), prop.SQLType, prop.EnumType, true
+		}
+		if link, found := cur.Links[step]; found {
+			if last {
+				return "uuid", "UUID", "", true // the FK reference column
+			}
+			cur = ir.ObjectTypes[link.TargetType]
+			continue
+		}
+		return "", "", "", false // unknown, or a computed field we can't type
 	}
 	return "", "", "", false
 }

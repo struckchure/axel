@@ -582,11 +582,46 @@ filter .active = true and .age >= $min_age
 order by .created_at desc
 ```
 
-Multi-step paths traverse a link:
+Multi-step paths traverse a link — and chain across several — resolving to a
+correlated subquery per hop:
 
 ```aql
 filter .author.email = $email
+filter .installation.installation_id = $iid<int64>
 ```
+
+### Computed field types
+
+The type of a computed shape field is resolved in this order:
+
+1. **Explicit cast** — a `<Type>` annotation always wins.
+2. **Inferred** — a plain path is typed by resolving it through the schema: a
+   path ending on a property takes that property's type; one ending on a link
+   takes its FK type (`uuid`).
+3. **`any`** — anything else (a coalesce, function call, arithmetic, or a path
+   that can't be resolved to a scalar) is typed as `any` (`json`), and codegen
+   prints a warning suggesting a cast.
+
+So the common case needs no annotation:
+
+```aql
+multi select Application {
+  *,
+  owner := .project.organization.owner.id,    # inferred uuid
+  iid   := .installation.installation_id      # inferred int64
+}
+```
+
+Add a `<Type>` cast to override inference, or to give a type to an expression
+that can't be inferred — it uses the same type names as
+[parameter annotations](#typed-parameters) and also emits a SQL `::TYPE`:
+
+```aql
+who := (.name ?? .email)<str>   # otherwise: warning + typed as any
+```
+
+An invalid path (a step that resolves to no property or link) is a **compile
+error**, not a warning.
 
 ---
 
@@ -635,6 +670,6 @@ Primary     = "(" "multi"? "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?
             | String | Int | Float | Ident
 
 FuncCall      = Ident "(" (Expr ("," Expr)*)? ")"
-PathExpr      = ("." Ident)+
+PathExpr      = ("." Ident)+ ("<" Ident ">")?   # optional cast: .a.b.c<uuid>
 QualifiedIdent = Ident "." Ident           # e.g. User.id in a sub-select filter
 ```

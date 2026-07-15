@@ -401,7 +401,18 @@
   {
     "type": "parenthesized_expression",
     "named": true,
-    "fields": {},
+    "fields": {
+      "cast": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,
@@ -417,6 +428,16 @@
     "type": "path",
     "named": true,
     "fields": {
+      "cast": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
       "step": {
         "multiple": true,
         "required": true,

@@ -204,7 +204,17 @@ module.exports = grammar({
         ")",
       ),
 
-    parenthesized_expression: ($) => seq("(", $.expression, ")"),
+    // Parenthesized expression with an optional `<Type>` cast: (a ?? b)<str>
+    // prec.right resolves the "<" cast-vs-comparison ambiguity (see `path`).
+    parenthesized_expression: ($) =>
+      prec.right(
+        seq(
+          "(",
+          $.expression,
+          ")",
+          optional(seq("<", field("cast", $.type_identifier), ">")),
+        ),
+      ),
 
     function_call: ($) =>
       seq(
@@ -215,7 +225,16 @@ module.exports = grammar({
       ),
 
     // .author.name
-    path: ($) => repeat1(seq(".", field("step", $.field_identifier))),
+    // Dotted path with an optional `<Type>` cast: .a.b.c<uuid>
+    // prec.right so a "<" right after the path is greedily taken as the start of
+    // a cast rather than reduced and treated as a "<" comparison.
+    path: ($) =>
+      prec.right(
+        seq(
+          repeat1(seq(".", field("step", $.field_identifier))),
+          optional(seq("<", field("cast", $.type_identifier), ">")),
+        ),
+      ),
 
     // $name, $name?, $name<type>, $name<type>?
     // prec.right so a "<" right after a parameter is greedily taken as the start

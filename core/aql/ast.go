@@ -215,8 +215,11 @@ type Primary struct {
 	// Sub-insert: (insert TypeName { field := expr, ... })
 	// Must come before SubExpr so that '(' 'insert' is matched here.
 	SubInsert *InsertBody `parser:"| '(' @@ ')'"`
-	// Sub-expression or parenthesized expression: (expr)
-	SubExpr  *Expr       `parser:"| '(' @@ ')'"`
+	// Sub-expression or parenthesized expression: (expr), with an optional
+	// `<Type>` cast — (.name ?? .email)<str> — so an otherwise un-inferable
+	// computed field can be given a type.
+	SubExpr     *Expr  `parser:"| '(' @@ ')'"`
+	SubExprCast string `parser:"( '<' @Ident '>' )?"`
 	// Function call: count(...)
 	FuncCall *FuncCall `parser:"| @@"`
 	// Path expression: .email or .author.name
@@ -263,7 +266,11 @@ type FuncCall struct {
 }
 
 // PathExpr is a dotted path: .email / .author.name
+//
+// An optional trailing `<Type>` casts the resolved value — .a.b.c<uuid> — which
+// also gives a computed shape field a concrete type instead of json.
 type PathExpr struct {
 	Pos   lexer.Position
 	Steps []string `parser:"( '.' @Ident )+"`
+	Cast  string   `parser:"( '<' @Ident '>' )?"`
 }

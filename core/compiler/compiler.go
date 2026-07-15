@@ -815,13 +815,32 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		if err != nil {
 			return "", err
 		}
-		return "(" + inner + ")", nil
+		sql := "(" + inner + ")"
+		if p.SubExprCast != "" {
+			sqlType, err := c.annotSQLType(p.SubExprCast)
+			if err != nil {
+				return "", err
+			}
+			sql += "::" + sqlType
+		}
+		return sql, nil
 
 	case p.FuncCall != nil:
 		return c.compileFuncCall(p.FuncCall, alias, rt)
 
 	case p.Path != nil:
-		return c.compilePath(p.Path, alias, rt)
+		sql, err := c.compilePath(p.Path, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		if p.Path.Cast != "" {
+			sqlType, err := c.annotSQLType(p.Path.Cast)
+			if err != nil {
+				return "", err
+			}
+			sql = fmt.Sprintf("(%s)::%s", sql, sqlType)
+		}
+		return sql, nil
 
 	case p.Param != nil:
 		aqlType, enumType, err := c.resolveParamType(p.Param.Name, p.Param.Type)

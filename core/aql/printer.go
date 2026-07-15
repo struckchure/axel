@@ -206,6 +206,9 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString("(")
 		printExpr(b, p.SubExpr)
 		b.WriteString(")")
+		if p.SubExprCast != "" {
+			b.WriteString("<" + p.SubExprCast + ">")
+		}
 	case p.FuncCall != nil:
 		fmt.Fprintf(b, "%s(", p.FuncCall.Name)
 		for i, a := range p.FuncCall.Args {
@@ -217,6 +220,9 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString(")")
 	case p.Path != nil:
 		b.WriteString("." + strings.Join(p.Path.Steps, "."))
+		if p.Path.Cast != "" {
+			b.WriteString("<" + p.Path.Cast + ">")
+		}
 	case p.Param != nil:
 		fmt.Fprintf(b, "$%s", p.Param.Name)
 		if p.Param.Type != "" {
