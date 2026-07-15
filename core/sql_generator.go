@@ -352,6 +352,10 @@ func generateJunctionTable(modelName string, field Field) string {
 }
 
 func mapType(axelType string) string {
+	// Keep in sync with the canonical builtin map in core/asl/resolver.go
+	// (builtinTypes). datetime MUST be TIMESTAMPTZ: naive TIMESTAMP columns
+	// serialize without an offset in row_to_json output, which breaks Go's
+	// encoding/json (RFC3339) when nested relations are decoded from JSON.
 	typeMap := map[string]string{
 		"str":      "TEXT",
 		"int16":    "SMALLINT",
@@ -361,7 +365,10 @@ func mapType(axelType string) string {
 		"float64":  "DOUBLE PRECISION",
 		"bool":     "BOOLEAN",
 		"uuid":     "UUID",
-		"datetime": "TIMESTAMP",
+		"datetime": "TIMESTAMPTZ",
+		"date":     "DATE",
+		"time":     "TIME",
+		"decimal":  "NUMERIC",
 		"json":     "JSONB",
 		"bytes":    "BYTEA",
 	}
@@ -396,10 +403,12 @@ func mapDefault(defaultVal, sqlType string) string {
 }
 
 func isBuiltinType(typeName string) bool {
+	// Keep in sync with the canonical builtin map in core/asl/resolver.go
+	// (builtinTypes) and with mapType above.
 	builtins := []string{
 		"str", "int16", "int32", "int64",
 		"float32", "float64", "bool", "uuid",
-		"datetime", "json", "bytes",
+		"datetime", "date", "time", "decimal", "json", "bytes",
 	}
 
 	return slices.Contains(builtins, typeName)
