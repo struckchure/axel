@@ -217,6 +217,9 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString(")")
 	case p.Path != nil:
 		b.WriteString("." + strings.Join(p.Path.Steps, "."))
+		if p.Path.Cast != "" {
+			b.WriteString("<" + p.Path.Cast + ">")
+		}
 	case p.Param != nil:
 		fmt.Fprintf(b, "$%s", p.Param.Name)
 		if p.Param.Type != "" {

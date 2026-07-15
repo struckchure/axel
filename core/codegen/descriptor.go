@@ -373,6 +373,13 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 					TargetType: sq.TypeName,
 					SubFields:  subFields,
 				})
+			} else if p := sf.Computed.SoloPrimary(); p != nil && p.Path != nil && p.Path.Cast != "" {
+				// Cast path — name := .a.b.c<uuid> — is typed by the cast.
+				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+				if sqlType, aqlType, enumType, ok := castResultType(ir, p.Path.Cast); ok {
+					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+				}
+				fields = append(fields, rf)
 			} else {
 				fields = append(fields, ResultField{
 					Name:       sf.Name,

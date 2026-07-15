@@ -263,7 +263,11 @@ type FuncCall struct {
 }
 
 // PathExpr is a dotted path: .email / .author.name
+//
+// An optional trailing `<Type>` casts the resolved value — .a.b.c<uuid> — which
+// also gives a computed shape field a concrete type instead of json.
 type PathExpr struct {
 	Pos   lexer.Position
 	Steps []string `parser:"( '.' @Ident )+"`
+	Cast  string   `parser:"( '<' @Ident '>' )?"`
 }

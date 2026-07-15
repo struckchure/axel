@@ -417,6 +417,16 @@
     "type": "path",
     "named": true,
     "fields": {
+      "cast": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
       "step": {
         "multiple": true,
         "required": true,

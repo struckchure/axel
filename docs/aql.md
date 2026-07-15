@@ -582,10 +582,31 @@ filter .active = true and .age >= $min_age
 order by .created_at desc
 ```
 
-Multi-step paths traverse a link:
+Multi-step paths traverse a link — and chain across several — resolving to a
+correlated subquery per hop:
 
 ```aql
 filter .author.email = $email
+filter .installation.installation_id = $iid<int64>
+```
+
+### Casting a path
+
+A path may carry an optional `<Type>` cast, using the same type names as
+[parameter annotations](#typed-parameters). Besides emitting a SQL `::TYPE`, the
+cast gives a **computed shape field a concrete type** — without it a computed
+scalar path is typed as opaque `json`:
+
+```aql
+multi select Application {
+  *,
+  owner := .project.organization.owner.id<uuid>   # typed uuid, not json
+}
+```
+
+```sql
+(((SELECT (SELECT o.owner FROM "organization" o WHERE o.id = p.organization LIMIT 1)
+   FROM "project" p WHERE p.id = a.project LIMIT 1))::UUID) AS owner
 ```
 
 ---
@@ -635,6 +656,6 @@ Primary     = "(" "multi"? "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?
             | String | Int | Float | Ident
 
 FuncCall      = Ident "(" (Expr ("," Expr)*)? ")"
-PathExpr      = ("." Ident)+
+PathExpr      = ("." Ident)+ ("<" Ident ">")?   # optional cast: .a.b.c<uuid>
 QualifiedIdent = Ident "." Ident           # e.g. User.id in a sub-select filter
 ```

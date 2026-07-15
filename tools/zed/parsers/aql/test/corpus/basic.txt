@@ -210,3 +210,30 @@ select A { xs := (multi select B filter .a = A.id) };
                 (qualified_identifier
                   scope: (identifier)
                   field: (identifier))))))))))
+
+==================
+path with cast
+==================
+
+select A { o := .b.c.id<uuid> };
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (path
+            step: (field_identifier
+              (identifier))
+            step: (field_identifier
+              (identifier))
+            step: (field_identifier
+              (identifier))
+            cast: (type_identifier
+              (identifier))))))))
