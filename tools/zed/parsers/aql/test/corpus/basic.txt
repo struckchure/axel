@@ -181,3 +181,32 @@ select A { x := (select B filter .id = $g).slug<str> };
               (identifier))
             project_type: (type_identifier
               (identifier))))))))
+
+==================
+multi subquery in computed field
+==================
+
+select A { xs := (multi select B filter .a = A.id) };
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (subquery
+            type: (type_identifier
+              (identifier))
+            (filter
+              (expression
+                (path
+                  step: (field_identifier
+                    (identifier)))
+                (qualified_identifier
+                  scope: (identifier)
+                  field: (identifier))))))))))

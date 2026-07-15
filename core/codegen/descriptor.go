@@ -365,9 +365,10 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 						subFields = allPropsAsFields(targetRT, ir)
 					}
 				}
+				// `multi select` → array; plain `select` → single object.
 				fields = append(fields, ResultField{
 					Name:       sf.Name,
-					IsMultiple: true,
+					IsMultiple: p.SubQueryMulti,
 					IsNullable: true,
 					TargetType: sq.TypeName,
 					SubFields:  subFields,

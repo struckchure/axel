@@ -201,12 +201,15 @@ func (e *Expr) SoloPrimary() *Primary {
 
 // Primary is a single expression operand.
 type Primary struct {
-	// Subquery: (select TypeName { shape } filter ...)
+	// Subquery: ( [multi] select TypeName { shape } filter ... )
 	// Must come before SubExpr so that '(' 'select' is matched here, not as an expr.
+	// A leading `multi` makes a computed shape field a JSON array; without it the
+	// field is a single object (matching top-level select / multi select).
 	// An optional trailing `.field` projects a single column from the subquery's
 	// row instead of its id — e.g. (select Org filter .id = $id).slug — and an
 	// optional `<Type>` after it casts that column: (select Org ...).slug<str>
-	SubQuery          *SelectBody `parser:"  '(' 'select' @@ ')'"`
+	SubQueryMulti     bool        `parser:"  '(' @'multi'? 'select'"`
+	SubQuery          *SelectBody `parser:"@@ ')'"`
 	SubQueryField     string      `parser:"( '.' @Ident"`
 	SubQueryFieldType string      `parser:"( '<' @Ident '>' )? )?"`
 	// Sub-insert: (insert TypeName { field := expr, ... })
