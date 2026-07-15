@@ -363,7 +363,9 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 	expr := f.Computed
 
 	// Pure sub-select: name := (select TypeName { shape } filter ...)
-	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil {
+	// A projected subquery — (select ...).field — is a scalar, not a row, so it
+	// falls through to scalar compilation below.
+	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField == "" {
 		sq := p.SubQuery
 		sqRT, err := c.resolveType(sq.TypeName)
 		if err != nil {
@@ -540,15 +542,27 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 }
 
 // compileSubQuery compiles a (select ...) subquery used as a scalar expression.
-func (c *compiler) compileSubQuery(body *aql.SelectBody) (string, error) {
+// compileSubQuery compiles a scalar subquery. By default it projects the row's
+// id; a non-empty projectField selects that property (or link FK) instead —
+// e.g. (select Org filter .id = $id).slug.
+func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (string, error) {
 	rt, err := c.resolveType(body.TypeName)
 	if err != nil {
 		return "", err
 	}
 	alias := tableAlias(body.TypeName)
 
+	column := "id"
+	if projectField != "" {
+		col, err := subQueryColumn(rt, projectField)
+		if err != nil {
+			return "", err
+		}
+		column = col
+	}
+
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "SELECT %s.id FROM \"%s\" %s", alias, rt.Table, alias)
+	fmt.Fprintf(&sb, "SELECT %s.%s FROM \"%s\" %s", alias, column, rt.Table, alias)
 
 	if body.Filter != nil {
 		where, err := c.compileExpr(body.Filter.Expr, alias, rt)
@@ -559,6 +573,18 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody) (string, error) {
 	}
 	sb.WriteString(" LIMIT 1")
 	return "(" + sb.String() + ")", nil
+}
+
+// subQueryColumn resolves a subquery projection field to a column name: a scalar
+// property's column, or a link's FK join column.
+func subQueryColumn(rt *asl.ResolvedType, field string) (string, error) {
+	if prop, ok := rt.Properties[field]; ok {
+		return prop.Column, nil
+	}
+	if link, ok := rt.Links[field]; ok {
+		return link.JoinColumn, nil
+	}
+	return "", fmt.Errorf("type %q has no field %q to project from subquery", rt.Name, field)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -733,7 +759,7 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 
 	switch {
 	case p.SubQuery != nil:
-		return c.compileSubQuery(p.SubQuery)
+		return c.compileSubQuery(p.SubQuery, p.SubQueryField)
 
 	case p.SubInsert != nil:
 		// (insert TypeName { ... }) used as a scalar — compile as a subquery returning id.

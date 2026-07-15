@@ -339,7 +339,19 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 		}
 		// Inline computed field: name := expr
 		if sf.Computed != nil {
-			if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil {
+			if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField != "" {
+				// Projected subquery — name := (select ...).field — is a single
+				// scalar column, typed by the projected property.
+				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+				if targetRT := ir.ObjectTypes[p.SubQuery.TypeName]; targetRT != nil {
+					if prop, ok := targetRT.Properties[p.SubQueryField]; ok {
+						rf.AQLType = sqlTypeToAQLType(prop.SQLType)
+						rf.SQLType = prop.SQLType
+						rf.EnumType = prop.EnumType
+					}
+				}
+				fields = append(fields, rf)
+			} else if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil {
 				sq := p.SubQuery
 				targetRT := ir.ObjectTypes[sq.TypeName]
 				var subFields []ResultField

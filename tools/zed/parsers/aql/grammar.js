@@ -173,7 +173,15 @@ module.exports = grammar({
         $.identifier,
       ),
 
-    subquery: ($) => seq("(", "select", $._object_select, ")"),
+    // An optional trailing `.field` projects a single column from the row.
+    subquery: ($) =>
+      seq(
+        "(",
+        "select",
+        $._object_select,
+        ")",
+        optional(seq(".", field("project", $.field_identifier))),
+      ),
 
     insert_expression: ($) =>
       seq(

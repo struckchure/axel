@@ -33,7 +33,14 @@ func printSelect(b *strings.Builder, s *SelectStmt) {
 		b.WriteString("multi ")
 	}
 	b.WriteString("select ")
-	body := s.Body
+	printSelectBody(b, s.Body, "\n")
+	b.WriteString(";")
+}
+
+// printSelectBody renders a select body (aggregate or object). sep separates the
+// filter/order/limit/offset clauses — "\n" for a statement, " " when inline in a
+// subquery.
+func printSelectBody(b *strings.Builder, body *SelectBody, sep string) {
 	if body.AggFunc != nil {
 		fmt.Fprintf(b, "%s(%s", body.AggFunc.Func, body.AggFunc.TypeName)
 		if body.AggFunc.Filter != nil {
@@ -41,37 +48,36 @@ func printSelect(b *strings.Builder, s *SelectStmt) {
 			printFilter(b, body.AggFunc.Filter)
 		}
 		b.WriteString(")")
-	} else {
-		b.WriteString(body.TypeName)
-		if body.Shape != nil {
-			b.WriteString(" ")
-			printShape(b, body.Shape)
+		return
+	}
+	b.WriteString(body.TypeName)
+	if body.Shape != nil {
+		b.WriteString(" ")
+		printShape(b, body.Shape)
+	}
+	if body.Filter != nil {
+		b.WriteString(sep)
+		printFilter(b, body.Filter)
+	}
+	for i, o := range body.OrderBy {
+		if i == 0 {
+			b.WriteString(sep + "order by ")
+		} else {
+			b.WriteString(", ")
 		}
-		if body.Filter != nil {
-			b.WriteString("\n")
-			printFilter(b, body.Filter)
-		}
-		for i, o := range body.OrderBy {
-			if i == 0 {
-				b.WriteString("\norder by ")
-			} else {
-				b.WriteString(", ")
-			}
-			printExpr(b, o.Expr)
-			if o.Dir != "" {
-				fmt.Fprintf(b, " %s", o.Dir)
-			}
-		}
-		if body.Limit != nil {
-			b.WriteString("\nlimit ")
-			printExpr(b, body.Limit)
-		}
-		if body.Offset != nil {
-			b.WriteString("\noffset ")
-			printExpr(b, body.Offset)
+		printExpr(b, o.Expr)
+		if o.Dir != "" {
+			fmt.Fprintf(b, " %s", o.Dir)
 		}
 	}
-	b.WriteString(";")
+	if body.Limit != nil {
+		b.WriteString(sep + "limit ")
+		printExpr(b, body.Limit)
+	}
+	if body.Offset != nil {
+		b.WriteString(sep + "offset ")
+		printExpr(b, body.Offset)
+	}
 }
 
 func printInsert(b *strings.Builder, s *InsertStmt) {
@@ -127,6 +133,10 @@ func printShape(b *strings.Builder, s *Shape) {
 			b.WriteString(": ")
 			printShape(b, f.SubShape)
 		}
+		if f.Computed != nil {
+			b.WriteString(" := ")
+			printExpr(b, f.Computed)
+		}
 		if i < len(s.Fields)-1 {
 			b.WriteString(",")
 		}
@@ -178,6 +188,13 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		return
 	}
 	switch {
+	case p.SubQuery != nil:
+		b.WriteString("(select ")
+		printSelectBody(b, p.SubQuery, " ")
+		b.WriteString(")")
+		if p.SubQueryField != "" {
+			b.WriteString("." + p.SubQueryField)
+		}
 	case p.SubExpr != nil:
 		b.WriteString("(")
 		printExpr(b, p.SubExpr)

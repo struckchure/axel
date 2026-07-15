@@ -268,6 +268,38 @@ select User {
 }
 ```
 
+### Projecting a field from a subquery
+
+A subquery normally resolves to a row's id. Append `.field` to project a single
+column instead — the subquery then behaves as a scalar and can be combined with
+other operators. This works anywhere an expression is allowed, including
+`insert` / `update` assignment values:
+
+```aql
+update Repo filter .id = $id<uuid> set {
+  installation_id :=
+    (select GithubInstallation filter .id = $installation_id<uuid>?).installation_id
+      ?? .installation_id
+}
+```
+
+```sql
+UPDATE "repo" r SET
+  installation_id = COALESCE(
+    (SELECT g.installation_id FROM "github_installation" g
+     WHERE ($1::UUID IS NULL OR g.id = $1) LIMIT 1),
+    r.installation_id)
+WHERE r.id = $2
+```
+
+The projected field must be a scalar property or a link on the subquery's type;
+an unknown field is a compile error.
+
+> **Note:** field projection is available in generated queries (both Go and
+> TypeScript output, which share the compiler). The TypeScript runtime `aql`
+> tagged-template — for queries assembled dynamically at runtime — does not yet
+> parse projections or `??` in assignment values.
+
 ---
 
 ## Nested shapes (links)
@@ -583,7 +615,7 @@ AndExpr     = Cmp ("and" Cmp)*
 Cmp         = Primary (BinOp Primary)?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
 
-Primary     = "(" "select" SelectBody ")"   # correlated sub-select
+Primary     = "(" "select" SelectBody ")" ("." Ident)?  # sub-select; optional field projection
             | "(" "insert" TypeName "{" ... ")" # sub-insert returning id
             | "(" Expr ")"
             | FuncCall

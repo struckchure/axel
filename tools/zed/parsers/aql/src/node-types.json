@@ -588,6 +588,16 @@
     "type": "subquery",
     "named": true,
     "fields": {
+      "project": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          }
+        ]
+      },
       "type": {
         "multiple": false,
         "required": true,
