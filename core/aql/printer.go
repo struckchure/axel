@@ -189,7 +189,11 @@ func printPrimary(b *strings.Builder, p *Primary) {
 	}
 	switch {
 	case p.SubQuery != nil:
-		b.WriteString("(select ")
+		b.WriteString("(")
+		if p.SubQueryMulti {
+			b.WriteString("multi ")
+		}
+		b.WriteString("select ")
 		printSelectBody(b, p.SubQuery, " ")
 		b.WriteString(")")
 		if p.SubQueryField != "" {

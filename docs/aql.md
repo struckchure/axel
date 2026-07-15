@@ -234,29 +234,26 @@ offset $offset;
 
 ## Computed shape fields
 
-A shape field can be assigned an inline expression using `:=`. The most common use is a sub-select that pulls related rows as a JSON array, without defining a link in the schema.
+A shape field can be assigned an inline expression using `:=`. A common use is a sub-select that pulls related data without defining a link in the schema.
+
+A sub-select follows the same cardinality rule as a top-level query: **plain `select` returns a single object** (or `null`), and **`multi select` returns a JSON array**.
 
 ```aql
 select User {
   id,
   email,
-  posts := (select Post { id, title } filter .author.id = User.id)
+  posts := (multi select Post { id, title } filter .author.id = User.id),  # array
+  primary_org := (select Organization { id, name } filter .owner = User.id) # single object or null
 }
 ```
 
-The sub-select compiles to a correlated `json_agg` subquery. The outer type name (`User.id`) is a **qualified reference** — it resolves to the outer query's alias.
+A `multi select` compiles to a correlated `json_agg` subquery (empty array — never null — when nothing matches); a plain `select` compiles to `row_to_json` over a `LIMIT 1` inner query (null when nothing matches). The outer type name (`User.id`) is a **qualified reference** — it resolves to the outer query's alias.
 
 ```sql
-SELECT
-  u.id AS id,
-  u.email AS email,
-  (SELECT json_agg(row_to_json(p_posts_sub))
-   FROM (
-     SELECT p.id AS id, p.title AS title
-     FROM "post" p
-     WHERE p.author = u.id
-   ) p_posts_sub) AS posts
-FROM "user" u;
+  (SELECT COALESCE(json_agg(row_to_json(p_posts_sub)), '[]')
+   FROM (SELECT p.id AS id, p.title AS title FROM "post" p WHERE p.author = u.id) p_posts_sub) AS posts,
+  (SELECT row_to_json(o_primary_org_sub)
+   FROM (SELECT o.id AS id, o.name AS name FROM "organization" o WHERE o.owner = u.id LIMIT 1) o_primary_org_sub) AS primary_org
 ```
 
 Computed shape fields with no sub-select compile as scalar expressions:
@@ -627,7 +624,7 @@ AndExpr     = Cmp ("and" Cmp)*
 Cmp         = Primary (BinOp Primary)?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
 
-Primary     = "(" "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?  # sub-select; optional field projection + cast
+Primary     = "(" "multi"? "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?  # sub-select (multi → array, else single); optional field projection + cast
             | "(" "insert" TypeName "{" ... ")" # sub-insert returning id
             | "(" Expr ")"
             | FuncCall
