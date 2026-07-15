@@ -590,24 +590,38 @@ filter .author.email = $email
 filter .installation.installation_id = $iid<int64>
 ```
 
-### Casting a path
+### Computed field types
 
-A path may carry an optional `<Type>` cast, using the same type names as
-[parameter annotations](#typed-parameters). Besides emitting a SQL `::TYPE`, the
-cast gives a **computed shape field a concrete type** — without it a computed
-scalar path is typed as opaque `json`:
+The type of a computed shape field is resolved in this order:
+
+1. **Explicit cast** — a `<Type>` annotation always wins.
+2. **Inferred** — a plain path is typed by resolving it through the schema: a
+   path ending on a property takes that property's type; one ending on a link
+   takes its FK type (`uuid`).
+3. **`any`** — anything else (a coalesce, function call, arithmetic, or a path
+   that can't be resolved to a scalar) is typed as `any` (`json`), and codegen
+   prints a warning suggesting a cast.
+
+So the common case needs no annotation:
 
 ```aql
 multi select Application {
   *,
-  owner := .project.organization.owner.id<uuid>   # typed uuid, not json
+  owner := .project.organization.owner.id,    # inferred uuid
+  iid   := .installation.installation_id      # inferred int64
 }
 ```
 
-```sql
-(((SELECT (SELECT o.owner FROM "organization" o WHERE o.id = p.organization LIMIT 1)
-   FROM "project" p WHERE p.id = a.project LIMIT 1))::UUID) AS owner
+Add a `<Type>` cast to override inference, or to give a type to an expression
+that can't be inferred — it uses the same type names as
+[parameter annotations](#typed-parameters) and also emits a SQL `::TYPE`:
+
+```aql
+who := (.name ?? .email)<str>   # otherwise: warning + typed as any
 ```
+
+An invalid path (a step that resolves to no property or link) is a **compile
+error**, not a warning.
 
 ---
 

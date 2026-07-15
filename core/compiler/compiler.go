@@ -815,7 +815,15 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		if err != nil {
 			return "", err
 		}
-		return "(" + inner + ")", nil
+		sql := "(" + inner + ")"
+		if p.SubExprCast != "" {
+			sqlType, err := c.annotSQLType(p.SubExprCast)
+			if err != nil {
+				return "", err
+			}
+			sql += "::" + sqlType
+		}
+		return sql, nil
 
 	case p.FuncCall != nil:
 		return c.compileFuncCall(p.FuncCall, alias, rt)

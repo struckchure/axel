@@ -204,7 +204,17 @@ module.exports = grammar({
         ")",
       ),
 
-    parenthesized_expression: ($) => seq("(", $.expression, ")"),
+    // Parenthesized expression with an optional `<Type>` cast: (a ?? b)<str>
+    // prec.right resolves the "<" cast-vs-comparison ambiguity (see `path`).
+    parenthesized_expression: ($) =>
+      prec.right(
+        seq(
+          "(",
+          $.expression,
+          ")",
+          optional(seq("<", field("cast", $.type_identifier), ">")),
+        ),
+      ),
 
     function_call: ($) =>
       seq(

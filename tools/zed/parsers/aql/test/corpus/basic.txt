@@ -237,3 +237,31 @@ select A { o := .b.c.id<uuid> };
               (identifier))
             cast: (type_identifier
               (identifier))))))))
+
+==================
+parenthesized expression with cast
+==================
+
+select A { w := (.a ?? .b)<str> };
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (parenthesized_expression
+            (expression
+              (path
+                step: (field_identifier
+                  (identifier)))
+              (path
+                step: (field_identifier
+                  (identifier))))
+            cast: (type_identifier
+              (identifier))))))))

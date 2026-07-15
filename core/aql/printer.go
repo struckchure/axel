@@ -206,6 +206,9 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString("(")
 		printExpr(b, p.SubExpr)
 		b.WriteString(")")
+		if p.SubExprCast != "" {
+			b.WriteString("<" + p.SubExprCast + ">")
+		}
 	case p.FuncCall != nil:
 		fmt.Fprintf(b, "%s(", p.FuncCall.Name)
 		for i, a := range p.FuncCall.Args {

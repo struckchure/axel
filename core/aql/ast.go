@@ -215,8 +215,11 @@ type Primary struct {
 	// Sub-insert: (insert TypeName { field := expr, ... })
 	// Must come before SubExpr so that '(' 'insert' is matched here.
 	SubInsert *InsertBody `parser:"| '(' @@ ')'"`
-	// Sub-expression or parenthesized expression: (expr)
-	SubExpr  *Expr       `parser:"| '(' @@ ')'"`
+	// Sub-expression or parenthesized expression: (expr), with an optional
+	// `<Type>` cast — (.name ?? .email)<str> — so an otherwise un-inferable
+	// computed field can be given a type.
+	SubExpr     *Expr  `parser:"| '(' @@ ')'"`
+	SubExprCast string `parser:"( '<' @Ident '>' )?"`
 	// Function call: count(...)
 	FuncCall *FuncCall `parser:"| @@"`
 	// Path expression: .email or .author.name
