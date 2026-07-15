@@ -139,25 +139,22 @@ module.exports = grammar({
     limit_clause: ($) => seq("limit", $.expression),
     offset_clause: ($) => seq("offset", $.expression),
 
-    // primary ( op primary )?
+    // and-group ( "or" and-group )*  —  `and` binds tighter than `or`.
+    // Parenthesize (see parenthesized_expression) to group: (a or b) and c
+    // The precedence levels are hidden rules, so an expression's children stay
+    // flat: the operands and operators, in source order.
     expression: ($) =>
+      seq($._and_expression, repeat(seq("or", $._and_expression))),
+
+    _and_expression: ($) =>
+      seq($._comparison, repeat(seq("and", $._comparison))),
+
+    // primary ( op primary )?
+    _comparison: ($) =>
       seq($._primary, optional(seq($._binary_operator, $._primary))),
 
     _binary_operator: ($) =>
-      choice(
-        "!=",
-        "<=",
-        ">=",
-        "=",
-        "<",
-        ">",
-        "??",
-        "and",
-        "or",
-        "in",
-        "like",
-        "ilike",
-      ),
+      choice("!=", "<=", ">=", "=", "<", ">", "??", "in", "like", "ilike"),
 
     _primary: ($) =>
       choice(

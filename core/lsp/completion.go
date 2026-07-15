@@ -36,6 +36,11 @@ func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []Completion
 			items = append(items, CompletionItem{Label: "count", Detail: "aggregate", Kind: CompletionKindFunction})
 		}
 		return items
+	// Operand position: a filter condition, either arm of a boolean chain, or an
+	// `order by` term. All take a `.field` path. Checked before insideBraces — a
+	// filter can sit inside a shape, in a computed field's sub-select.
+	case pw == "filter" || pw == "and" || pw == "or" || pw == "by":
+		return pathCompletions(text, schema)
 	case insideBraces(text, wStart):
 		return fieldCompletions(text, schema)
 	default:
@@ -62,17 +67,30 @@ func SchemaCompletion(text string, offset int, schema *asl.SchemaIR) []Completio
 
 // fieldCompletions lists the fields (+ `*` splat) of the query's type.
 func fieldCompletions(text string, schema *asl.SchemaIR) []CompletionItem {
-	items := []CompletionItem{{Label: "*", Detail: "all fields", Kind: CompletionKindKeyword}}
+	return append([]CompletionItem{{Label: "*", Detail: "all fields", Kind: CompletionKindKeyword}},
+		typeFieldCompletions(text, schema, "")...)
+}
+
+// pathCompletions lists the query type's fields as `.field` paths — the form a
+// filter or `order by` operand takes.
+func pathCompletions(text string, schema *asl.SchemaIR) []CompletionItem {
+	return typeFieldCompletions(text, schema, ".")
+}
+
+// typeFieldCompletions lists the query type's properties and links, each label
+// carrying the given prefix.
+func typeFieldCompletions(text string, schema *asl.SchemaIR, prefix string) []CompletionItem {
 	if schema == nil {
-		return items
+		return nil
 	}
 	rt := queryType(text, schema)
 	if rt == nil {
-		return items
+		return nil
 	}
+	var items []CompletionItem
 	for _, name := range sortedKeys(rt.Properties) {
 		p := rt.Properties[name]
-		items = append(items, CompletionItem{Label: p.Name, Detail: propType(p), Kind: CompletionKindField})
+		items = append(items, CompletionItem{Label: prefix + p.Name, Detail: propType(p), Kind: CompletionKindField})
 	}
 	for _, name := range sortedKeys(rt.Links) {
 		l := rt.Links[name]
@@ -80,7 +98,7 @@ func fieldCompletions(text string, schema *asl.SchemaIR) []CompletionItem {
 		if l.IsMulti {
 			detail += "[]"
 		}
-		items = append(items, CompletionItem{Label: l.Name, Detail: detail, Kind: CompletionKindField})
+		items = append(items, CompletionItem{Label: prefix + l.Name, Detail: detail, Kind: CompletionKindField})
 	}
 	return items
 }

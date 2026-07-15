@@ -148,6 +148,46 @@ func TestCompletion(t *testing.T) {
 	if !al["int32"] || al["Project"] {
 		t.Errorf("annotation completion should list builtins, not object types; got %v", keys(al))
 	}
+
+	// Operand position — after `filter`, after either arm of a boolean chain, and
+	// after `order by` — offers `.field` paths, since that is what an operand takes.
+	for _, prefix := range []string{
+		"multi select Project { id } filter ",
+		"multi select Project { id } filter .name = $n and ",
+		"multi select Project { id } filter .name = $n or ",
+		"multi select Project { id } order by ",
+	} {
+		ol := completionLabels(lsp.QueryCompletion(prefix, len(prefix), schema))
+		for _, want := range []string{".name", ".owner"} {
+			if !ol[want] {
+				t.Errorf("operand completion after %q missing %q; got %v", prefix, want, keys(ol))
+			}
+		}
+		if ol["select"] {
+			t.Errorf("operand completion after %q should not offer statement keywords; got %v", prefix, keys(ol))
+		}
+	}
+}
+
+// The LSP must accept boolean filters — chained and grouped — rather than
+// reporting them as parse errors, and must still resolve fields inside them.
+func TestQueryDiagnosticsBooleanFilter(t *testing.T) {
+	schema := parseSchema(t, lspSchema)
+
+	for _, q := range []string{
+		"multi select Project { id } filter .name = $n<str> and .owner = $o<str>;",
+		"multi select Project { id } filter (.name = $n<str> or .id = $i<uuid>) and .owner = $o<str>;",
+	} {
+		if d := lsp.QueryDiagnostics(q, schema); len(d) != 0 {
+			t.Errorf("valid boolean filter should have no diagnostics: %q → %+v", q, d)
+		}
+	}
+
+	// An unknown field inside a chain is still reported.
+	d := lsp.QueryDiagnostics("multi select Project { id } filter .name = $n and .nope = $x;", schema)
+	if len(d) != 1 || !strings.Contains(d[0].Message, "nope") {
+		t.Errorf("expected an unknown-field diagnostic inside a chained filter, got %+v", d)
+	}
 }
 
 func TestPositionRoundTrip(t *testing.T) {

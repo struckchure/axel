@@ -339,8 +339,8 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 		}
 		// Inline computed field: name := expr
 		if sf.Computed != nil {
-			if sf.Computed.Op == "" && sf.Computed.Left != nil && sf.Computed.Left.SubQuery != nil {
-				sq := sf.Computed.Left.SubQuery
+			if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil {
+				sq := p.SubQuery
 				targetRT := ir.ObjectTypes[sq.TypeName]
 				var subFields []ResultField
 				if targetRT != nil {

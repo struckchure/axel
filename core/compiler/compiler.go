@@ -363,8 +363,8 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 	expr := f.Computed
 
 	// Pure sub-select: name := (select TypeName { shape } filter ...)
-	if expr.Op == "" && expr.Left != nil && expr.Left.SubQuery != nil {
-		sq := expr.Left.SubQuery
+	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil {
+		sq := p.SubQuery
 		sqRT, err := c.resolveType(sq.TypeName)
 		if err != nil {
 			return "", "", err
@@ -486,14 +486,15 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 // compileLinkAssignment compiles a link assignment. Returns (column, value, cteFrag, error).
 // cteFrag is non-empty when a sub-insert CTE was generated.
 func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, string, string, error) {
-	if a.Value.Left == nil {
+	operand := a.Value.SoloPrimary()
+	if operand == nil {
 		return "", "", "", fmt.Errorf("link %q assignment must be a subquery or sub-insert", a.Field)
 	}
 	col := fmt.Sprintf("%q", link.JoinColumn)
 
 	// (insert TypeName { ... }) → CTE
-	if a.Value.Left.SubInsert != nil {
-		sub := a.Value.Left.SubInsert
+	if operand.SubInsert != nil {
+		sub := operand.SubInsert
 		innerSQL, err := c.compileInsertBody(sub.TypeName, sub.Assignments, false)
 		if err != nil {
 			return "", "", "", fmt.Errorf("link %q sub-insert: %w", a.Field, err)
@@ -505,10 +506,10 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 	}
 
 	// (select TypeName filter ...) → scalar subquery
-	if a.Value.Left.SubQuery == nil {
+	if operand.SubQuery == nil {
 		return "", "", "", fmt.Errorf("link %q assignment must be a subquery (select ...) or sub-insert (insert ...)", a.Field)
 	}
-	sub := a.Value.Left.SubQuery
+	sub := operand.SubQuery
 
 	targetType, err := c.resolveType(link.TargetType)
 	if err != nil {
@@ -628,42 +629,82 @@ func (c *compiler) compileDelete(stmt *aql.DeleteStmt) (string, error) {
 // EXPRESSION COMPILATION
 // ─────────────────────────────────────────────────────────────
 
+// compileExpr compiles the or-level of a boolean expression. Arms are joined
+// with OR; an arm holding more than one comparison is parenthesized so the
+// grouping is explicit in the emitted SQL rather than relying on precedence.
 func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedType) (string, error) {
 	if expr == nil {
 		return "", nil
 	}
 
-	left, err := c.compilePrimary(expr.Left, alias, rt)
+	arms := make([]string, 0, len(expr.Rest)+1)
+	for _, a := range append([]*aql.AndExpr{expr.Left}, expr.Rest...) {
+		sql, err := c.compileAndExpr(a, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		if len(expr.Rest) > 0 && a != nil && len(a.Rest) > 0 {
+			sql = "(" + sql + ")"
+		}
+		arms = append(arms, sql)
+	}
+	return strings.Join(arms, " OR "), nil
+}
+
+func (c *compiler) compileAndExpr(and *aql.AndExpr, alias string, rt *asl.ResolvedType) (string, error) {
+	if and == nil {
+		return "", nil
+	}
+
+	parts := make([]string, 0, len(and.Rest)+1)
+	for _, cmp := range append([]*aql.Cmp{and.Left}, and.Rest...) {
+		sql, err := c.compileCmp(cmp, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, sql)
+	}
+	return strings.Join(parts, " AND "), nil
+}
+
+// compileCmp compiles a single comparison. Param-type inference and the
+// optional-param null guard live here, per comparison: a `$name?` guard must
+// only relax its own comparison, never a whole conjunction.
+func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType) (string, error) {
+	if cmp == nil {
+		return "", nil
+	}
+
+	left, err := c.compilePrimary(cmp.Left, alias, rt)
 	if err != nil {
 		return "", err
 	}
 
-	if expr.Op == "" {
+	if cmp.Op == "" {
 		return left, nil
 	}
 
-	right, err := c.compilePrimary(expr.Right, alias, rt)
+	right, err := c.compilePrimary(cmp.Right, alias, rt)
 	if err != nil {
 		return "", err
 	}
 
 	// Infer param types from the opposite side of a comparison.
 	if rt != nil {
-		inferFilterParamType(c.params, expr.Left, expr.Right, rt)
-		inferFilterParamType(c.params, expr.Right, expr.Left, rt)
+		inferFilterParamType(c.params, cmp.Left, cmp.Right, rt)
+		inferFilterParamType(c.params, cmp.Right, cmp.Left, rt)
 	}
 
 	// Null-coalesce ($x ?? .field) is a function, not an infix operator: emit
 	// COALESCE(left, right). A param operand is cast to the SQL type of the
 	// opposite operand so its type is determinable when the value is null.
-	if expr.Op == "??" {
-		lc := left + c.paramCastSuffix(expr.Left, expr.Right, rt)
-		rc := right + c.paramCastSuffix(expr.Right, expr.Left, rt)
+	if cmp.Op == "??" {
+		lc := left + c.paramCastSuffix(cmp.Left, cmp.Right, rt)
+		rc := right + c.paramCastSuffix(cmp.Right, cmp.Left, rt)
 		return fmt.Sprintf("COALESCE(%s, %s)", lc, rc), nil
 	}
 
-	op := mapOp(expr.Op)
-	result := fmt.Sprintf("%s %s %s", left, op, right)
+	result := fmt.Sprintf("%s %s %s", left, cmp.Op, right)
 
 	// Optional params ($name?) make the comparison a no-op when the value is
 	// null, so an omitted filter matches all rows. The standalone `$N IS NULL`
@@ -671,12 +712,12 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 	// compared against — otherwise Postgres can't determine the parameter type
 	// when the value is null (42P08). Casting to the column type keeps the cast
 	// consistent with the comparison (avoiding e.g. a str-vs-uuid conflict).
-	for _, operand := range []*aql.Primary{expr.Left, expr.Right} {
+	for _, operand := range []*aql.Primary{cmp.Left, cmp.Right} {
 		if operand != nil && operand.Param != nil && operand.Param.Optional {
 			ph := c.params.add(operand.Param.Name, "")
-			other := expr.Right
-			if operand == expr.Right {
-				other = expr.Left
+			other := cmp.Right
+			if operand == cmp.Right {
+				other = cmp.Left
 			}
 			result = fmt.Sprintf("(%s%s IS NULL OR %s)", ph, c.paramCastSuffix(operand, other, rt), result)
 		}
@@ -867,18 +908,6 @@ func tableAlias(typeName string) string {
 	return strings.ToLower(string(typeName[0]))
 }
 
-// mapOp maps AQL operators to SQL operators.
-func mapOp(op string) string {
-	switch op {
-	case "and":
-		return "AND"
-	case "or":
-		return "OR"
-	default:
-		return op
-	}
-}
-
 // resolveParamType classifies an inline param annotation ($name<type>) against
 // the schema. It accepts any declared value type — a builtin scalar, a scalar
 // alias, or an enum — and rejects object types (tables), since a param is a
@@ -927,10 +956,10 @@ func sqlToAQLType(sqlType string) string {
 // inferAssignmentParamType sets the param type (and enum type, when the target
 // column is enum-backed) when an assignment value is a bare $param.
 func inferAssignmentParamType(params *paramCollector, val *aql.Expr, aqlType, enumType string) {
-	if val != nil && val.Op == "" && val.Left != nil && val.Left.Param != nil {
-		params.setType(val.Left.Param.Name, aqlType)
+	if p := val.SoloPrimary(); p != nil && p.Param != nil {
+		params.setType(p.Param.Name, aqlType)
 		if enumType != "" {
-			params.setEnumType(val.Left.Param.Name, enumType)
+			params.setEnumType(p.Param.Name, enumType)
 		}
 	}
 }
