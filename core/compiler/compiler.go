@@ -618,16 +618,36 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 
 	var sets []string
 	for _, a := range stmt.Assignments {
-		prop, ok := rt.Properties[a.Field]
-		if !ok {
-			return "", fmt.Errorf("type %q has no property %q", stmt.TypeName, a.Field)
+		if prop, ok := rt.Properties[a.Field]; ok {
+			val, err := c.compileExpr(a.Value, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
+			sets = append(sets, fmt.Sprintf("%s = %s", prop.Column, val))
+			continue
 		}
-		val, err := c.compileExpr(a.Value, alias, rt)
-		if err != nil {
-			return "", err
+
+		// Single-link assignment: set the FK column. The value is a scalar that
+		// resolves to the target's id — typically a subquery, e.g.
+		//   installation := (select GithubInstallation filter .installation_id = $id)
+		// and it composes with `??` to keep the current value:
+		//   installation := (select ...) ?? .installation
+		if link, ok := rt.Links[a.Field]; ok {
+			if link.IsMulti {
+				return "", fmt.Errorf("cannot assign multi-link %q in update: multi-link updates are not supported", a.Field)
+			}
+			val, err := c.compileExpr(a.Value, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			// A bare FK param is a uuid (the target's id column).
+			inferAssignmentParamType(c.params, a.Value, "uuid", "")
+			sets = append(sets, fmt.Sprintf("%s = %s", link.JoinColumn, val))
+			continue
 		}
-		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
-		sets = append(sets, fmt.Sprintf("%s = %s", prop.Column, val))
+
+		return "", fmt.Errorf("type %q has no property or link %q", stmt.TypeName, a.Field)
 	}
 
 	var sb strings.Builder
