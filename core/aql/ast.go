@@ -204,9 +204,11 @@ type Primary struct {
 	// Subquery: (select TypeName { shape } filter ...)
 	// Must come before SubExpr so that '(' 'select' is matched here, not as an expr.
 	// An optional trailing `.field` projects a single column from the subquery's
-	// row instead of its id — e.g. (select Org filter .id = $id).slug
-	SubQuery      *SelectBody `parser:"  '(' 'select' @@ ')'"`
-	SubQueryField string      `parser:"( '.' @Ident )?"`
+	// row instead of its id — e.g. (select Org filter .id = $id).slug — and an
+	// optional `<Type>` after it casts that column: (select Org ...).slug<str>
+	SubQuery          *SelectBody `parser:"  '(' 'select' @@ ')'"`
+	SubQueryField     string      `parser:"( '.' @Ident"`
+	SubQueryFieldType string      `parser:"( '<' @Ident '>' )? )?"`
 	// Sub-insert: (insert TypeName { field := expr, ... })
 	// Must come before SubExpr so that '(' 'insert' is matched here.
 	SubInsert *InsertBody `parser:"| '(' @@ ')'"`

@@ -173,14 +173,25 @@ module.exports = grammar({
         $.identifier,
       ),
 
-    // An optional trailing `.field` projects a single column from the row.
+    // An optional trailing `.field` projects a single column from the row, with
+    // an optional `<Type>` cast: (select ... ).slug<str>
+    // prec.right so a "<" right after the projected field is greedily taken as
+    // the start of a cast rather than reduced and treated as a "<" comparison.
     subquery: ($) =>
-      seq(
-        "(",
-        "select",
-        $._object_select,
-        ")",
-        optional(seq(".", field("project", $.field_identifier))),
+      prec.right(
+        seq(
+          "(",
+          "select",
+          $._object_select,
+          ")",
+          optional(
+            seq(
+              ".",
+              field("project", $.field_identifier),
+              optional(seq("<", field("project_type", $.type_identifier), ">")),
+            ),
+          ),
+        ),
       ),
 
     insert_expression: ($) =>

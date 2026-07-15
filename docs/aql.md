@@ -295,6 +295,18 @@ WHERE r.id = $2
 The projected field must be a scalar property or a link on the subquery's type;
 an unknown field is a compile error.
 
+An optional `<Type>` after the projected field casts the column, using the same
+type names as [parameter annotations](#typed-parameters) — a builtin
+scalar, a scalar alias, or an enum (cast to its stored `TEXT`):
+
+```aql
+installation_id := (select GithubInstallation filter .id = $id<uuid>).installation_id<str> ?? .installation_id
+```
+
+```sql
+installation_id = COALESCE((SELECT g.installation_id::TEXT FROM ... LIMIT 1), r.installation_id)
+```
+
 > **Note:** field projection is available in generated queries (both Go and
 > TypeScript output, which share the compiler). The TypeScript runtime `aql`
 > tagged-template — for queries assembled dynamically at runtime — does not yet
@@ -615,7 +627,7 @@ AndExpr     = Cmp ("and" Cmp)*
 Cmp         = Primary (BinOp Primary)?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
 
-Primary     = "(" "select" SelectBody ")" ("." Ident)?  # sub-select; optional field projection
+Primary     = "(" "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?  # sub-select; optional field projection + cast
             | "(" "insert" TypeName "{" ... ")" # sub-insert returning id
             | "(" Expr ")"
             | FuncCall

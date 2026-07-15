@@ -194,6 +194,9 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString(")")
 		if p.SubQueryField != "" {
 			b.WriteString("." + p.SubQueryField)
+			if p.SubQueryFieldType != "" {
+				b.WriteString("<" + p.SubQueryFieldType + ">")
+			}
 		}
 	case p.SubExpr != nil:
 		b.WriteString("(")
