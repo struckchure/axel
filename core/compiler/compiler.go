@@ -363,7 +363,9 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 	expr := f.Computed
 
 	// Pure sub-select: name := (select TypeName { shape } filter ...)
-	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil {
+	// A projected subquery — (select ...).field — is a scalar, not a row, so it
+	// falls through to scalar compilation below.
+	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField == "" {
 		sq := p.SubQuery
 		sqRT, err := c.resolveType(sq.TypeName)
 		if err != nil {
@@ -540,15 +542,37 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 }
 
 // compileSubQuery compiles a (select ...) subquery used as a scalar expression.
-func (c *compiler) compileSubQuery(body *aql.SelectBody) (string, error) {
+// compileSubQuery compiles a scalar subquery. By default it projects the row's
+// id; a non-empty projectField selects that property (or link FK) instead —
+// e.g. (select Org filter .id = $id).slug. A non-empty projectType casts the
+// projected column — (select Org ...).slug<str> → g.slug::TEXT.
+func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField, projectType string) (string, error) {
 	rt, err := c.resolveType(body.TypeName)
 	if err != nil {
 		return "", err
 	}
 	alias := tableAlias(body.TypeName)
 
+	column := "id"
+	if projectField != "" {
+		col, err := subQueryColumn(rt, projectField)
+		if err != nil {
+			return "", err
+		}
+		column = col
+	}
+
+	projection := fmt.Sprintf("%s.%s", alias, column)
+	if projectType != "" {
+		sqlType, err := c.annotSQLType(projectType)
+		if err != nil {
+			return "", err
+		}
+		projection += "::" + sqlType
+	}
+
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "SELECT %s.id FROM \"%s\" %s", alias, rt.Table, alias)
+	fmt.Fprintf(&sb, "SELECT %s FROM \"%s\" %s", projection, rt.Table, alias)
 
 	if body.Filter != nil {
 		where, err := c.compileExpr(body.Filter.Expr, alias, rt)
@@ -559,6 +583,18 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody) (string, error) {
 	}
 	sb.WriteString(" LIMIT 1")
 	return "(" + sb.String() + ")", nil
+}
+
+// subQueryColumn resolves a subquery projection field to a column name: a scalar
+// property's column, or a link's FK join column.
+func subQueryColumn(rt *asl.ResolvedType, field string) (string, error) {
+	if prop, ok := rt.Properties[field]; ok {
+		return prop.Column, nil
+	}
+	if link, ok := rt.Links[field]; ok {
+		return link.JoinColumn, nil
+	}
+	return "", fmt.Errorf("type %q has no field %q to project from subquery", rt.Name, field)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -733,7 +769,7 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 
 	switch {
 	case p.SubQuery != nil:
-		return c.compileSubQuery(p.SubQuery)
+		return c.compileSubQuery(p.SubQuery, p.SubQueryField, p.SubQueryFieldType)
 
 	case p.SubInsert != nil:
 		// (insert TypeName { ... }) used as a scalar — compile as a subquery returning id.
@@ -930,6 +966,28 @@ func (c *compiler) resolveParamType(name, annot string) (string, string, error) 
 		return "", "", fmt.Errorf("$%s: %q is an object type (table), not usable as a parameter type", name, annot)
 	}
 	return "", "", fmt.Errorf("$%s: unknown parameter type %q", name, annot)
+}
+
+// annotSQLType resolves an inline type annotation (<str>, <MyEnum>, <MyAlias>)
+// to a SQL type for an explicit cast, using the same classification as
+// resolveParamType: builtin scalar, scalar alias, or enum (stored as TEXT).
+// Object types are rejected.
+func (c *compiler) annotSQLType(annot string) (string, error) {
+	if sqlType, ok := asl.BuiltinSQLType(annot); ok {
+		return sqlType, nil
+	}
+	if _, ok := c.schema.EnumTypes[annot]; ok {
+		return "TEXT", nil
+	}
+	if s, ok := c.schema.ScalarTypes[annot]; ok {
+		if sqlType, ok := asl.BuiltinSQLType(s.Base); ok {
+			return sqlType, nil
+		}
+	}
+	if _, ok := c.schema.ObjectTypes[annot]; ok {
+		return "", fmt.Errorf("cannot cast to %q: it is an object type (table)", annot)
+	}
+	return "", fmt.Errorf("unknown cast type %q", annot)
 }
 
 // sqlToAQLType maps a SQL type string back to an AQL type name.

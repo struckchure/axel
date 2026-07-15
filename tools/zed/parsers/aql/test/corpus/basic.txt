@@ -119,3 +119,65 @@ select A { x } filter (.n = 1 or .m = 2) and .k = 3;
           step: (field_identifier
             (identifier)))
         (integer)))))
+
+==================
+subquery field projection
+==================
+
+select A { x := (select B filter .id = $g).slug };
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (subquery
+            type: (type_identifier
+              (identifier))
+            (filter
+              (expression
+                (path
+                  step: (field_identifier
+                    (identifier)))
+                (parameter
+                  name: (identifier))))
+            project: (field_identifier
+              (identifier))))))))
+
+==================
+subquery field projection with cast
+==================
+
+select A { x := (select B filter .id = $g).slug<str> };
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (subquery
+            type: (type_identifier
+              (identifier))
+            (filter
+              (expression
+                (path
+                  step: (field_identifier
+                    (identifier)))
+                (parameter
+                  name: (identifier))))
+            project: (field_identifier
+              (identifier))
+            project_type: (type_identifier
+              (identifier))))))))

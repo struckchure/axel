@@ -190,6 +190,22 @@ func TestQueryDiagnosticsBooleanFilter(t *testing.T) {
 	}
 }
 
+// A subquery field projection — (select ...).field — is accepted, and an unknown
+// projected field is reported.
+func TestQueryDiagnosticsSubQueryProjection(t *testing.T) {
+	schema := parseSchema(t, lspSchema)
+
+	ok := "multi select Project { id, o := (select User filter .id = $u<uuid>).email };"
+	if d := lsp.QueryDiagnostics(ok, schema); len(d) != 0 {
+		t.Errorf("valid subquery projection should have no diagnostics: %+v", d)
+	}
+
+	bad := "multi select Project { id, o := (select User filter .id = $u<uuid>).nope };"
+	if d := lsp.QueryDiagnostics(bad, schema); len(d) != 1 || !strings.Contains(d[0].Message, "nope") {
+		t.Errorf("expected an unknown-projection diagnostic, got %+v", d)
+	}
+}
+
 func TestPositionRoundTrip(t *testing.T) {
 	text := "café = 1\nsecond line"
 	// The '=' sits after a multi-byte 'é'; round-trip its offset.

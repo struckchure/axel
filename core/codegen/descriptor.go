@@ -339,7 +339,22 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR) 
 		}
 		// Inline computed field: name := expr
 		if sf.Computed != nil {
-			if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil {
+			if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField != "" {
+				// Projected subquery — name := (select ...).field — is a single
+				// scalar column. An explicit cast (.field<str>) determines the
+				// type; otherwise it is the projected property's type.
+				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+				if sqlType, aqlType, enumType, ok := castResultType(ir, p.SubQueryFieldType); ok {
+					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+				} else if targetRT := ir.ObjectTypes[p.SubQuery.TypeName]; targetRT != nil {
+					if prop, ok := targetRT.Properties[p.SubQueryField]; ok {
+						rf.AQLType = sqlTypeToAQLType(prop.SQLType)
+						rf.SQLType = prop.SQLType
+						rf.EnumType = prop.EnumType
+					}
+				}
+				fields = append(fields, rf)
+			} else if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil {
 				sq := p.SubQuery
 				targetRT := ir.ObjectTypes[sq.TypeName]
 				var subFields []ResultField
@@ -559,6 +574,28 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 }
 
 // sqlTypeToAQLType maps a SQL type string back to an AQL type name.
+// castResultType resolves an inline cast annotation (<str>, <MyEnum>, <MyAlias>)
+// to (sqlType, aqlType, enumType). Mirrors the compiler's annotSQLType so a
+// projected-and-cast subquery field types the same way it compiles. ok is false
+// for an empty or unresolvable annotation.
+func castResultType(ir *asl.SchemaIR, annot string) (sqlType, aqlType, enumType string, ok bool) {
+	if annot == "" {
+		return "", "", "", false
+	}
+	if st, found := asl.BuiltinSQLType(annot); found {
+		return st, annot, "", true
+	}
+	if e, found := ir.EnumTypes[annot]; found {
+		return "TEXT", "str", e.Name, true
+	}
+	if s, found := ir.ScalarTypes[annot]; found {
+		if st, found := asl.BuiltinSQLType(s.Base); found {
+			return st, s.Base, "", true
+		}
+	}
+	return "", "", "", false
+}
+
 func sqlTypeToAQLType(sqlType string) string {
 	switch sqlType {
 	case "TEXT":
