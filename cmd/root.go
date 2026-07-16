@@ -45,6 +45,8 @@ var RootCmd = &cobra.Command{
 //  2. --dir/axel.yaml (auto-discovered)
 //  3. Individual --url / --schema-path / --migrations-dir flags
 //
+// --url always overrides the config file's database URL when set.
+//
 // Called by both migration commands (full PersistentPreRun) and query commands
 // (lightweight override that skips the DB connection).
 func loadConfig() {
@@ -68,6 +70,9 @@ func loadConfig() {
 		if err = yaml.Unmarshal(configData, &config); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
+		}
+		if !lo.IsEmpty(databaseURL) {
+			config.DatabaseURL = databaseURL
 		}
 		return
 	}
