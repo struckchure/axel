@@ -4,6 +4,7 @@
   "scopeName": "source.asl",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#dollar-sql" },
     { "include": "#strings" },
     { "include": "#enum-block" },
     { "include": "#constraint-name" },
@@ -51,10 +52,16 @@
     },
     "keywords": {
       "patterns": [
-        { "match": "\\b(scalar|type|model|enum|abstract)\\b", "name": "storage.type.asl" },
+        { "match": "\\b(scalar|type|model|enum|abstract|function)\\b", "name": "storage.type.asl" },
         { "match": "\\b(required|multi|single|property|link)\\b", "name": "storage.modifier.asl" },
-        { "match": "\\b(extends|extending|constraint|index|on|computed|default|func)\\b", "name": "keyword.control.asl" }
+        { "match": "\\b(extends|extending|constraint|index|on|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body)\\b", "name": "keyword.control.asl" }
       ]
+    },
+    "dollar-sql": {
+      "begin": "\\$\\$",
+      "end": "\\$\\$",
+      "name": "string.quoted.other.dollar.asl",
+      "contentName": "meta.embedded.block.sql"
     },
     "builtins": {
       "match": "\\b(str|int16|int32|int64|float32|float64|bool|uuid|datetime|date|time|json|bytes|decimal)\\b",

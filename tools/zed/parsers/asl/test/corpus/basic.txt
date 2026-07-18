@@ -24,3 +24,34 @@ type A { required x: str; }
       (type_annotation
         type: (type_identifier
           (identifier))))))
+
+==================
+rewrite trigger and function
+==================
+
+type A { x: str { rewrite update := datetime_current(); }; trigger t after insert do ( insert L { a := event } ); }
+
+---
+
+(source_file
+  (type_definition
+    name: (type_identifier
+      (identifier))
+    (field_declaration
+      name: (field_identifier
+        (identifier))
+      (type_annotation
+        type: (type_identifier
+          (identifier)))
+      (rewrite
+        event: (identifier)
+        (identifier)))
+    (trigger
+      name: (field_identifier
+        (identifier))
+      event: (identifier)
+      (aql_block
+        (identifier)
+        (identifier)
+        (identifier)
+        (identifier)))))

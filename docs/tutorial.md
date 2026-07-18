@@ -79,7 +79,10 @@ abstract type Base {
     constraint pk;
   };
   required created_at: datetime { default := datetime_current(); };
-  required updated_at: datetime { default := datetime_current(); };
+  required updated_at: datetime {
+    default := datetime_current();
+    rewrite update := datetime_current();
+  };
 }
 
 type User extending Base {

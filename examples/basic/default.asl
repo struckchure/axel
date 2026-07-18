@@ -8,7 +8,10 @@ abstract type Base {
     constraint pk;
   };
   required created_at: datetime { default := datetime_current(); };
-  required updated_at: datetime { default := datetime_current(); };
+  required updated_at: datetime {
+    default := datetime_current();
+    rewrite update := datetime_current();
+  };
 }
 
 type User extending Base {
@@ -36,4 +39,7 @@ type Post extending Base {
   required content: str;
   required link author: User;
   multi link likes: User;
+  slug: str {
+    rewrite create, update := __new__.content;
+  };
 }

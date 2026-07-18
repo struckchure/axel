@@ -11,6 +11,7 @@ type SourceFile struct {
 type Definition struct {
 	ScalarType *ScalarTypeDef `parser:"  @@"`
 	EnumType   *EnumTypeDef   `parser:"| @@"`
+	Function   *FunctionDecl  `parser:"| @@"`
 	TypeDef    *TypeDef       `parser:"| @@"`
 }
 
@@ -52,6 +53,7 @@ type Member struct {
 	Computed   *ComputedDecl   `parser:"  @@"`
 	Index      *IndexDecl      `parser:"| @@"`
 	Constraint *ConstraintDecl `parser:"| @@"`
+	Trigger    *TriggerDecl    `parser:"| @@"`
 	Field      *FieldDecl      `parser:"| @@"`
 }
 
@@ -91,8 +93,30 @@ type FieldBody struct {
 // FieldBodyItem is one item inside a field's body block.
 type FieldBodyItem struct {
 	Constraint *FieldConstraintDecl `parser:"  @@"`
+	Rewrite    *RewriteDecl         `parser:"| @@"`
 	Default    *DefaultDecl         `parser:"| @@"`
 	OnClause   *OnClause            `parser:"| @@"`
+}
+
+// RewriteDecl is a field-level rewrite — sugar that folds into a BEFORE trigger
+// that assigns the field on the named events.
+//
+//	rewrite update := datetime_current();      # builtin function → now()
+//	rewrite insert, update := __new__.slug      # a column of the row being written
+//	rewrite update := __old__.status            # the pre-update row (UPDATE only)
+//	rewrite update := 'edited'                  # a literal
+//
+// Row references use the same magic identifiers as triggers: __new__ / __old__ /
+// __subject__ (an alias for __new__). Events are insert / update (create is
+// accepted as an alias for insert).
+type RewriteDecl struct {
+	Pos    lexer.Position
+	Events []string `parser:"'rewrite' @Ident ( ',' @Ident )* ':='"`
+	Func   *string  `parser:"( @Ident '(' ')'"`
+	Row    *string  `parser:"| @Ident '.'"`
+	Field  *string  `parser:"@Ident"`
+	Lit    *string  `parser:"| @( String | Int ) ) ';'?"`
+	EndPos lexer.Position
 }
 
 // FieldConstraintDecl: constraint exclusive; / constraint min_length(10);
@@ -155,4 +179,50 @@ type ConstraintDecl struct {
 type IndexDecl struct {
 	Pos    lexer.Position
 	Fields []string `parser:"'index' 'on' '(' '.' @Ident ( ',' '.' @Ident )* ')' ';'"`
+}
+
+// TriggerDecl declares a row/statement trigger on the enclosing type. It has two
+// mutually-exclusive bodies: an inline AQL `do ( … )`, or `execute <fn>()`.
+//
+//	trigger audit after insert, update, delete do ( insert AuditLog { … } );
+//	trigger touch before update execute my_fn();
+type TriggerDecl struct {
+	Pos     lexer.Position
+	Name    string    `parser:"'trigger' @Ident"`
+	Timing  string    `parser:"@( 'before' | 'after' )"`
+	Events  []string  `parser:"@Ident ( ',' @Ident )*"`
+	ForEach string    `parser:"( 'for' 'each' @( 'row' | 'statement' ) )?"`
+	When    *string   `parser:"( 'when' '(' @DollarString ')' )?"`
+	Do      *AQLBlock `parser:"( 'do' @@"`
+	ExecFn  *string   `parser:"| 'execute' @Ident '(' ')' )"`
+	End     string    `parser:"';'"`
+	EndPos  lexer.Position
+}
+
+// FunctionDecl is a top-level Postgres function. Its body is either raw SQL
+// (dollar-quoted) or an inline AQL statement.
+//
+//	function touch() -> trigger { body := ( update … ); };
+//	function my_fn() -> trigger { language := plpgsql; body := $$ … $$; };
+type FunctionDecl struct {
+	Pos     lexer.Position
+	Name    string       `parser:"'function' @Ident '('"`
+	Params  []*FuncParam `parser:"( @@ ( ',' @@ )* )? ')'"`
+	Returns string       `parser:"'->' @Ident '{'"`
+	Items   []*FuncItem  `parser:"@@* '}' ';'?"`
+	EndPos  lexer.Position
+}
+
+// FuncParam is one `name: type` parameter of a function.
+type FuncParam struct {
+	Name string `parser:"@Ident ':'"`
+	Type string `parser:"@Ident"`
+}
+
+// FuncItem is one item in a function body block: `language := ident` or
+// `body := ( aql )` / `body := $$ sql $$`.
+type FuncItem struct {
+	Language *string   `parser:"  'language' ':=' @Ident ';'?"`
+	BodySQL  *string   `parser:"| 'body' ':=' @DollarString ';'?"`
+	BodyAQL  *AQLBlock `parser:"| 'body' ':=' @@ ';'?"`
 }

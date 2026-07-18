@@ -1,5 +1,36 @@
 [
   {
+    "type": "aql_block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "aql_block",
+          "named": true
+        },
+        {
+          "type": "dollar_string",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "computed_field",
     "named": true,
     "fields": {
@@ -207,6 +238,10 @@
           "named": true
         },
         {
+          "type": "rewrite",
+          "named": true
+        },
+        {
           "type": "type_annotation",
           "named": true
         }
@@ -226,6 +261,86 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "function_definition",
+    "named": true,
+    "fields": {
+      "language": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          }
+        ]
+      },
+      "returns": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "aql_block",
+          "named": true
+        },
+        {
+          "type": "dollar_string",
+          "named": true
+        },
+        {
+          "type": "function_param",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "function_param",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -258,6 +373,50 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "rewrite",
+    "named": true,
+    "fields": {
+      "event": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "field": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -300,11 +459,79 @@
           "named": true
         },
         {
+          "type": "function_definition",
+          "named": true
+        },
+        {
           "type": "scalar_type",
           "named": true
         },
         {
           "type": "type_definition",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "trigger",
+    "named": true,
+    "fields": {
+      "event": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "function": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          }
+        ]
+      },
+      "timing": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "after",
+            "named": false
+          },
+          {
+            "type": "before",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "aql_block",
+          "named": true
+        },
+        {
+          "type": "dollar_string",
           "named": true
         }
       ]
@@ -370,6 +597,10 @@
         {
           "type": "index",
           "named": true
+        },
+        {
+          "type": "trigger",
+          "named": true
         }
       ]
     }
@@ -390,6 +621,14 @@
     }
   },
   {
+    "type": "!=",
+    "named": false
+  },
+  {
+    "type": "$",
+    "named": false
+  },
+  {
     "type": "(",
     "named": false
   },
@@ -398,7 +637,15 @@
     "named": false
   },
   {
+    "type": "*",
+    "named": false
+  },
+  {
     "type": ",",
+    "named": false
+  },
+  {
+    "type": "->",
     "named": false
   },
   {
@@ -418,6 +665,22 @@
     "named": false
   },
   {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": "?",
+    "named": false
+  },
+  {
     "type": "??",
     "named": false
   },
@@ -427,6 +690,18 @@
   },
   {
     "type": "abstract",
+    "named": false
+  },
+  {
+    "type": "after",
+    "named": false
+  },
+  {
+    "type": "before",
+    "named": false
+  },
+  {
+    "type": "body",
     "named": false
   },
   {
@@ -447,7 +722,23 @@
     "named": false
   },
   {
+    "type": "do",
+    "named": false
+  },
+  {
+    "type": "dollar_string",
+    "named": true
+  },
+  {
+    "type": "each",
+    "named": false
+  },
+  {
     "type": "enum",
+    "named": false
+  },
+  {
+    "type": "execute",
     "named": false
   },
   {
@@ -459,7 +750,15 @@
     "named": false
   },
   {
+    "type": "for",
+    "named": false
+  },
+  {
     "type": "func",
+    "named": false
+  },
+  {
+    "type": "function",
     "named": false
   },
   {
@@ -473,6 +772,10 @@
   {
     "type": "integer",
     "named": true
+  },
+  {
+    "type": "language",
+    "named": false
   },
   {
     "type": "link",
@@ -499,6 +802,14 @@
     "named": false
   },
   {
+    "type": "rewrite",
+    "named": false
+  },
+  {
+    "type": "row",
+    "named": false
+  },
+  {
     "type": "scalar",
     "named": false
   },
@@ -507,15 +818,31 @@
     "named": false
   },
   {
+    "type": "statement",
+    "named": false
+  },
+  {
     "type": "string",
     "named": true
+  },
+  {
+    "type": "trigger",
+    "named": false
   },
   {
     "type": "type",
     "named": false
   },
   {
+    "type": "when",
+    "named": false
+  },
+  {
     "type": "{",
+    "named": false
+  },
+  {
+    "type": "|",
     "named": false
   },
   {

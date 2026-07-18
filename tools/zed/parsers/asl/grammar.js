@@ -17,7 +17,12 @@ module.exports = grammar({
     source_file: ($) => repeat($._definition),
 
     _definition: ($) =>
-      choice($.scalar_type, $.enum_type, $.type_definition),
+      choice(
+        $.scalar_type,
+        $.enum_type,
+        $.function_definition,
+        $.type_definition,
+      ),
 
     // scalar type EmailStr extending str;
     scalar_type: ($) =>
@@ -63,7 +68,13 @@ module.exports = grammar({
       ),
 
     _member: ($) =>
-      choice($.computed_field, $.index, $.constraint, $.field_declaration),
+      choice(
+        $.computed_field,
+        $.index,
+        $.constraint,
+        $.trigger,
+        $.field_declaration,
+      ),
 
     // required multi link author: User { ... };
     field_declaration: ($) =>
@@ -80,7 +91,23 @@ module.exports = grammar({
     type_annotation: ($) => seq(":", field("type", $.type_identifier)),
 
     _field_body_item: ($) =>
-      choice($.field_constraint, $.default, $.on_clause),
+      choice($.field_constraint, $.rewrite, $.default, $.on_clause),
+
+    // rewrite update := datetime_current();  /  rewrite insert, update := __subject__.name;
+    rewrite: ($) =>
+      seq(
+        "rewrite",
+        field("event", $.identifier),
+        repeat(seq(",", field("event", $.identifier))),
+        ":=",
+        choice(
+          seq($.identifier, "(", ")"),
+          seq($.identifier, optional(seq(".", field("field", $.identifier)))),
+          $.string,
+          $.integer,
+        ),
+        optional(";"),
+      ),
 
     // constraint exclusive;  /  constraint min_length(10);
     field_constraint: ($) =>
@@ -157,6 +184,85 @@ module.exports = grammar({
       ),
 
     _field_ref: ($) => seq(".", field("field", $.field_identifier)),
+
+    // trigger audit after insert, update do ( … );
+    // trigger touch before update execute my_fn();
+    trigger: ($) =>
+      seq(
+        "trigger",
+        field("name", $.field_identifier),
+        field("timing", choice("before", "after")),
+        field("event", $.identifier),
+        repeat(seq(",", field("event", $.identifier))),
+        optional(seq("for", "each", choice("row", "statement"))),
+        optional(seq("when", "(", $.dollar_string, ")")),
+        choice(
+          seq("do", $.aql_block),
+          seq("execute", field("function", $.identifier), "(", ")"),
+        ),
+        ";",
+      ),
+
+    // function name(params) -> ret { language := …; body := ( aql ) | $$ sql $$; };
+    function_definition: ($) =>
+      seq(
+        "function",
+        field("name", $.field_identifier),
+        "(",
+        optional(
+          seq($.function_param, repeat(seq(",", $.function_param))),
+        ),
+        ")",
+        "->",
+        field("returns", $.type_identifier),
+        "{",
+        repeat($._function_item),
+        "}",
+        optional(";"),
+      ),
+
+    function_param: ($) =>
+      seq(field("name", $.identifier), ":", field("type", $.type_identifier)),
+
+    _function_item: ($) =>
+      choice(
+        seq("language", ":=", field("language", $.identifier), optional(";")),
+        seq("body", ":=", choice($.dollar_string, $.aql_block), optional(";")),
+      ),
+
+    // A balanced parenthesized AQL body. Not parsed structurally — this just
+    // brackets the span for the editor; the compiler parses the real AQL.
+    aql_block: ($) => seq("(", repeat($._aql_token), ")"),
+
+    _aql_token: ($) =>
+      choice(
+        $.aql_block,
+        $.dollar_string,
+        $.identifier,
+        $.string,
+        $.integer,
+        ".",
+        ",",
+        ":=",
+        "??",
+        "{",
+        "}",
+        ":",
+        ";",
+        "$",
+        "*",
+        "=",
+        "!=",
+        "<",
+        ">",
+        "@",
+        "?",
+        "|",
+      ),
+
+    // Postgres dollar-quoting: $$ … $$. The body may contain single '$' but not
+    // the '$$' terminator.
+    dollar_string: ($) => token(seq("$$", /([^$]|\$[^$])*/, "$$")),
 
     // Specialised identifiers (distinct nodes for highlighting).
     type_identifier: ($) => $.identifier,

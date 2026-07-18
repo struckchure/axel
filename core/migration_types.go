@@ -13,12 +13,14 @@ type Migration struct {
 
 // MigrationMetadata stored in metadata.json
 type MigrationMetadata struct {
-	Version         string    `json:"version"`
-	Name            string    `json:"name"`
-	CreatedAt       time.Time `json:"created_at"`
-	Checksum        string    `json:"checksum"`
-	SchemaSnapshot  []Model   `json:"schema_snapshot"`  // Full schema at this migration
-	PreviousVersion string    `json:"previous_version"` // Previous migration version
+	Version         string     `json:"version"`
+	Name            string     `json:"name"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Checksum        string     `json:"checksum"`
+	SchemaSnapshot  []Model    `json:"schema_snapshot"` // Full schema at this migration
+	Functions       []Function `json:"functions,omitempty"`
+	Triggers        []Trigger  `json:"triggers,omitempty"`
+	PreviousVersion string     `json:"previous_version"` // Previous migration version
 }
 
 // SchemaChange represents a detected change between schemas
@@ -52,6 +54,16 @@ const (
 	// Index changes
 	AddIndex
 	DropIndex
+
+	// Function changes
+	AddFunction
+	DropFunction
+	ModifyFunction
+
+	// Trigger changes
+	AddTrigger
+	DropTrigger
+	ModifyTrigger
 )
 
 // MigrationPlan contains the changes and SQL to execute

@@ -68,6 +68,84 @@ func DiffSchemas(oldSchema, newSchema []Model) []SchemaChange {
 	return changes
 }
 
+// DiffFunctions compares two function sets (keyed by name), comparing the full
+// CREATE SQL. A changed body is a Modify (CREATE OR REPLACE handles it).
+func DiffFunctions(oldFns, newFns []Function) []SchemaChange {
+	oldMap := make(map[string]Function, len(oldFns))
+	for _, f := range oldFns {
+		oldMap[f.Name] = f
+	}
+	newMap := make(map[string]Function, len(newFns))
+	for _, f := range newFns {
+		newMap[f.Name] = f
+	}
+
+	var changes []SchemaChange
+	for _, nf := range newFns { // newFns is already sorted by the bridge
+		if of, ok := oldMap[nf.Name]; ok {
+			if of.CreateSQL != nf.CreateSQL {
+				changes = append(changes, SchemaChange{
+					Type: ModifyFunction, OldValue: of, NewValue: nf,
+					Description: fmt.Sprintf("Modify function '%s'", nf.Name),
+				})
+			}
+		} else {
+			changes = append(changes, SchemaChange{
+				Type: AddFunction, NewValue: nf,
+				Description: fmt.Sprintf("Add function '%s'", nf.Name),
+			})
+		}
+	}
+	for _, of := range oldFns {
+		if _, ok := newMap[of.Name]; !ok {
+			changes = append(changes, SchemaChange{
+				Type: DropFunction, OldValue: of,
+				Description: fmt.Sprintf("Drop function '%s'", of.Name),
+			})
+		}
+	}
+	return changes
+}
+
+// DiffTriggers compares two trigger sets (keyed by name), comparing the full
+// CREATE SQL. A changed definition is a Modify (drop + create).
+func DiffTriggers(oldTrigs, newTrigs []Trigger) []SchemaChange {
+	oldMap := make(map[string]Trigger, len(oldTrigs))
+	for _, t := range oldTrigs {
+		oldMap[t.Name] = t
+	}
+	newMap := make(map[string]Trigger, len(newTrigs))
+	for _, t := range newTrigs {
+		newMap[t.Name] = t
+	}
+
+	var changes []SchemaChange
+	for _, nt := range newTrigs {
+		if ot, ok := oldMap[nt.Name]; ok {
+			if ot.CreateSQL != nt.CreateSQL {
+				changes = append(changes, SchemaChange{
+					Type: ModifyTrigger, OldValue: ot, NewValue: nt,
+					Description: fmt.Sprintf("Modify trigger '%s'", nt.Name),
+				})
+			}
+		} else {
+			changes = append(changes, SchemaChange{
+				Type: AddTrigger, NewValue: nt,
+				Description: fmt.Sprintf("Add trigger '%s'", nt.Name),
+			})
+		}
+	}
+	for _, ot := range oldTrigs {
+		if _, ok := newMap[ot.Name]; !ok {
+			changes = append(changes, SchemaChange{
+				Type: DropTrigger, OldValue: ot,
+				Description: fmt.Sprintf("Drop trigger '%s'", ot.Name),
+			})
+		}
+	}
+	return changes
+}
+
 // diffFields compares fields between two versions of a model
 func diffFields(oldModel, newModel Model) []SchemaChange {
 	var changes []SchemaChange

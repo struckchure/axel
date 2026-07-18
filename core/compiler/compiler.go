@@ -92,6 +92,16 @@ func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 type compiler struct {
 	schema *asl.SchemaIR
 	params *paramCollector
+	// trig is non-nil when compiling a trigger / function body, enabling the
+	// magic identifiers __new__ / __old__ / __subject__ / event.
+	trig *triggerContext
+}
+
+// triggerContext carries the state that changes AQL compilation inside a trigger
+// or function body.
+type triggerContext struct {
+	enclosing *asl.ResolvedType // for __new__/__old__ field validation; nil in a standalone function
+	params    map[string]bool   // declared function parameter names (referenced as $name)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -843,6 +853,13 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		return sql, nil
 
 	case p.Param != nil:
+		// In a function body, $name is a declared plpgsql argument, emitted by name.
+		if c.trig != nil {
+			if c.trig.params[p.Param.Name] {
+				return p.Param.Name, nil
+			}
+			return "", fmt.Errorf("unknown parameter $%s in trigger/function body", p.Param.Name)
+		}
 		aqlType, enumType, err := c.resolveParamType(p.Param.Name, p.Param.Type)
 		if err != nil {
 			return "", err
@@ -873,6 +890,13 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		return *p.Float, nil
 	case p.QualifiedIdent != nil:
 		qi := p.QualifiedIdent
+		// Trigger magic: __new__.field / __old__.field / __subject__.field →
+		// NEW."col" / OLD."col", validated against the enclosing type.
+		if c.trig != nil {
+			if row, ok := triggerRowRef(qi.TypeName); ok {
+				return c.compileTriggerField(row, qi.Field)
+			}
+		}
 		qrt := c.schema.ObjectTypes[qi.TypeName]
 		if qrt == nil {
 			return "", fmt.Errorf("unknown type %q in qualified reference", qi.TypeName)
@@ -887,10 +911,50 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		return "", fmt.Errorf("type %q has no field %q", qi.TypeName, qi.Field)
 
 	case p.Ident != nil:
+		// Trigger magic: bare __new__/__old__/__subject__ (whole row) and event.
+		if c.trig != nil {
+			switch *p.Ident {
+			case "__new__", "__subject__":
+				return "NEW", nil
+			case "__old__":
+				return "OLD", nil
+			case "event":
+				return "TG_OP", nil
+			}
+		}
 		return *p.Ident, nil
 	}
 
 	return "", fmt.Errorf("empty primary expression")
+}
+
+// triggerRowRef reports whether name is a trigger row alias and which SQL row it
+// maps to (NEW / OLD).
+func triggerRowRef(name string) (string, bool) {
+	switch name {
+	case "__new__", "__subject__":
+		return "NEW", true
+	case "__old__":
+		return "OLD", true
+	}
+	return "", false
+}
+
+// compileTriggerField resolves a magic-row field access to NEW/OLD."column",
+// validating the field against the enclosing type when one is bound.
+func (c *compiler) compileTriggerField(row, field string) (string, error) {
+	if c.trig.enclosing == nil {
+		// Standalone function: no table bound, pass the field through snake-cased.
+		return fmt.Sprintf(`%s.%q`, row, snakeCase(field)), nil
+	}
+	rt := c.trig.enclosing
+	if prop, ok := rt.Properties[field]; ok {
+		return fmt.Sprintf("%s.%q", row, prop.Column), nil
+	}
+	if link, ok := rt.Links[field]; ok {
+		return fmt.Sprintf("%s.%q", row, link.JoinColumn), nil
+	}
+	return "", fmt.Errorf("type %q has no field %q (in trigger row reference)", rt.Name, field)
 }
 
 func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.ResolvedType) (string, error) {
