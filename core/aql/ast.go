@@ -199,49 +199,50 @@ func (e *Expr) SoloPrimary() *Primary {
 	return c.Left
 }
 
-// Primary is a single expression operand.
+// Primary is a single expression operand, with an optional trailing `<Type>`
+// cast that applies to whatever the operand is — a literal ('{}'<json>), a path
+// (.a.b<uuid>), a parenthesized expression ((.a ?? .b)<str>), or a subquery
+// projection ((select Org ...).slug<str>). The cast emits `(<sql>)::<sqltype>`
+// and gives an otherwise un-inferable computed field a concrete type.
 type Primary struct {
 	// Subquery: ( [multi] select TypeName { shape } filter ... )
 	// Must come before SubExpr so that '(' 'select' is matched here, not as an expr.
 	// A leading `multi` makes a computed shape field a JSON array; without it the
 	// field is a single object (matching top-level select / multi select).
 	// An optional trailing `.field` projects a single column from the subquery's
-	// row instead of its id — e.g. (select Org filter .id = $id).slug — and an
-	// optional `<Type>` after it casts that column: (select Org ...).slug<str>
-	SubQueryMulti     bool        `parser:"  '(' @'multi'? 'select'"`
-	SubQuery          *SelectBody `parser:"@@ ')'"`
-	SubQueryField     string      `parser:"( '.' @Ident"`
-	SubQueryFieldType string      `parser:"( '<' @Ident '>' )? )?"`
+	// row instead of its id — e.g. (select Org filter .id = $id).slug
+	SubQueryMulti bool        `parser:"( '(' @'multi'? 'select'"`
+	SubQuery      *SelectBody `parser:"@@ ')'"`
+	SubQueryField string      `parser:"( '.' @Ident )?"`
 	// Sub-insert: (insert TypeName { field := expr, ... })
 	// Must come before SubExpr so that '(' 'insert' is matched here.
 	SubInsert *InsertBody `parser:"| '(' @@ ')'"`
-	// Sub-expression or parenthesized expression: (expr), with an optional
-	// `<Type>` cast — (.name ?? .email)<str> — so an otherwise un-inferable
-	// computed field can be given a type.
-	SubExpr     *Expr  `parser:"| '(' @@ ')'"`
-	SubExprCast string `parser:"( '<' @Ident '>' )?"`
+	// Sub-expression or parenthesized expression: (expr)
+	SubExpr *Expr `parser:"| '(' @@ ')'"`
 	// Function call: count(...)
 	FuncCall *FuncCall `parser:"| @@"`
 	// Path expression: .email or .author.name
-	Path     *PathExpr `parser:"| @@"`
+	Path *PathExpr `parser:"| @@"`
 	// Parameter: $email or $email? (optional)
-	Param    *Param    `parser:"| @@"`
+	Param *Param `parser:"| @@"`
 	// Null literal
-	Null     bool      `parser:"| @'null'"`
+	Null bool `parser:"| @'null'"`
 	// Bool literals
-	True     bool      `parser:"| @'true'"`
-	False    bool      `parser:"| @'false'"`
+	True  bool `parser:"| @'true'"`
+	False bool `parser:"| @'false'"`
 	// String literal
-	Str      *string   `parser:"| @String"`
+	Str *string `parser:"| @String"`
 	// Integer literal
-	Int      *string   `parser:"| @Int"`
+	Int *string `parser:"| @Int"`
 	// Float literal
-	Float    *string   `parser:"| @Float"`
+	Float *string `parser:"| @Float"`
 	// Qualified identifier: TypeName.field (e.g. User.id in a subquery filter).
 	// Must come before Ident so the parser greedily consumes TypeName.field as one node.
 	QualifiedIdent *QualifiedIdent `parser:"| @@"`
 	// Bare identifier (enum value, type name, etc.)
-	Ident    *string   `parser:"| @Ident"`
+	Ident *string `parser:"| @Ident )"`
+	// Optional `<Type>` cast applied to the operand above.
+	Cast string `parser:"( '<' @Ident '>' )?"`
 }
 
 // Param is a query parameter: $email (required) or $email? (optional).
@@ -266,11 +267,8 @@ type FuncCall struct {
 }
 
 // PathExpr is a dotted path: .email / .author.name
-//
-// An optional trailing `<Type>` casts the resolved value — .a.b.c<uuid> — which
-// also gives a computed shape field a concrete type instead of json.
+// A trailing `<Type>` cast, when present, is captured on the enclosing Primary.
 type PathExpr struct {
 	Pos   lexer.Position
 	Steps []string `parser:"( '.' @Ident )+"`
-	Cast  string   `parser:"( '<' @Ident '>' )?"`
 }

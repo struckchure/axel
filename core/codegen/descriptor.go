@@ -343,14 +343,22 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 		}
 		// Inline computed field: name := expr
 		if sf.Computed != nil {
-			if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField != "" {
-				// Projected subquery — name := (select ...).field — is a single
-				// scalar column. An explicit cast (.field<str>) determines the
-				// type; otherwise it is the projected property's type.
+			p := sf.Computed.SoloPrimary()
+			switch {
+			case p != nil && p.Cast != "":
+				// An explicit `<Type>` cast on the operand determines the type,
+				// whatever the operand is (path, projection, (expr), literal, …).
 				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
-				if sqlType, aqlType, enumType, ok := castResultType(ir, p.SubQueryFieldType); ok {
+				if sqlType, aqlType, enumType, ok := castResultType(ir, p.Cast); ok {
 					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
-				} else if targetRT := ir.ObjectTypes[p.SubQuery.TypeName]; targetRT != nil {
+				}
+				fields = append(fields, rf)
+
+			case p != nil && p.SubQuery != nil && p.SubQueryField != "":
+				// Projected subquery without a cast — name := (select ...).field —
+				// is typed by the projected property.
+				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+				if targetRT := ir.ObjectTypes[p.SubQuery.TypeName]; targetRT != nil {
 					if prop, ok := targetRT.Properties[p.SubQueryField]; ok {
 						rf.AQLType = sqlTypeToAQLType(prop.SQLType)
 						rf.SQLType = prop.SQLType
@@ -358,7 +366,9 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 					}
 				}
 				fields = append(fields, rf)
-			} else if p := sf.Computed.SoloPrimary(); p != nil && p.SubQuery != nil {
+
+			case p != nil && p.SubQuery != nil:
+				// Bare subquery. `multi select` → array; plain `select` → object.
 				sq := p.SubQuery
 				targetRT := ir.ObjectTypes[sq.TypeName]
 				var subFields []ResultField
@@ -369,7 +379,6 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 						subFields = allPropsAsFields(targetRT, ir)
 					}
 				}
-				// `multi select` → array; plain `select` → single object.
 				fields = append(fields, ResultField{
 					Name:       sf.Name,
 					IsMultiple: p.SubQueryMulti,
@@ -377,15 +386,11 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 					TargetType: sq.TypeName,
 					SubFields:  subFields,
 				})
-			} else if p := sf.Computed.SoloPrimary(); p != nil && p.Path != nil {
-				// Path computed field. Precedence: explicit cast > inferred type >
-				// `any` (json) with a warning.
+
+			case p != nil && p.Path != nil:
+				// Path without a cast — infer the type from the schema, else warn.
 				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
-				if p.Path.Cast != "" {
-					if sqlType, aqlType, enumType, ok := castResultType(ir, p.Path.Cast); ok {
-						rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
-					}
-				} else if aqlType, sqlType, enumType, ok := inferPathType(ir, rt, p.Path.Steps); ok {
+				if aqlType, sqlType, enumType, ok := inferPathType(ir, rt, p.Path.Steps); ok {
 					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
 				} else {
 					*warnings = append(*warnings, fmt.Sprintf(
@@ -393,14 +398,8 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 						sf.Name, strings.Join(p.Path.Steps, "."), strings.Join(p.Path.Steps, ".")))
 				}
 				fields = append(fields, rf)
-			} else if p := sf.Computed.SoloPrimary(); p != nil && p.SubExpr != nil && p.SubExprCast != "" {
-				// Cast on a parenthesized expression — name := (expr)<type>.
-				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
-				if sqlType, aqlType, enumType, ok := castResultType(ir, p.SubExprCast); ok {
-					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
-				}
-				fields = append(fields, rf)
-			} else {
+
+			default:
 				// A computed expression we can't statically type (coalesce, function
 				// call, arithmetic, …). Fall back to `any` and tell the user.
 				*warnings = append(*warnings, fmt.Sprintf(

@@ -178,9 +178,9 @@ select A { x := (select B filter .id = $g).slug<str> };
                 (parameter
                   name: (identifier))))
             project: (field_identifier
-              (identifier))
-            project_type: (type_identifier
-              (identifier))))))))
+              (identifier)))
+          cast: (type_identifier
+            (identifier)))))))
 
 ==================
 multi subquery in computed field
@@ -234,9 +234,9 @@ select A { o := .b.c.id<uuid> };
             step: (field_identifier
               (identifier))
             step: (field_identifier
-              (identifier))
-            cast: (type_identifier
-              (identifier))))))))
+              (identifier)))
+          cast: (type_identifier
+            (identifier)))))))
 
 ==================
 parenthesized expression with cast
@@ -262,6 +262,27 @@ select A { w := (.a ?? .b)<str> };
                   (identifier)))
               (path
                 step: (field_identifier
-                  (identifier))))
-            cast: (type_identifier
-              (identifier))))))))
+                  (identifier)))))
+          cast: (type_identifier
+            (identifier)))))))
+
+==================
+literal with cast
+==================
+
+select A { x := '{}'<json> };
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (string)
+          cast: (type_identifier
+            (identifier)))))))

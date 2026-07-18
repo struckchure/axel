@@ -151,10 +151,21 @@ module.exports = grammar({
 
     // primary ( op primary )?
     _comparison: ($) =>
-      seq($._primary, optional(seq($._binary_operator, $._primary))),
+      seq($._operand, optional(seq($._binary_operator, $._operand))),
 
     _binary_operator: ($) =>
       choice("!=", "<=", ">=", "=", "<", ">", "??", "in", "like", "ilike"),
+
+    // An operand is a primary with an optional trailing `<Type>` cast that applies
+    // to any operand — a literal, path, (expr), or subquery projection. prec.right
+    // greedily takes a following "<Ident>" as a cast rather than a "<" comparison.
+    _operand: ($) =>
+      prec.right(
+        seq(
+          $._primary,
+          optional(seq("<", field("cast", $.type_identifier), ">")),
+        ),
+      ),
 
     _primary: ($) =>
       choice(
@@ -173,26 +184,16 @@ module.exports = grammar({
         $.identifier,
       ),
 
-    // An optional trailing `.field` projects a single column from the row, with
-    // an optional `<Type>` cast: (select ... ).slug<str>
-    // prec.right so a "<" right after the projected field is greedily taken as
-    // the start of a cast rather than reduced and treated as a "<" comparison.
+    // An optional trailing `.field` projects a single column from the row. A
+    // `<Type>` cast after it is captured by the enclosing operand.
     subquery: ($) =>
-      prec.right(
-        seq(
-          "(",
-          optional("multi"),
-          "select",
-          $._object_select,
-          ")",
-          optional(
-            seq(
-              ".",
-              field("project", $.field_identifier),
-              optional(seq("<", field("project_type", $.type_identifier), ">")),
-            ),
-          ),
-        ),
+      seq(
+        "(",
+        optional("multi"),
+        "select",
+        $._object_select,
+        ")",
+        optional(seq(".", field("project", $.field_identifier))),
       ),
 
     insert_expression: ($) =>
@@ -204,17 +205,9 @@ module.exports = grammar({
         ")",
       ),
 
-    // Parenthesized expression with an optional `<Type>` cast: (a ?? b)<str>
-    // prec.right resolves the "<" cast-vs-comparison ambiguity (see `path`).
-    parenthesized_expression: ($) =>
-      prec.right(
-        seq(
-          "(",
-          $.expression,
-          ")",
-          optional(seq("<", field("cast", $.type_identifier), ">")),
-        ),
-      ),
+    // Parenthesized expression: (a ?? b). A trailing `<Type>` cast is captured by
+    // the enclosing operand.
+    parenthesized_expression: ($) => seq("(", $.expression, ")"),
 
     function_call: ($) =>
       seq(
@@ -224,17 +217,8 @@ module.exports = grammar({
         ")",
       ),
 
-    // .author.name
-    // Dotted path with an optional `<Type>` cast: .a.b.c<uuid>
-    // prec.right so a "<" right after the path is greedily taken as the start of
-    // a cast rather than reduced and treated as a "<" comparison.
-    path: ($) =>
-      prec.right(
-        seq(
-          repeat1(seq(".", field("step", $.field_identifier))),
-          optional(seq("<", field("cast", $.type_identifier), ">")),
-        ),
-      ),
+    // .author.name — a trailing `<Type>` cast is captured by the enclosing operand.
+    path: ($) => repeat1(seq(".", field("step", $.field_identifier))),
 
     // $name, $name?, $name<type>, $name<type>?
     // prec.right so a "<" right after a parameter is greedily taken as the start

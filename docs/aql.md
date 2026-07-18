@@ -292,16 +292,15 @@ WHERE r.id = $2
 The projected field must be a scalar property or a link on the subquery's type;
 an unknown field is a compile error.
 
-An optional `<Type>` after the projected field casts the column, using the same
-type names as [parameter annotations](#typed-parameters) — a builtin
-scalar, a scalar alias, or an enum (cast to its stored `TEXT`):
+An optional `<Type>` after the projection casts the result (see
+[Computed field types](#computed-field-types) — the cast works on any operand):
 
 ```aql
 installation_id := (select GithubInstallation filter .id = $id<uuid>).installation_id<str> ?? .installation_id
 ```
 
 ```sql
-installation_id = COALESCE((SELECT g.installation_id::TEXT FROM ... LIMIT 1), r.installation_id)
+installation_id = COALESCE(((SELECT g.installation_id FROM ... LIMIT 1))::TEXT, r.installation_id)
 ```
 
 > **Note:** field projection is available in generated queries (both Go and
@@ -612,12 +611,15 @@ multi select Application {
 }
 ```
 
-Add a `<Type>` cast to override inference, or to give a type to an expression
-that can't be inferred — it uses the same type names as
-[parameter annotations](#typed-parameters) and also emits a SQL `::TYPE`:
+A `<Type>` cast may be appended to **any operand** — a path (`.a.b<uuid>`), a
+parenthesized expression (`(.name ?? .email)<str>`), a subquery projection
+(`(select …).slug<str>`), or a bare literal (`'{}'<json>`). It uses the same type
+names as [parameter annotations](#typed-parameters), emits `(<expr>)::TYPE`, and
+overrides inference / gives a type to an otherwise-uninferable field:
 
 ```aql
-who := (.name ?? .email)<str>   # otherwise: warning + typed as any
+secrets := '{}'<json>           # a JSON literal default
+who     := (.name ?? .email)<str>   # otherwise: warning + typed as any
 ```
 
 An invalid path (a step that resolves to no property or link) is a **compile
@@ -659,7 +661,8 @@ AndExpr     = Cmp ("and" Cmp)*
 Cmp         = Primary (BinOp Primary)?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
 
-Primary     = "(" "multi"? "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?  # sub-select (multi → array, else single); optional field projection + cast
+Primary     = Operand ("<" Ident ">")?         # optional trailing cast on any operand
+Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?  # sub-select (multi → array, else single); optional field projection
             | "(" "insert" TypeName "{" ... ")" # sub-insert returning id
             | "(" Expr ")"
             | FuncCall
@@ -670,6 +673,6 @@ Primary     = "(" "multi"? "select" SelectBody ")" ("." Ident ("<" Ident ">")?)?
             | String | Int | Float | Ident
 
 FuncCall      = Ident "(" (Expr ("," Expr)*)? ")"
-PathExpr      = ("." Ident)+ ("<" Ident ">")?   # optional cast: .a.b.c<uuid>
+PathExpr      = ("." Ident)+
 QualifiedIdent = Ident "." Ident           # e.g. User.id in a sub-select filter
 ```

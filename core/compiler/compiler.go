@@ -562,9 +562,9 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 // compileSubQuery compiles a (select ...) subquery used as a scalar expression.
 // compileSubQuery compiles a scalar subquery. By default it projects the row's
 // id; a non-empty projectField selects that property (or link FK) instead —
-// e.g. (select Org filter .id = $id).slug. A non-empty projectType casts the
-// projected column — (select Org ...).slug<str> → g.slug::TEXT.
-func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField, projectType string) (string, error) {
+// e.g. (select Org filter .id = $id).slug. A trailing `<Type>` cast, if any, is
+// applied by the caller to the whole subquery.
+func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (string, error) {
 	rt, err := c.resolveType(body.TypeName)
 	if err != nil {
 		return "", err
@@ -580,17 +580,8 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField, projectTy
 		column = col
 	}
 
-	projection := fmt.Sprintf("%s.%s", alias, column)
-	if projectType != "" {
-		sqlType, err := c.annotSQLType(projectType)
-		if err != nil {
-			return "", err
-		}
-		projection += "::" + sqlType
-	}
-
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "SELECT %s FROM \"%s\" %s", projection, rt.Table, alias)
+	fmt.Fprintf(&sb, "SELECT %s.%s FROM \"%s\" %s", alias, column, rt.Table, alias)
 
 	if body.Filter != nil {
 		where, err := c.compileExpr(body.Filter.Expr, alias, rt)
@@ -804,13 +795,29 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 	if p == nil {
 		return "", fmt.Errorf("nil primary expression")
 	}
+	sql, err := c.compilePrimaryValue(p, alias, rt)
+	if err != nil {
+		return "", err
+	}
+	// A trailing `<Type>` cast wraps whatever the operand compiled to.
+	if p.Cast != "" {
+		sqlType, err := c.annotSQLType(p.Cast)
+		if err != nil {
+			return "", err
+		}
+		sql = fmt.Sprintf("(%s)::%s", sql, sqlType)
+	}
+	return sql, nil
+}
 
+// compilePrimaryValue compiles the operand itself, without the trailing cast.
+func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.ResolvedType) (string, error) {
 	switch {
 	case p.SubQuery != nil:
 		if p.SubQueryMulti && p.SubQueryField != "" {
 			return "", fmt.Errorf("cannot project field %q from a `multi select` (it yields a set, not a row)", p.SubQueryField)
 		}
-		return c.compileSubQuery(p.SubQuery, p.SubQueryField, p.SubQueryFieldType)
+		return c.compileSubQuery(p.SubQuery, p.SubQueryField)
 
 	case p.SubInsert != nil:
 		// (insert TypeName { ... }) used as a scalar — compile as a subquery returning id.
@@ -825,32 +832,13 @@ func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.Resolved
 		if err != nil {
 			return "", err
 		}
-		sql := "(" + inner + ")"
-		if p.SubExprCast != "" {
-			sqlType, err := c.annotSQLType(p.SubExprCast)
-			if err != nil {
-				return "", err
-			}
-			sql += "::" + sqlType
-		}
-		return sql, nil
+		return "(" + inner + ")", nil
 
 	case p.FuncCall != nil:
 		return c.compileFuncCall(p.FuncCall, alias, rt)
 
 	case p.Path != nil:
-		sql, err := c.compilePath(p.Path, alias, rt)
-		if err != nil {
-			return "", err
-		}
-		if p.Path.Cast != "" {
-			sqlType, err := c.annotSQLType(p.Path.Cast)
-			if err != nil {
-				return "", err
-			}
-			sql = fmt.Sprintf("(%s)::%s", sql, sqlType)
-		}
-		return sql, nil
+		return c.compilePath(p.Path, alias, rt)
 
 	case p.Param != nil:
 		// In a function body, $name is a declared plpgsql argument, emitted by name.

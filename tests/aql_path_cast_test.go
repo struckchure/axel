@@ -21,6 +21,32 @@ type Application {
 }
 `
 
+// A `<Type>` cast applies to a bare literal too — the motivating case for
+// JSON defaults: secrets := '{}'<json>.
+func TestLiteralCast(t *testing.T) {
+	c := compileAQL(t, pathSchema, `multi select Application {
+	  id,
+	  secrets := '{}'<json>
+	} filter .id = $id<uuid>;`)
+	if !strings.Contains(c.SQL, `(('{}')::JSONB) AS secrets`) {
+		t.Errorf("literal cast should emit ('{}')::JSONB:\n%s", c.SQL)
+	}
+
+	// And it types the computed field (json here), producing no warning.
+	ir := parseSchema(t, pathSchema)
+	desc := buildQueryDesc(t, ir, "Q", "q.aql", `multi select Application {
+	  id, secrets := '{}'<json>
+	} filter .id = $id<uuid>;`)
+	for _, f := range desc.Result.Fields {
+		if f.Name == "secrets" && f.AQLType != "json" {
+			t.Errorf("cast literal field should type json, got %q", f.AQLType)
+		}
+	}
+	if len(desc.Warnings) != 0 {
+		t.Errorf("a cast literal should produce no warning, got %v", desc.Warnings)
+	}
+}
+
 // A multi-hop path in a computed field resolves through the links, and a `<Type>`
 // cast wraps the result in ::SQLTYPE.
 func TestPathCastInComputedField(t *testing.T) {
