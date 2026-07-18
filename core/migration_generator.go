@@ -46,14 +46,27 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 	// OnTarget.Type is already resolved inside SchemaIRToModels.
 	currentSchema := SchemaIRToModels(ir)
 
-	// Get last schema snapshot.
+	// Lower rewrites/triggers/functions to flat SQL.
+	currentFns, currentTrigs, err := SchemaIRToFunctionsAndTriggers(ir)
+	if err != nil {
+		return fmt.Errorf("failed to lower triggers/functions: %w", err)
+	}
+
+	// Get last snapshot (schema + functions + triggers).
 	lastSchema, err := g.manager.GetLastSchema()
 	if err != nil {
 		return fmt.Errorf("failed to get last schema: %w", err)
 	}
+	lastFns, lastTrigs, err := g.manager.GetLastFunctionsAndTriggers()
+	if err != nil {
+		return fmt.Errorf("failed to get last functions/triggers: %w", err)
+	}
 
-	// Detect changes.
+	// Detect changes: tables first, then functions, then triggers (ordering is
+	// enforced in GenerateMigrationSQL — AddModel sorts ahead of everything else).
 	changes := DiffSchemas(lastSchema, currentSchema)
+	changes = append(changes, DiffFunctions(lastFns, currentFns)...)
+	changes = append(changes, DiffTriggers(lastTrigs, currentTrigs)...)
 	if len(changes) == 0 {
 		return fmt.Errorf("no schema changes detected")
 	}
@@ -68,7 +81,7 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 	}
 
 	// Write migration files.
-	if err := g.manager.CreateMigrationDir(version, name, currentSchema, upSQL, downSQL); err != nil {
+	if err := g.manager.CreateMigrationDir(version, name, currentSchema, currentFns, currentTrigs, upSQL, downSQL); err != nil {
 		return fmt.Errorf("failed to create migration: %w", err)
 	}
 

@@ -16,6 +16,8 @@ var aslKeywords = []string{
 	"scalar", "type", "model", "enum", "abstract", "extends", "extending",
 	"required", "multi", "single", "property", "link", "constraint", "index",
 	"on", "computed", "default",
+	"rewrite", "trigger", "function", "before", "after", "do", "execute",
+	"when", "for", "each", "row", "statement", "language", "body",
 }
 
 // QueryCompletion returns context-aware completions for an AQL document at the

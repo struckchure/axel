@@ -40,10 +40,21 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 		ScalarTypes: make(map[string]*ResolvedScalar),
 		EnumTypes:   make(map[string]*ResolvedEnum),
 		ObjectTypes: make(map[string]*ResolvedType),
+		Functions:   make(map[string]*ResolvedFunction),
 	}
 
-	// Pass 1: register scalar types and enum types.
+	// Pass 1: register scalar types, enum types, and functions.
 	for _, def := range src.Definitions {
+		if def.Function != nil {
+			fn, err := r.resolveFunction(def.Function, ir)
+			if err != nil {
+				return nil, fmt.Errorf("function %q: %w", def.Function.Name, err)
+			}
+			if _, exists := ir.Functions[fn.Name]; exists {
+				return nil, fmt.Errorf("function %q declared more than once", fn.Name)
+			}
+			ir.Functions[fn.Name] = fn
+		}
 		switch {
 		case def.ScalarType != nil:
 			s := def.ScalarType
@@ -111,12 +122,30 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			}
 			rt.Indexes = append(rt.Indexes, parent.Indexes...)
 			rt.Constraints = append(rt.Constraints, parent.Constraints...)
+			rt.Triggers = append(rt.Triggers, parent.Triggers...)
 		}
 
 		// Resolve own members.
 		for _, m := range t.Members {
 			if err := r.resolveMember(m, rt, ir); err != nil {
 				return nil, fmt.Errorf("type %q: %w", t.Name, err)
+			}
+		}
+	}
+
+	// Pass 4: validate that every trigger's execute target is a declared function
+	// returning trigger (functions are all registered by now).
+	for _, rt := range ir.ObjectTypes {
+		for _, trg := range rt.Triggers {
+			if trg.Function == "" {
+				continue
+			}
+			fn, ok := ir.Functions[trg.Function]
+			if !ok {
+				return nil, fmt.Errorf("type %q trigger %q executes unknown function %q", rt.Name, trg.Name, trg.Function)
+			}
+			if fn.Returns != "trigger" {
+				return nil, fmt.Errorf("type %q trigger %q executes function %q which does not return trigger", rt.Name, trg.Name, trg.Function)
 			}
 		}
 	}
@@ -149,12 +178,105 @@ func (r *Resolver) resolveMember(m *Member, rt *ResolvedType, ir *SchemaIR) erro
 		}
 		rt.Constraints = append(rt.Constraints, tc)
 
+	case m.Trigger != nil:
+		trg, err := r.resolveTrigger(m.Trigger)
+		if err != nil {
+			return err
+		}
+		rt.Triggers = append(rt.Triggers, trg)
+
 	case m.Field != nil:
 		if err := r.resolveField(m.Field, rt, ir); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// resolveTrigger resolves a TriggerDecl to a ResolvedTrigger (the execute-target
+// existence check happens in a later pass, once all functions are registered).
+func (r *Resolver) resolveTrigger(td *TriggerDecl) (*ResolvedTrigger, error) {
+	events := make([]string, 0, len(td.Events))
+	for _, ev := range td.Events {
+		ev = canonEvent(ev)
+		if ev != "insert" && ev != "update" && ev != "delete" {
+			return nil, fmt.Errorf("trigger %q: invalid event %q (want insert|update|delete)", td.Name, ev)
+		}
+		events = append(events, ev)
+	}
+	forEach := td.ForEach
+	if forEach == "" {
+		forEach = "row"
+	}
+	trg := &ResolvedTrigger{
+		Name:    td.Name,
+		Timing:  td.Timing,
+		Events:  events,
+		ForEach: forEach,
+	}
+	if td.When != nil {
+		trg.When = stripDollarQuotes(*td.When)
+	}
+	if td.Do != nil {
+		trg.DoAQL = td.Do.Raw
+	}
+	if td.ExecFn != nil {
+		trg.Function = *td.ExecFn
+	}
+	return trg, nil
+}
+
+// resolveFunction resolves a FunctionDecl to a ResolvedFunction.
+func (r *Resolver) resolveFunction(fd *FunctionDecl, ir *SchemaIR) (*ResolvedFunction, error) {
+	fn := &ResolvedFunction{Name: fd.Name, Language: "plpgsql"}
+
+	if fd.Returns == "trigger" {
+		fn.Returns = "trigger"
+	} else {
+		sqlType, err := r.resolveBaseType(fd.Returns, ir)
+		if err != nil {
+			return nil, fmt.Errorf("return type: %w", err)
+		}
+		fn.Returns = sqlType
+	}
+
+	for _, p := range fd.Params {
+		sqlType, err := r.resolveBaseType(p.Type, ir)
+		if err != nil {
+			return nil, fmt.Errorf("param %q: %w", p.Name, err)
+		}
+		fn.Params = append(fn.Params, ResolvedFuncParam{Name: p.Name, SQLType: sqlType})
+	}
+
+	var haveBody bool
+	for _, it := range fd.Items {
+		switch {
+		case it.Language != nil:
+			fn.Language = *it.Language
+		case it.BodySQL != nil:
+			fn.BodySQL = stripDollarQuotes(*it.BodySQL)
+			haveBody = true
+		case it.BodyAQL != nil:
+			fn.BodyAQL = it.BodyAQL.Raw
+			haveBody = true
+		}
+	}
+	if !haveBody {
+		return nil, fmt.Errorf("missing body")
+	}
+	if fn.BodyAQL != "" {
+		// An AQL body compiles to a plpgsql function; a `language` override is
+		// only meaningful for a raw SQL body.
+		fn.Language = "plpgsql"
+	}
+	return fn, nil
+}
+
+// stripDollarQuotes removes the surrounding $$ from a DollarString token value.
+func stripDollarQuotes(s string) string {
+	s = strings.TrimPrefix(s, "$$")
+	s = strings.TrimSuffix(s, "$$")
+	return strings.TrimSpace(s)
 }
 
 func (r *Resolver) resolveField(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) error {
@@ -240,12 +362,73 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 					Name: item.Constraint.Name,
 					Args: item.Constraint.Args,
 				})
+			case item.Rewrite != nil:
+				rw, err := resolveRewrite(item.Rewrite, sqlType, rt.Name)
+				if err != nil {
+					return fmt.Errorf("property %q: %w", f.Name, err)
+				}
+				prop.Rewrites = append(prop.Rewrites, rw)
 			}
 		}
 	}
 
 	rt.Properties[f.Name] = prop
 	return nil
+}
+
+// resolveRewrite resolves a field rewrite to its events and the SQL value that
+// gets assigned to NEW.<column> on those events.
+func resolveRewrite(rw *RewriteDecl, sqlType, origin string) (ResolvedRewrite, error) {
+	events := make([]string, 0, len(rw.Events))
+	for _, ev := range rw.Events {
+		ev = canonEvent(ev)
+		if ev != "insert" && ev != "update" {
+			return ResolvedRewrite{}, fmt.Errorf("rewrite event %q not allowed (want insert|update)", ev)
+		}
+		events = append(events, ev)
+	}
+	out := ResolvedRewrite{Events: events, Origin: origin}
+	switch {
+	case rw.Func != nil:
+		out.ValueSQL = mapFuncDefault(*rw.Func, sqlType)
+	case rw.Row != nil:
+		row, ok := triggerRowSQL(*rw.Row)
+		if !ok {
+			return ResolvedRewrite{}, fmt.Errorf("rewrite value %q.%s is not a row reference (use __new__, __old__, or __subject__)", *rw.Row, deref(rw.Field))
+		}
+		out.ValueSQL = fmt.Sprintf("%s.%q", row, toSnakeCase(*rw.Field))
+	case rw.Lit != nil:
+		out.ValueSQL = mapLitDefault(*rw.Lit, sqlType)
+	default:
+		return ResolvedRewrite{}, fmt.Errorf("rewrite has no value")
+	}
+	return out, nil
+}
+
+// canonEvent maps friendly event aliases to their canonical names.
+func canonEvent(ev string) string {
+	if ev == "create" {
+		return "insert"
+	}
+	return ev
+}
+
+// triggerRowSQL maps a magic row identifier to its SQL row keyword.
+func triggerRowSQL(name string) (string, bool) {
+	switch name {
+	case "__new__", "__subject__":
+		return "NEW", true
+	case "__old__":
+		return "OLD", true
+	}
+	return "", false
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // resolveEnumDefault resolves a default for an enum-typed property to a quoted

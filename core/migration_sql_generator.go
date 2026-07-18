@@ -185,6 +185,40 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 				upStatements = append(upStatements, typeConstraintDropSQL(change.ModelName, tc))
 				downStatements = append(downStatements, down)
 			}
+
+		case AddFunction:
+			fn := change.NewValue.(Function)
+			upStatements = append(upStatements, fn.CreateSQL)
+			downStatements = append(downStatements, fn.DropSQL)
+
+		case DropFunction:
+			fn := change.OldValue.(Function)
+			upStatements = append(upStatements, fn.DropSQL)
+			downStatements = append(downStatements, fn.CreateSQL)
+
+		case ModifyFunction:
+			// CREATE OR REPLACE swaps the body in place; down restores the old one.
+			oldFn := change.OldValue.(Function)
+			newFn := change.NewValue.(Function)
+			upStatements = append(upStatements, newFn.CreateSQL)
+			downStatements = append(downStatements, oldFn.CreateSQL)
+
+		case AddTrigger:
+			trg := change.NewValue.(Trigger)
+			upStatements = append(upStatements, trg.CreateSQL)
+			downStatements = append(downStatements, trg.DropSQL)
+
+		case DropTrigger:
+			trg := change.OldValue.(Trigger)
+			upStatements = append(upStatements, trg.DropSQL)
+			downStatements = append(downStatements, trg.CreateSQL)
+
+		case ModifyTrigger:
+			// Triggers can't be replaced in place across PG versions → drop + create.
+			oldTrg := change.OldValue.(Trigger)
+			newTrg := change.NewValue.(Trigger)
+			upStatements = append(upStatements, oldTrg.DropSQL+"\n"+newTrg.CreateSQL)
+			downStatements = append(downStatements, newTrg.DropSQL+"\n"+oldTrg.CreateSQL)
 		}
 	}
 

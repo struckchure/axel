@@ -21,7 +21,24 @@
   "computed"
   "default"
   "func"
+  "rewrite"
+  "trigger"
+  "function"
+  "before"
+  "after"
+  "for"
+  "each"
+  "row"
+  "statement"
+  "when"
+  "do"
+  "execute"
+  "language"
+  "body"
 ] @keyword
+
+; Dollar-quoted raw SQL bodies
+(dollar_string) @string
 
 ; Type names
 (type_identifier) @type

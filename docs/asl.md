@@ -44,9 +44,15 @@ abstract type Timestamped {
     constraint pk;
   };
   required created_at: datetime { default := datetime_current(); };
-  required updated_at: datetime { default := datetime_current(); };
+  required updated_at: datetime {
+    default := datetime_current();
+    rewrite update := datetime_current();   # keep it fresh on every UPDATE
+  };
 }
 ```
+
+> `default` only fires on INSERT, so without the `rewrite` line `updated_at` would
+> never change. See [Rewrites](#rewrites).
 
 ### Extending types
 
@@ -159,6 +165,37 @@ score: int32 { default := 0; };
 id:         uuid     { default := gen_uuid(); };
 created_at: datetime { default := datetime_current(); };
 ```
+
+### Rewrites
+
+A `default` runs once, on INSERT. A `rewrite` re-assigns the field on the events
+you name — the mechanism behind an auto-updating `updated_at`:
+
+```asl
+updated_at: datetime {
+  default := datetime_current();
+  rewrite update := datetime_current();   # events: insert, update (comma-separated)
+};
+```
+
+The value may be a builtin function (`datetime_current()` → `now()`), a literal,
+or a row-reference column — `__new__.<field>` / `__subject__.<field>` (the row
+being written) or `__old__.<field>` (the pre-update row, `UPDATE` only):
+
+```asl
+slug: str { rewrite create, update := __new__.title; };   # NEW."title"
+```
+
+Events are `insert` / `update`; `create` is accepted as an alias for `insert`.
+
+A rewrite belongs to the type that **declared** it, and generates one function
+per declaring model, named `axel_rw_<model>_<serial>`. An `updated_at` rewrite on
+an abstract `Base` becomes a single `axel_rw_base_1` that **every** concrete type
+inheriting it shares — each concrete table gets its own `BEFORE` trigger that
+`EXECUTE`s that one function. A rewrite a concrete type declares itself is a
+separate function (`axel_rw_<that_type>_1`), so a type that both inherits and
+declares rewrites simply gets one trigger per contributing model. See
+[Triggers](#triggers) for the general mechanism.
 
 ### Constraints
 
@@ -274,6 +311,83 @@ existing type generates an `ALTER TABLE ... ADD/DROP CONSTRAINT` in the migratio
 
 ---
 
+## Functions
+
+A top-level `function` declares a Postgres function. The body is **AQL by
+default** (`body := ( … )`), or raw Postgres via dollar-quoting (`body := $$ … $$`).
+A `-> trigger` function takes no parameters (Postgres rule) and is what a
+[trigger](#triggers) executes.
+
+```asl
+# AQL body — compiled to plpgsql
+function log_membership_changes() -> trigger {
+  body := (
+    insert AuditLog {
+      table_name := 'organization',
+      action := event,               # event = which op fired (INSERT/UPDATE/DELETE)
+      new_data := to_jsonb(__new__)  # __new__ / __old__ = the changed row
+    }
+  );
+};
+
+# Raw Postgres body — the escape hatch
+function slugify_name() -> trigger {
+  language := plpgsql;               # default plpgsql; `sql` also valid for raw bodies
+  body := $$
+    BEGIN NEW.slug := lower(NEW.name); RETURN NEW; END;
+  $$;
+};
+```
+
+Inside an AQL body these **magic identifiers** are available:
+
+| identifier | meaning | compiles to |
+|---|---|---|
+| `__new__` / `__old__` | the new / old row | `NEW` / `OLD` |
+| `__new__.field` / `__old__.field` | a column of that row (validated against the enclosing type in an inline trigger `do`) | `NEW."col"` / `OLD."col"` |
+| `__subject__` | the current row (also usable in `rewrite`) | `NEW` |
+| `event` | which operation fired | `TG_OP` |
+
+Everything else — bare identifiers and function calls like `TG_TABLE_NAME` or
+`to_jsonb(__new__)` — passes through to SQL verbatim. Functions are emitted as
+`CREATE OR REPLACE FUNCTION`; editing a body produces a single replace in the
+migration.
+
+## Triggers
+
+A `trigger` inside a type body attaches to that table. Its body is either an
+inline AQL statement (`do ( … )`, the default) or a reference to a declared
+function (`execute <fn>()`).
+
+```asl
+type Application extends Base {
+  required name: str;
+
+  # Inline AQL — __new__.field is validated against Application
+  trigger audit after insert, update, delete do (
+    insert AuditLog {
+      table_name := 'application',
+      action := event,
+      new_data := to_jsonb(__new__)
+    }
+  );
+
+  # Or reference a declared function
+  trigger touch before update execute slugify_name();
+}
+```
+
+Timing is `before` | `after`; events are a comma-separated list of
+`insert` / `update` / `delete`. Optional clauses: `for each row` (default) or
+`for each statement`, and `when ( $$ <sql condition> $$ )`. An inline `do` body
+compiles to a generated function plus the trigger; the SQL is ordered
+extensions → tables → functions → triggers so a body that writes to another
+table sees it exist.
+
+> On a `DELETE`, `NEW` is null — don't reference `__new__` in a delete-only path.
+
+---
+
 ## Complete example
 
 ```asl
@@ -287,7 +401,10 @@ abstract type Base {
     constraint pk;
   };
   required created_at: datetime { default := datetime_current(); };
-  required updated_at: datetime { default := datetime_current(); };
+  required updated_at: datetime {
+    default := datetime_current();
+    rewrite update := datetime_current();
+  };
 }
 
 type User extending Base {
