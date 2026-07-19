@@ -111,7 +111,7 @@ type Comment extending Base {
 }
 ```
 
-A few things worth noticing, each covered in the [ASL reference](./asl):
+A few things worth noticing, each covered in the [ASL reference](/asl/):
 
 - **`abstract type Base`** is never a table on its own; its fields are inlined
   into every type that `extending`s it.
@@ -261,7 +261,7 @@ multi select User {
 
 The `posts := (…)` shape is the important bit: Axel compiles it to a
 `json_agg` sub-select, so related rows come back as a nested JSON array with **no
-N+1 queries**. See the [AQL reference](./aql) for filters, ordering, and the
+N+1 queries**. See the [AQL reference](/aql/) for filters, ordering, and the
 other statement types.
 
 ---
@@ -540,8 +540,8 @@ what you repeat as the project grows.
 
 ## Next steps
 
-- [Schema Language (ASL)](./asl) — enums, computed fields, indexes, all constraints.
-- [Query Language (AQL)](./aql) — filters, ordering, `insert`/`update`/`delete`, operators.
+- [Schema Language (ASL)](/asl/) — enums, computed fields, indexes, all constraints.
+- [Query Language (AQL)](/aql/) — filters, ordering, `insert`/`update`/`delete`, operators.
 - [Code Generation](./codegen) — generator options, directives, and writing your own generator.
 - [CLI Reference](./cli) — every command and flag.
 - [Editor setup](./editors) — syntax highlighting and the language server.

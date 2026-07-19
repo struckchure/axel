@@ -444,10 +444,10 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 // ─────────────────────────────────────────────────────────────
 
 func (c *compiler) compileInsert(stmt *aql.InsertStmt) (string, error) {
-	return c.compileInsertBody(stmt.TypeName, stmt.Assignments, true)
+	return c.compileInsertBody(stmt.TypeName, stmt.Assignments, stmt.Conflict, true)
 }
 
-func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignment, topLevel bool) (string, error) {
+func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignment, conflict *aql.OnConflict, topLevel bool) (string, error) {
 	rt, err := c.resolveType(typeName)
 	if err != nil {
 		return "", err
@@ -495,12 +495,175 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		strings.Join(cols, ", "),
 		strings.Join(vals, ", "),
 	)
+	if conflict != nil {
+		onConflict, err := c.compileOnConflict(rt, conflict)
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(onConflict)
+	}
 	if topLevel {
 		fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
 		return sb.String(), nil
 	}
 	sb.WriteString(" RETURNING id")
 	return sb.String(), nil
+}
+
+// compileOnConflict lowers an `unless conflict` clause to a Postgres
+// `ON CONFLICT [(cols)] DO NOTHING | DO UPDATE SET ...` fragment (with a leading
+// newline). The conflict target, when present, must be backed by an exclusive or
+// primary-key constraint; an `else` arm (DO UPDATE) requires a target.
+func (c *compiler) compileOnConflict(rt *asl.ResolvedType, oc *aql.OnConflict) (string, error) {
+	var cols []string
+	if oc.Target != nil {
+		for _, f := range oc.Target.Fields {
+			col, err := conflictColumn(rt, f)
+			if err != nil {
+				return "", err
+			}
+			cols = append(cols, col)
+		}
+		if !hasUniqueConstraint(rt, oc.Target.Fields, cols) {
+			return "", fmt.Errorf(
+				"conflict target (%s) on type %q is not backed by an exclusive/primary-key constraint",
+				strings.Join(dottedFields(oc.Target.Fields), ", "), rt.Name)
+		}
+	}
+
+	if oc.Else != nil && len(cols) == 0 {
+		return "", fmt.Errorf("`unless conflict ... else` requires an `on` target")
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\nON CONFLICT")
+	if len(cols) > 0 {
+		quoted := make([]string, len(cols))
+		for i, col := range cols {
+			quoted[i] = fmt.Sprintf("%q", col)
+		}
+		fmt.Fprintf(&sb, " (%s)", strings.Join(quoted, ", "))
+	}
+
+	if oc.Else == nil {
+		sb.WriteString(" DO NOTHING")
+		return sb.String(), nil
+	}
+
+	if oc.Else.TypeName != rt.Name {
+		return "", fmt.Errorf(
+			"else update type %q must match the insert type %q", oc.Else.TypeName, rt.Name)
+	}
+	sets, err := c.compileConflictSets(rt, oc.Else.Assignments)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&sb, " DO UPDATE SET %s", strings.Join(sets, ", "))
+	return sb.String(), nil
+}
+
+// compileConflictSets builds the `DO UPDATE SET` assignments, mirroring the SET
+// building in compileUpdate but without a table alias (Postgres resolves the
+// conflicting row automatically).
+func (c *compiler) compileConflictSets(rt *asl.ResolvedType, assignments []*aql.Assignment) ([]string, error) {
+	var sets []string
+	for _, a := range assignments {
+		if prop, ok := rt.Properties[a.Field]; ok {
+			val, err := c.compileExpr(a.Value, "", rt)
+			if err != nil {
+				return nil, err
+			}
+			inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
+			sets = append(sets, fmt.Sprintf("%q = %s", prop.Column, val))
+			continue
+		}
+		if link, ok := rt.Links[a.Field]; ok {
+			if link.IsMulti {
+				return nil, fmt.Errorf("cannot assign multi-link %q in conflict update", a.Field)
+			}
+			val, err := c.compileExpr(a.Value, "", rt)
+			if err != nil {
+				return nil, err
+			}
+			inferAssignmentParamType(c.params, a.Value, "uuid", "")
+			sets = append(sets, fmt.Sprintf("%q = %s", link.JoinColumn, val))
+			continue
+		}
+		return nil, fmt.Errorf("type %q has no property or link %q", rt.Name, a.Field)
+	}
+	if len(sets) == 0 {
+		return nil, fmt.Errorf("else update must set at least one field")
+	}
+	return sets, nil
+}
+
+// conflictColumn resolves a conflict-target field to its column (scalar property
+// column or single-link FK column).
+func conflictColumn(rt *asl.ResolvedType, field string) (string, error) {
+	if prop, ok := rt.Properties[field]; ok {
+		return prop.Column, nil
+	}
+	if link, ok := rt.Links[field]; ok {
+		return link.JoinColumn, nil
+	}
+	return "", fmt.Errorf("type %q has no field %q in conflict target", rt.Name, field)
+}
+
+// hasUniqueConstraint reports whether the conflict target columns are backed by
+// an exclusive or primary-key constraint: a field/link-level `exclusive`, or a
+// type-level exclusive/pk constraint on the same set of columns.
+func hasUniqueConstraint(rt *asl.ResolvedType, fields, cols []string) bool {
+	if len(fields) == 1 {
+		f := fields[0]
+		if prop, ok := rt.Properties[f]; ok {
+			for _, con := range prop.Constraints {
+				if con.Name == "exclusive" {
+					return true
+				}
+			}
+		}
+		if link, ok := rt.Links[f]; ok {
+			for _, con := range link.Constraints {
+				if con.Name == "exclusive" {
+					return true
+				}
+			}
+		}
+	}
+	for _, tc := range rt.Constraints {
+		if (tc.Expression == "exclusive" || tc.Expression == "pk") && sameColumnSet(tc.Columns, cols) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameColumnSet reports whether two column lists contain the same set of names,
+// ignoring order (ON CONFLICT target column order is not significant).
+func sameColumnSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		if seen[s] == 0 {
+			return false
+		}
+		seen[s]--
+	}
+	return true
+}
+
+// dottedFields renders conflict-target field names as `.name` for error messages.
+func dottedFields(fields []string) []string {
+	out := make([]string, len(fields))
+	for i, f := range fields {
+		out[i] = "." + f
+	}
+	return out
 }
 
 // compileLinkAssignment compiles a link assignment. Returns (column, value, cteFrag, error).
@@ -515,7 +678,7 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 	// (insert TypeName { ... }) → CTE
 	if operand.SubInsert != nil {
 		sub := operand.SubInsert
-		innerSQL, err := c.compileInsertBody(sub.TypeName, sub.Assignments, false)
+		innerSQL, err := c.compileInsertBody(sub.TypeName, sub.Assignments, nil, false)
 		if err != nil {
 			return "", "", "", fmt.Errorf("link %q sub-insert: %w", a.Field, err)
 		}
@@ -821,7 +984,7 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 
 	case p.SubInsert != nil:
 		// (insert TypeName { ... }) used as a scalar — compile as a subquery returning id.
-		sql, err := c.compileInsertBody(p.SubInsert.TypeName, p.SubInsert.Assignments, false)
+		sql, err := c.compileInsertBody(p.SubInsert.TypeName, p.SubInsert.Assignments, nil, false)
 		if err != nil {
 			return "", err
 		}

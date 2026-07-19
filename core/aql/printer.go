@@ -90,7 +90,44 @@ func printInsert(b *strings.Builder, s *InsertStmt) {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("};")
+	b.WriteString("}")
+	printConflict(b, s.Conflict)
+	b.WriteString(";")
+}
+
+func printConflict(b *strings.Builder, c *OnConflict) {
+	if c == nil {
+		return
+	}
+	b.WriteString(" unless conflict")
+	if c.Target != nil {
+		switch len(c.Target.Fields) {
+		case 0:
+		case 1:
+			fmt.Fprintf(b, " on .%s", c.Target.Fields[0])
+		default:
+			b.WriteString(" on (")
+			for i, f := range c.Target.Fields {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(b, ".%s", f)
+			}
+			b.WriteString(")")
+		}
+	}
+	if c.Else != nil {
+		fmt.Fprintf(b, " else (update %s set {\n", c.Else.TypeName)
+		for i, a := range c.Else.Assignments {
+			fmt.Fprintf(b, "  %s := ", a.Field)
+			printExpr(b, a.Value)
+			if i < len(c.Else.Assignments)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("})")
+	}
 }
 
 func printUpdate(b *strings.Builder, s *UpdateStmt) {

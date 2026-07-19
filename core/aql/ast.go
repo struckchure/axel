@@ -74,12 +74,40 @@ type AggExpr struct {
 	End      string  `parser:"')'"`
 }
 
-// InsertStmt: insert TypeName { field := expr, ... };
+// InsertStmt: insert TypeName { field := expr, ... } [unless conflict [on ...] [else (...)]];
 type InsertStmt struct {
 	Pos         lexer.Position
 	TypeName    string        `parser:"'insert' @Ident"`
 	Assignments []*Assignment `parser:"'{' @@ ( ',' @@ )* ','? '}'"`
+	Conflict    *OnConflict   `parser:"( 'unless' 'conflict' @@ )?"`
 	End         string        `parser:"';'?"`
+}
+
+// OnConflict is the upsert clause on an insert. It lowers to Postgres
+// `ON CONFLICT [(cols)] DO NOTHING` (no Else) or `ON CONFLICT (cols) DO UPDATE
+// SET ...` (with Else).
+//
+//	unless conflict
+//	unless conflict on .email
+//	unless conflict on (.a, .b)
+//	unless conflict on .email else (update User set { name := $name })
+type OnConflict struct {
+	Target *ConflictTarget `parser:"( 'on' @@ )?"`
+	Else   *ConflictUpdate `parser:"( 'else' '(' @@ ')' )?"`
+}
+
+// ConflictTarget names the exclusive field(s) that define the conflict:
+// `.field` or `(.a, .b)` for a composite constraint.
+type ConflictTarget struct {
+	Fields []string `parser:"( '.' @Ident | '(' '.' @Ident ( ',' '.' @Ident )* ')' )"`
+}
+
+// ConflictUpdate is the `else (update TypeName set { ... })` arm, lowered to the
+// `DO UPDATE SET ...` clause. The TypeName must match the insert's type and no
+// filter is allowed (Postgres targets the conflicting row automatically).
+type ConflictUpdate struct {
+	TypeName    string        `parser:"'update' @Ident"`
+	Assignments []*Assignment `parser:"'set' '{' @@ ( ',' @@ )* ','? '}'"`
 }
 
 // InsertBody is a bare insert without a trailing ';', used as a sub-expression.

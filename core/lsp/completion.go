@@ -8,6 +8,7 @@ import (
 var aqlStatementKeywords = []string{
 	"multi", "select", "insert", "update", "delete", "filter",
 	"order", "by", "limit", "offset", "set",
+	"unless", "conflict", "on", "else",
 }
 
 var aqlOperatorKeywords = []string{"and", "or", "in", "like", "ilike", "asc", "desc"}
