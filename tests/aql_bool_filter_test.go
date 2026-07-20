@@ -111,6 +111,56 @@ func TestOptionalParamGuardsOnlyItsOwnComparison(t *testing.T) {
 	}
 }
 
+// Inside a disjunction, an omitted optional param must drop out of the OR
+// (identity FALSE) rather than satisfy it (identity TRUE). Otherwise one omitted
+// param silently voids the whole `or` group — e.g. leaving $owner null here would
+// make every row match regardless of .organization.
+func TestOptionalParamInOrDropsOut(t *testing.T) {
+	c := compileAQL(t, boolSchema, `multi select Project filter .owner = $owner<str>? or .organization = $org<str>?;`)
+
+	want := `($1::UUID IS NOT NULL AND p.owner = $1) OR ($2::TEXT IS NOT NULL AND p.organization = $2)`
+	if !strings.Contains(c.SQL, want) {
+		t.Errorf("optional params in an OR must use the IS NOT NULL guard, want %q:\n%s", want, c.SQL)
+	}
+	if strings.Contains(c.SQL, `IS NULL OR p.owner`) {
+		t.Errorf("OR-context optional param wrongly used the match-all (AND) identity:\n%s", c.SQL)
+	}
+}
+
+// A parenthesized OR group AND-combined with other filters: the optional params
+// inside the group take the OR identity, while a sibling optional filter outside
+// the group keeps the AND (match-all) identity.
+func TestOptionalParamMixedAndOrContexts(t *testing.T) {
+	c := compileAQL(t, boolSchema, `
+multi select Project
+filter .name = $name<str>?
+   and (.owner = $owner<str>? or .organization = $org<str>?);`)
+
+	// Sibling AND filter → match-all when null.
+	if !strings.Contains(c.SQL, `($1::TEXT IS NULL OR p.name = $1)`) {
+		t.Errorf("AND-context optional param should keep the IS NULL OR guard:\n%s", c.SQL)
+	}
+	// Both OR arms → drop out when null.
+	if !strings.Contains(c.SQL, `($2::UUID IS NOT NULL AND p.owner = $2) OR ($3::TEXT IS NOT NULL AND p.organization = $3)`) {
+		t.Errorf("OR-context optional params should use the IS NOT NULL guard:\n%s", c.SQL)
+	}
+}
+
+// An optional param that is AND-combined with a sibling keeps the match-all
+// identity even when that AND-group is itself one arm of an OR: within the group
+// the param is AND-ed, so omitting it should relax to its sibling, not vanish.
+func TestOptionalParamAndSiblingInsideOr(t *testing.T) {
+	c := compileAQL(t, boolSchema, `multi select Project filter (.owner = $owner<str>? and .active = true) or .age = $age<int32>?;`)
+
+	if !strings.Contains(c.SQL, `($1::UUID IS NULL OR p.owner = $1) AND p.active = true`) {
+		t.Errorf("optional param with an AND sibling keeps the match-all identity:\n%s", c.SQL)
+	}
+	// The lone OR arm still drops out when null.
+	if !strings.Contains(c.SQL, `($2::INTEGER IS NOT NULL AND p.age = $2)`) {
+		t.Errorf("lone OR-arm optional param should use the IS NOT NULL guard:\n%s", c.SQL)
+	}
+}
+
 // Boolean expressions round-trip through the printer.
 func TestBoolFilterRoundTrips(t *testing.T) {
 	src := `multi select Project { id } filter (.name = $a or .active = true) and .organization = $b;`

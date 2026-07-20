@@ -130,38 +130,9 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 	var laterals []string
 
 	if body.Shape != nil {
-		// Collect explicitly-named fields so a `*` splat can skip them (explicit
-		// selections win over the splat expansion).
-		explicit := make(map[string]bool)
-		for _, f := range body.Shape.Fields {
-			if !f.Star {
-				explicit[f.Name] = true
-			}
-		}
-		for _, f := range body.Shape.Fields {
-			if f.Star {
-				// Expand to all scalar props + single-link FK columns not named
-				// explicitly elsewhere in the shape.
-				for _, prop := range sortedProps(rt) {
-					if !explicit[prop.Name] {
-						cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, prop.Column, prop.Name))
-					}
-				}
-				for _, link := range sortedSingleLinks(rt) {
-					if !explicit[link.Name] {
-						cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, link.JoinColumn, link.JoinColumn))
-					}
-				}
-				continue
-			}
-			col, lateral, err := c.compileShapeField(f, rt, alias)
-			if err != nil {
-				return "", err
-			}
-			cols = append(cols, col)
-			if lateral != "" {
-				laterals = append(laterals, lateral)
-			}
+		cols, err = c.compileShapeCols(body.Shape, rt, alias)
+		if err != nil {
+			return "", err
 		}
 	} else {
 		// No shape → select all scalar properties plus single-link FK columns,
@@ -265,6 +236,46 @@ func (c *compiler) compileAgg(agg *aql.AggExpr) (string, error) {
 	}
 }
 
+// compileShapeCols compiles every field of a shape against a type/alias into a
+// flat list of SELECT column expressions. `*` expands to scalar properties plus
+// single-link FK columns (skipping any name selected explicitly elsewhere in the
+// shape). Because it delegates non-star fields to compileShapeField, nested
+// links, computed fields, and splats all work at any depth — the top-level shape
+// and a link's sub-shape share this one code path.
+func (c *compiler) compileShapeCols(shape *aql.Shape, rt *asl.ResolvedType, alias string) ([]string, error) {
+	// Collect explicitly-named fields so a `*` splat can skip them (explicit
+	// selections win over the splat expansion).
+	explicit := make(map[string]bool)
+	for _, f := range shape.Fields {
+		if !f.Star {
+			explicit[f.Name] = true
+		}
+	}
+
+	var cols []string
+	for _, f := range shape.Fields {
+		if f.Star {
+			for _, prop := range sortedProps(rt) {
+				if !explicit[prop.Name] {
+					cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, prop.Column, prop.Name))
+				}
+			}
+			for _, link := range sortedSingleLinks(rt) {
+				if !explicit[link.Name] {
+					cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, link.JoinColumn, link.JoinColumn))
+				}
+			}
+			continue
+		}
+		col, _, err := c.compileShapeField(f, rt, alias)
+		if err != nil {
+			return nil, err
+		}
+		cols = append(cols, col)
+	}
+	return cols, nil
+}
+
 // compileShapeField compiles one field in a shape.
 // Returns (column expression, lateral subquery string, error).
 func (c *compiler) compileShapeField(f *aql.ShapeField, parentType *asl.ResolvedType, parentAlias string) (string, string, error) {
@@ -301,14 +312,14 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 	tAlias := tableAlias(link.TargetType) + "_" + f.Name
 
 	// Collect columns for the sub-shape (or all properties if no sub-shape).
+	// A sub-shape goes through compileShapeCols so nested links, computed
+	// fields, and `*` splats resolve just like a top-level shape — the nested
+	// link's own correlated subquery becomes one column of this subquery's row.
 	var subCols []string
 	if f.SubShape != nil {
-		for _, sf := range f.SubShape.Fields {
-			prop, ok := targetType.Properties[sf.Name]
-			if !ok {
-				return "", "", fmt.Errorf("type %q has no property %q", targetType.Name, sf.Name)
-			}
-			subCols = append(subCols, fmt.Sprintf("%s.%s AS %s", tAlias, prop.Column, sf.Name))
+		subCols, err = c.compileShapeCols(f.SubShape, targetType, tAlias)
+		if err != nil {
+			return "", "", err
 		}
 	} else {
 		for _, prop := range targetType.Properties {
@@ -865,9 +876,14 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 		return "", nil
 	}
 
+	// orContext is true when this expression joins more than one arm with OR, so
+	// an omitted optional param in a lone-comparison arm takes the OR identity
+	// (FALSE) rather than the AND identity (see compileCmp).
+	orContext := len(expr.Rest) > 0
+
 	arms := make([]string, 0, len(expr.Rest)+1)
 	for _, a := range append([]*aql.AndExpr{expr.Left}, expr.Rest...) {
-		sql, err := c.compileAndExpr(a, alias, rt)
+		sql, err := c.compileAndExpr(a, alias, rt, orContext)
 		if err != nil {
 			return "", err
 		}
@@ -879,14 +895,19 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 	return strings.Join(arms, " OR "), nil
 }
 
-func (c *compiler) compileAndExpr(and *aql.AndExpr, alias string, rt *asl.ResolvedType) (string, error) {
+// compileAndExpr compiles an AND-group. orContext reports whether the enclosing
+// expression is a disjunction; a comparison that is AND-combined with siblings
+// is always in an AND context (its omitted-optional identity is TRUE), while a
+// lone comparison inherits the enclosing connective's identity.
+func (c *compiler) compileAndExpr(and *aql.AndExpr, alias string, rt *asl.ResolvedType, orContext bool) (string, error) {
 	if and == nil {
 		return "", nil
 	}
 
+	andContext := len(and.Rest) > 0
 	parts := make([]string, 0, len(and.Rest)+1)
 	for _, cmp := range append([]*aql.Cmp{and.Left}, and.Rest...) {
-		sql, err := c.compileCmp(cmp, alias, rt)
+		sql, err := c.compileCmp(cmp, alias, rt, orContext && !andContext)
 		if err != nil {
 			return "", err
 		}
@@ -897,8 +918,11 @@ func (c *compiler) compileAndExpr(and *aql.AndExpr, alias string, rt *asl.Resolv
 
 // compileCmp compiles a single comparison. Param-type inference and the
 // optional-param null guard live here, per comparison: a `$name?` guard must
-// only relax its own comparison, never a whole conjunction.
-func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType) (string, error) {
+// only relax its own comparison, never a whole conjunction. orContext selects
+// the guard's identity element: in a disjunction an omitted optional param
+// contributes FALSE (it must not satisfy the whole OR), elsewhere TRUE (an
+// omitted filter matches all rows).
+func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, orContext bool) (string, error) {
 	if cmp == nil {
 		return "", nil
 	}
@@ -935,11 +959,17 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType) 
 	result := fmt.Sprintf("%s %s %s", left, cmp.Op, right)
 
 	// Optional params ($name?) make the comparison a no-op when the value is
-	// null, so an omitted filter matches all rows. The standalone `$N IS NULL`
-	// occurrence carries no type, so cast it to the SQL type of the column it's
-	// compared against — otherwise Postgres can't determine the parameter type
-	// when the value is null (42P08). Casting to the column type keeps the cast
-	// consistent with the comparison (avoiding e.g. a str-vs-uuid conflict).
+	// null. The identity that "no-op" collapses to depends on the enclosing
+	// connective: in an AND (or a lone top-level filter) an omitted param matches
+	// all rows — `($N IS NULL OR result)`; in an OR it must instead drop out of
+	// the disjunction — `($N IS NOT NULL AND result)` — otherwise one omitted
+	// param makes the whole OR true and silently voids the other arms.
+	//
+	// The standalone `$N IS [NOT] NULL` occurrence carries no type, so cast it to
+	// the SQL type of the column it's compared against — otherwise Postgres can't
+	// determine the parameter type when the value is null (42P08). Casting to the
+	// column type keeps the cast consistent with the comparison (avoiding e.g. a
+	// str-vs-uuid conflict).
 	for _, operand := range []*aql.Primary{cmp.Left, cmp.Right} {
 		if operand != nil && operand.Param != nil && operand.Param.Optional {
 			ph := c.params.add(operand.Param.Name, "")
@@ -947,7 +977,12 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType) 
 			if operand == cmp.Right {
 				other = cmp.Left
 			}
-			result = fmt.Sprintf("(%s%s IS NULL OR %s)", ph, c.paramCastSuffix(operand, other, rt), result)
+			cast := c.paramCastSuffix(operand, other, rt)
+			if orContext {
+				result = fmt.Sprintf("(%s%s IS NOT NULL AND %s)", ph, cast, result)
+			} else {
+				result = fmt.Sprintf("(%s%s IS NULL OR %s)", ph, cast, result)
+			}
 		}
 	}
 
@@ -1258,21 +1293,36 @@ func (c *compiler) annotSQLType(annot string) (string, error) {
 // sqlToAQLType maps a SQL type string back to an AQL type name.
 func sqlToAQLType(sqlType string) string {
 	switch sqlType {
-	case "TEXT":             return "str"
-	case "SMALLINT":         return "int16"
-	case "INTEGER":          return "int32"
-	case "BIGINT":           return "int64"
-	case "REAL":             return "float32"
-	case "DOUBLE PRECISION": return "float64"
-	case "BOOLEAN":          return "bool"
-	case "UUID":             return "uuid"
-	case "TIMESTAMPTZ":      return "datetime"
-	case "DATE":             return "date"
-	case "TIME":             return "time"
-	case "JSONB":            return "json"
-	case "BYTEA":            return "bytes"
-	case "NUMERIC":          return "decimal"
-	default:                 return ""
+	case "TEXT":
+		return "str"
+	case "SMALLINT":
+		return "int16"
+	case "INTEGER":
+		return "int32"
+	case "BIGINT":
+		return "int64"
+	case "REAL":
+		return "float32"
+	case "DOUBLE PRECISION":
+		return "float64"
+	case "BOOLEAN":
+		return "bool"
+	case "UUID":
+		return "uuid"
+	case "TIMESTAMPTZ":
+		return "datetime"
+	case "DATE":
+		return "date"
+	case "TIME":
+		return "time"
+	case "JSONB":
+		return "json"
+	case "BYTEA":
+		return "bytes"
+	case "NUMERIC":
+		return "decimal"
+	default:
+		return ""
 	}
 }
 
