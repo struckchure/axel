@@ -132,6 +132,7 @@ export default defineConfig({
             items: [
               { text: "Basics", link: "/aql/update/basics" },
               { text: "Partial Updates", link: "/aql/update/partial" },
+              { text: "Links", link: "/aql/update/links" },
             ],
           },
           { text: "Delete", link: "/aql/delete" },

@@ -43,7 +43,7 @@ func TestSubQueryFieldInCoalesceAssignment(t *testing.T) {
 	  installation_id := (select GithubInstallation filter .id = $gid<uuid>?).installation_id ?? .installation_id
 	};`)
 
-	want := `installation_id = COALESCE((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NULL OR g.id = $1) LIMIT 1), r.installation_id)`
+	want := `installation_id = COALESCE((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NOT NULL AND g.id = $1) LIMIT 1), r.installation_id)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("expected coalesce of projected subquery with current value, want:\n%s\ngot:\n%s", want, c.SQL)
 	}
@@ -64,7 +64,7 @@ func TestSubQueryProjectionCastInCoalesce(t *testing.T) {
 	c := compileAQL(t, subqSchema, `update Repo filter .id = $id set {
 	  installation_id := (select GithubInstallation filter .id = $gid<uuid>?).installation_id<str> ?? .installation_id
 	};`)
-	want := `installation_id = COALESCE(((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NULL OR g.id = $1) LIMIT 1))::TEXT, r.installation_id)`
+	want := `installation_id = COALESCE(((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NOT NULL AND g.id = $1) LIMIT 1))::TEXT, r.installation_id)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("expected cast projection inside coalesce, want:\n%s\ngot:\n%s", want, c.SQL)
 	}

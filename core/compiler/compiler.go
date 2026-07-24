@@ -95,6 +95,12 @@ type compiler struct {
 	// trig is non-nil when compiling a trigger / function body, enabling the
 	// magic identifiers __new__ / __old__ / __subject__ / event.
 	trig *triggerContext
+	// valueFilter is true while compiling the filter of a scalar subquery used
+	// as a value (a link assignment or `(select ...)` operand). There a lone
+	// omitted optional param must yield no row — NULL, which composes with `??`
+	// — instead of matching all rows and returning an arbitrary one. See
+	// compileValueFilter / compileCmp.
+	valueFilter bool
 }
 
 // triggerContext carries the state that changes AQL compilation inside a trigger
@@ -680,14 +686,11 @@ func dottedFields(fields []string) []string {
 // compileLinkAssignment compiles a link assignment. Returns (column, value, cteFrag, error).
 // cteFrag is non-empty when a sub-insert CTE was generated.
 func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, string, string, error) {
-	operand := a.Value.SoloPrimary()
-	if operand == nil {
-		return "", "", "", fmt.Errorf("link %q assignment must be a subquery or sub-insert", a.Field)
-	}
 	col := fmt.Sprintf("%q", link.JoinColumn)
+	operand := a.Value.SoloPrimary()
 
 	// (insert TypeName { ... }) → CTE
-	if operand.SubInsert != nil {
+	if operand != nil && operand.SubInsert != nil {
 		sub := operand.SubInsert
 		innerSQL, err := c.compileInsertBody(sub.TypeName, sub.Assignments, nil, false)
 		if err != nil {
@@ -699,38 +702,49 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 		return col, val, cteFrag, nil
 	}
 
-	// (select TypeName filter ...) → scalar subquery
-	if operand.SubQuery == nil {
-		return "", "", "", fmt.Errorf("link %q assignment must be a subquery (select ...) or sub-insert (insert ...)", a.Field)
-	}
-	sub := operand.SubQuery
+	// Solo (select TypeName filter ...) without projection or cast → scalar
+	// subquery joining on the link's JoinField (which may not be id, so this
+	// path can't be folded into the general compileExpr fallback below).
+	if operand != nil && operand.SubQuery != nil && operand.SubQueryField == "" && operand.Cast == "" {
+		sub := operand.SubQuery
 
-	targetType, err := c.resolveType(link.TargetType)
-	if err != nil {
-		return "", "", "", err
-	}
-	alias := tableAlias(link.TargetType)
-
-	var whereClause string
-	if sub.Filter != nil {
-		where, err := c.compileExpr(sub.Filter.Expr, alias, targetType)
+		targetType, err := c.resolveType(link.TargetType)
 		if err != nil {
 			return "", "", "", err
 		}
-		whereClause = " WHERE " + where
+		alias := tableAlias(link.TargetType)
+
+		var whereClause string
+		if sub.Filter != nil {
+			where, err := c.compileValueFilter(sub.Filter.Expr, alias, targetType)
+			if err != nil {
+				return "", "", "", err
+			}
+			whereClause = " WHERE " + where
+		}
+
+		joinField := link.JoinField
+		if joinField == "" {
+			joinField = "id"
+		}
+
+		subSQL := fmt.Sprintf(
+			"(SELECT %s.%s FROM \"%s\" %s%s LIMIT 1)",
+			alias, joinField, targetType.Table, alias, whereClause,
+		)
+
+		return col, subSQL, "", nil
 	}
 
-	joinField := link.JoinField
-	if joinField == "" {
-		joinField = "id"
+	// General scalar expression resolving to the target's id — mirrors update's
+	// link assignment: a `??` chain of subqueries, a subquery projection
+	// ((select X ...).organization), or a bare $param.
+	val, err := c.compileExpr(a.Value, "", parentType)
+	if err != nil {
+		return "", "", "", fmt.Errorf("link %q assignment: %w", a.Field, err)
 	}
-
-	subSQL := fmt.Sprintf(
-		"(SELECT %s.%s FROM \"%s\" %s%s LIMIT 1)",
-		alias, joinField, targetType.Table, alias, whereClause,
-	)
-
-	return col, subSQL, "", nil
+	inferAssignmentParamType(c.params, a.Value, "uuid", "")
+	return col, val, "", nil
 }
 
 // compileSubQuery compiles a (select ...) subquery used as a scalar expression.
@@ -758,7 +772,7 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (s
 	fmt.Fprintf(&sb, "SELECT %s.%s FROM \"%s\" %s", alias, column, rt.Table, alias)
 
 	if body.Filter != nil {
-		where, err := c.compileExpr(body.Filter.Expr, alias, rt)
+		where, err := c.compileValueFilter(body.Filter.Expr, alias, rt)
 		if err != nil {
 			return "", err
 		}
@@ -878,8 +892,10 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 
 	// orContext is true when this expression joins more than one arm with OR, so
 	// an omitted optional param in a lone-comparison arm takes the OR identity
-	// (FALSE) rather than the AND identity (see compileCmp).
-	orContext := len(expr.Rest) > 0
+	// (FALSE) rather than the AND identity (see compileCmp). A value filter (the
+	// WHERE of a scalar subquery used as a value) forces the same identity: an
+	// omitted lookup param must yield no row, not an arbitrary one.
+	orContext := len(expr.Rest) > 0 || c.valueFilter
 
 	arms := make([]string, 0, len(expr.Rest)+1)
 	for _, a := range append([]*aql.AndExpr{expr.Left}, expr.Rest...) {
@@ -893,6 +909,20 @@ func (c *compiler) compileExpr(expr *aql.Expr, alias string, rt *asl.ResolvedTyp
 		arms = append(arms, sql)
 	}
 	return strings.Join(arms, " OR "), nil
+}
+
+// compileValueFilter compiles the WHERE of a scalar subquery used as a value —
+// a link assignment or a `(select ...)` operand. It sets valueFilter for the
+// duration so a lone omitted optional param drops the row (subquery → NULL,
+// composing with `??`) instead of matching all rows: `(select Org filter .id =
+// $org?) ?? ...` must fall through to the fallback when $org is omitted, not
+// return an arbitrary organization. AND-combined comparisons keep the match-all
+// identity — there the remaining conditions still constrain the lookup.
+func (c *compiler) compileValueFilter(expr *aql.Expr, alias string, rt *asl.ResolvedType) (string, error) {
+	prev := c.valueFilter
+	c.valueFilter = true
+	defer func() { c.valueFilter = prev }()
+	return c.compileExpr(expr, alias, rt)
 }
 
 // compileAndExpr compiles an AND-group. orContext reports whether the enclosing

@@ -30,13 +30,16 @@ func TestUpdateSingleLinkFromSubquery(t *testing.T) {
 }
 
 // `(select ...) ?? .link` keeps the current FK when the subquery finds nothing —
-// the `.installation` fallback resolves to the current row's FK column.
+// the `.installation` fallback resolves to the current row's FK column. The
+// optional lookup param uses the IS NOT NULL guard (value-filter identity): when
+// $iid is omitted the subquery must yield NULL so the fallback fires, not match
+// every installation and return an arbitrary one.
 func TestUpdateLinkCoalesceKeepsCurrent(t *testing.T) {
 	c := compileAQL(t, updateLinkSchema, `update Application filter .id = $id<uuid> set {
 	  installation := (select GithubInstallation filter .installation_id = $iid<int64>?) ?? .installation
 	};`)
 
-	want := `installation = COALESCE((SELECT g.id FROM "github_installation" g WHERE ($1::BIGINT IS NULL OR g.installation_id = $1) LIMIT 1), a.installation)`
+	want := `installation = COALESCE((SELECT g.id FROM "github_installation" g WHERE ($1::BIGINT IS NOT NULL AND g.installation_id = $1) LIMIT 1), a.installation)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("expected coalesce-to-current-FK, want:\n%s\ngot:\n%s", want, c.SQL)
 	}

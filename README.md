@@ -19,6 +19,8 @@ Axel never wraps a driver or executes queries on your behalf. It generates SQL; 
 
 ## How it works
 
+[Demo on X](https://x.com/struckchure/status/2079922001922122004)
+
 ```
 schema.asl  ──► axel generate ──► migration.sql ──► axel up ──► PostgreSQL
 query.aql   ──► axel compile  ──► parameterized SQL (you execute this)
