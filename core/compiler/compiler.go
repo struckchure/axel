@@ -219,6 +219,17 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 }
 
 func (c *compiler) compileAgg(agg *aql.AggExpr) (string, error) {
+	sql, err := c.compileAggSQL(agg)
+	if err != nil {
+		return "", err
+	}
+	return sql + ";", nil
+}
+
+// compileAggSQL builds the SELECT for an aggregate without a trailing
+// terminator, so it can serve both as a top-level statement (compileAgg appends
+// ";") and as a scalar subquery operand (compileSubQuery wraps it in parens).
+func (c *compiler) compileAggSQL(agg *aql.AggExpr) (string, error) {
 	rt, err := c.resolveType(agg.TypeName)
 	if err != nil {
 		return "", err
@@ -236,9 +247,9 @@ func (c *compiler) compileAgg(agg *aql.AggExpr) (string, error) {
 
 	switch strings.ToLower(agg.Func) {
 	case "count":
-		return fmt.Sprintf("SELECT COUNT(*) FROM (\n  %s\n) _agg;", inner), nil
+		return fmt.Sprintf("SELECT COUNT(*) FROM (\n  %s\n) _agg", inner), nil
 	default:
-		return fmt.Sprintf("SELECT %s(*) FROM (\n  %s\n) _agg;", agg.Func, inner), nil
+		return fmt.Sprintf("SELECT %s(*) FROM (\n  %s\n) _agg", agg.Func, inner), nil
 	}
 }
 
@@ -753,6 +764,18 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 // e.g. (select Org filter .id = $id).slug. A trailing `<Type>` cast, if any, is
 // applied by the caller to the whole subquery.
 func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (string, error) {
+	// Aggregate subquery: (select count(TypeName filter ...)) used as a scalar.
+	if body.AggFunc != nil {
+		if projectField != "" {
+			return "", fmt.Errorf("cannot project field %q from an aggregate subquery", projectField)
+		}
+		sql, err := c.compileAggSQL(body.AggFunc)
+		if err != nil {
+			return "", err
+		}
+		return "(" + sql + ")", nil
+	}
+
 	rt, err := c.resolveType(body.TypeName)
 	if err != nil {
 		return "", err
