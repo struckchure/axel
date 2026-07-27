@@ -286,3 +286,27 @@ select A { x := '{}'<json> };
           (string)
           cast: (type_identifier
             (identifier)))))))
+
+==================
+insert with upsert
+==================
+
+insert User { email := $e } unless conflict on .email;
+
+---
+
+(source_file
+  (insert_statement
+    type: (type_identifier
+      (identifier))
+    (assignment_block
+      (assignment
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (parameter
+            name: (identifier)))))
+    (on_conflict
+      (conflict_target
+        field: (field_identifier
+          (identifier))))))

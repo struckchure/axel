@@ -31,6 +31,11 @@
     }
   },
   {
+    "type": "array_marker",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "computed_field",
     "named": true,
     "fields": {
@@ -173,6 +178,22 @@
     }
   },
   {
+    "type": "extension_definition",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "field_constraint",
     "named": true,
     "fields": {
@@ -267,12 +288,12 @@
     "type": "function_definition",
     "named": true,
     "fields": {
-      "language": {
-        "multiple": true,
-        "required": false,
+      "body": {
+        "multiple": false,
+        "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "return_expression",
             "named": true
           }
         ]
@@ -303,11 +324,11 @@
       "required": false,
       "types": [
         {
-          "type": "aql_block",
+          "type": "array_marker",
           "named": true
         },
         {
-          "type": "dollar_string",
+          "type": "function_directive",
           "named": true
         },
         {
@@ -315,6 +336,40 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "function_directive",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -341,6 +396,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "array_marker",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -376,6 +441,37 @@
     }
   },
   {
+    "type": "return_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "dollar_string",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "sql_paren",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "rewrite",
     "named": true,
     "fields": {
@@ -390,7 +486,7 @@
         ]
       },
       "field": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {
@@ -401,7 +497,7 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
@@ -459,6 +555,10 @@
           "named": true
         },
         {
+          "type": "extension_definition",
+          "named": true
+        },
+        {
           "type": "function_definition",
           "named": true
         },
@@ -468,6 +568,37 @@
         },
         {
           "type": "type_definition",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sql_paren",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "dollar_string",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "sql_paren",
+          "named": true
+        },
+        {
+          "type": "string",
           "named": true
         }
       ]
@@ -629,6 +760,14 @@
     "named": false
   },
   {
+    "type": "%",
+    "named": false
+  },
+  {
+    "type": "&",
+    "named": false
+  },
+  {
     "type": "(",
     "named": false
   },
@@ -641,7 +780,15 @@
     "named": false
   },
   {
+    "type": "+",
+    "named": false
+  },
+  {
     "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
     "named": false
   },
   {
@@ -653,7 +800,15 @@
     "named": false
   },
   {
+    "type": "/",
+    "named": false
+  },
+  {
     "type": ":",
+    "named": false
+  },
+  {
+    "type": "::",
     "named": false
   },
   {
@@ -669,11 +824,19 @@
     "named": false
   },
   {
+    "type": "<=",
+    "named": false
+  },
+  {
     "type": "=",
     "named": false
   },
   {
     "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
     "named": false
   },
   {
@@ -689,6 +852,18 @@
     "named": false
   },
   {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "^",
+    "named": false
+  },
+  {
     "type": "abstract",
     "named": false
   },
@@ -698,10 +873,6 @@
   },
   {
     "type": "before",
-    "named": false
-  },
-  {
-    "type": "body",
     "named": false
   },
   {
@@ -750,6 +921,10 @@
     "named": false
   },
   {
+    "type": "extension",
+    "named": false
+  },
+  {
     "type": "for",
     "named": false
   },
@@ -774,10 +949,6 @@
     "named": true
   },
   {
-    "type": "language",
-    "named": false
-  },
-  {
     "type": "link",
     "named": false
   },
@@ -799,6 +970,10 @@
   },
   {
     "type": "required",
+    "named": false
+  },
+  {
+    "type": "return",
     "named": false
   },
   {
@@ -834,6 +1009,10 @@
     "named": false
   },
   {
+    "type": "use",
+    "named": false
+  },
+  {
     "type": "when",
     "named": false
   },
@@ -846,7 +1025,15 @@
     "named": false
   },
   {
+    "type": "||",
+    "named": false
+  },
+  {
     "type": "}",
+    "named": false
+  },
+  {
+    "type": "~",
     "named": false
   }
 ]

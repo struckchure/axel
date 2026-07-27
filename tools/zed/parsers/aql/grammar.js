@@ -62,13 +62,49 @@ module.exports = grammar({
         ")",
       ),
 
-    // insert Type { field := expr, ... } ;?
+    // insert Type { field := expr, ... } [unless conflict [on ...] [else (...)]] ;?
     insert_statement: ($) =>
       seq(
         "insert",
         field("type", $.type_identifier),
         $.assignment_block,
+        optional($.on_conflict),
         optional(";"),
+      ),
+
+    // unless conflict [on .field | on (.a, .b)] [else (update Type set { ... })]
+    on_conflict: ($) =>
+      seq(
+        "unless",
+        "conflict",
+        optional($.conflict_target),
+        optional($.conflict_update),
+      ),
+
+    conflict_target: ($) =>
+      seq(
+        "on",
+        choice(
+          seq(".", field("field", $.field_identifier)),
+          seq(
+            "(",
+            ".",
+            field("field", $.field_identifier),
+            repeat(seq(",", ".", field("field", $.field_identifier))),
+            ")",
+          ),
+        ),
+      ),
+
+    conflict_update: ($) =>
+      seq(
+        "else",
+        "(",
+        "update",
+        field("type", $.type_identifier),
+        "set",
+        $.assignment_block,
+        ")",
       ),
 
     // update Type filter? set { ... } ;?

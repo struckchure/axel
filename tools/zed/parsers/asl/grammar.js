@@ -20,9 +20,14 @@ module.exports = grammar({
       choice(
         $.scalar_type,
         $.enum_type,
+        $.extension_definition,
         $.function_definition,
         $.type_definition,
       ),
+
+    // use extension 'unaccent';
+    extension_definition: ($) =>
+      seq("use", "extension", field("name", $.string), ";"),
 
     // scalar type EmailStr extending str;
     scalar_type: ($) =>
@@ -93,7 +98,9 @@ module.exports = grammar({
     _field_body_item: ($) =>
       choice($.field_constraint, $.rewrite, $.default, $.on_clause),
 
-    // rewrite update := datetime_current();  /  rewrite insert, update := __subject__.name;
+    // rewrite update := datetime_current();
+    // rewrite create, update := slugify(__new__.title);
+    // rewrite insert, update := __subject__.name;
     rewrite: ($) =>
       seq(
         "rewrite",
@@ -101,12 +108,20 @@ module.exports = grammar({
         repeat(seq(",", field("event", $.identifier))),
         ":=",
         choice(
-          seq($.identifier, "(", ")"),
+          seq($.identifier, "(", optional(seq($._rewrite_arg, repeat(seq(",", $._rewrite_arg)))), ")"),
           seq($.identifier, optional(seq(".", field("field", $.identifier)))),
           $.string,
           $.integer,
         ),
         optional(";"),
+      ),
+
+    // A rewrite call argument: a row reference (__new__.field) or a literal.
+    _rewrite_arg: ($) =>
+      choice(
+        seq($.identifier, ".", field("field", $.identifier)),
+        $.string,
+        $.integer,
       ),
 
     // constraint exclusive;  /  constraint min_length(10);
@@ -203,9 +218,11 @@ module.exports = grammar({
         ";",
       ),
 
-    // function name(params) -> ret { language := …; body := ( aql ) | $$ sql $$; };
+    // @language plpgsql @immutable  (decorator-style, above the declaration)
+    // function name(params) -> ret[] { return <sql-expr>; };
     function_definition: ($) =>
       seq(
+        repeat($.function_directive),
         "function",
         field("name", $.field_identifier),
         "(",
@@ -215,20 +232,51 @@ module.exports = grammar({
         ")",
         "->",
         field("returns", $.type_identifier),
+        optional($.array_marker),
         "{",
-        repeat($._function_item),
+        "return",
+        field("body", $.return_expression),
+        ";",
         "}",
         optional(";"),
       ),
 
-    function_param: ($) =>
-      seq(field("name", $.identifier), ":", field("type", $.type_identifier)),
-
-    _function_item: ($) =>
-      choice(
-        seq("language", ":=", field("language", $.identifier), optional(";")),
-        seq("body", ":=", choice($.dollar_string, $.aql_block), optional(";")),
+    // @name value?  — an attribute like @immutable / @language plpgsql / @parallel safe.
+    function_directive: ($) =>
+      seq(
+        "@",
+        field("name", $.identifier),
+        optional(field("value", choice($.identifier, $.string, $.integer))),
       ),
+
+    function_param: ($) =>
+      seq(
+        field("name", $.identifier),
+        ":",
+        field("type", $.type_identifier),
+        optional($.array_marker),
+      ),
+
+    array_marker: ($) => seq("[", "]"),
+
+    // A raw Postgres expression, bracketed for the editor but not parsed
+    // structurally (the compiler wraps it in BEGIN RETURN …; END;).
+    return_expression: ($) => repeat1($._sql_token),
+
+    _sql_token: ($) =>
+      choice(
+        $.sql_paren,
+        $.dollar_string,
+        $.identifier,
+        $.string,
+        $.integer,
+        ".", ",", ":", "::", "||",
+        "+", "-", "*", "/", "%", "^", "&", "~",
+        "=", "!=", "<", ">", "<=", ">=",
+        "[", "]", "@", "?", "|",
+      ),
+
+    sql_paren: ($) => seq("(", repeat($._sql_token), ")"),
 
     // A balanced parenthesized AQL body. Not parsed structurally — this just
     // brackets the span for the editor; the compiler parses the real AQL.

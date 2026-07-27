@@ -82,6 +82,48 @@
     "fields": {}
   },
   {
+    "type": "conflict_target",
+    "named": true,
+    "fields": {
+      "field": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "conflict_update",
+    "named": true,
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "assignment_block",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "delete_statement",
     "named": true,
     "fields": {
@@ -313,11 +355,15 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "assignment_block",
+          "named": true
+        },
+        {
+          "type": "on_conflict",
           "named": true
         }
       ]
@@ -348,6 +394,25 @@
       "types": [
         {
           "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "on_conflict",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "conflict_target",
+          "named": true
+        },
+        {
+          "type": "conflict_update",
           "named": true
         }
       ]
@@ -782,11 +847,19 @@
     "extra": true
   },
   {
+    "type": "conflict",
+    "named": false
+  },
+  {
     "type": "delete",
     "named": false
   },
   {
     "type": "desc",
+    "named": false
+  },
+  {
+    "type": "else",
     "named": false
   },
   {
@@ -842,6 +915,10 @@
     "named": false
   },
   {
+    "type": "on",
+    "named": false
+  },
+  {
     "type": "or",
     "named": false
   },
@@ -863,6 +940,10 @@
   },
   {
     "type": "true",
+    "named": false
+  },
+  {
+    "type": "unless",
     "named": false
   },
   {

@@ -52,9 +52,10 @@
     },
     "keywords": {
       "patterns": [
-        { "match": "\\b(scalar|type|model|enum|abstract|function)\\b", "name": "storage.type.asl" },
+        { "match": "\\b(scalar|type|model|enum|abstract|function|use|extension)\\b", "name": "storage.type.asl" },
         { "match": "\\b(required|multi|single|property|link)\\b", "name": "storage.modifier.asl" },
-        { "match": "\\b(extends|extending|constraint|index|on|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body)\\b", "name": "keyword.control.asl" }
+        { "match": "@(language|immutable|stable|volatile|strict|leakproof|parallel|security|cost)\\b", "name": "keyword.control.directive.asl" },
+        { "match": "\\b(extends|extending|constraint|index|on|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body|return|safe|unsafe|restricted|definer|invoker)\\b", "name": "keyword.control.asl" }
       ]
     },
     "dollar-sql": {

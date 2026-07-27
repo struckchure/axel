@@ -35,7 +35,15 @@
   "execute"
   "language"
   "body"
+  "use"
+  "extension"
+  "return"
 ] @keyword
+
+; Function attribute directives (@immutable, @language, @parallel, …)
+(function_directive
+  "@" @punctuation.special
+  name: (identifier) @attribute)
 
 ; Dollar-quoted raw SQL bodies
 (dollar_string) @string

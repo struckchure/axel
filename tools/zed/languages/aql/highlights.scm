@@ -19,6 +19,10 @@
   "limit"
   "offset"
   "set"
+  "unless"
+  "conflict"
+  "on"
+  "else"
 ] @keyword
 
 ; Operator keywords

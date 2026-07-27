@@ -55,3 +55,45 @@ type A { x: str { rewrite update := datetime_current(); }; trigger t after inser
         (identifier)
         (identifier)
         (identifier)))))
+
+==================
+extension and general function with directives
+==================
+
+use extension 'unaccent';
+
+@language plpgsql
+@immutable
+@strict
+function slugify(value: text) -> text {
+  return lower(public.unaccent(value));
+};
+
+---
+
+(source_file
+  (extension_definition
+    name: (string))
+  (function_definition
+    (function_directive
+      name: (identifier)
+      value: (identifier))
+    (function_directive
+      name: (identifier))
+    (function_directive
+      name: (identifier))
+    name: (field_identifier
+      (identifier))
+    (function_param
+      name: (identifier)
+      type: (type_identifier
+        (identifier)))
+    returns: (type_identifier
+      (identifier))
+    body: (return_expression
+      (identifier)
+      (sql_paren
+        (identifier)
+        (identifier)
+        (sql_paren
+          (identifier))))))
