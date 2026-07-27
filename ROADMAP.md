@@ -8,7 +8,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 
 - [x] Design and implement schema definition language (SDL)
 - [x] Create Go type generation from schema definitions
-- [ ] Implement type-safe query client generation
+- [x] Implement type-safe query client generation (TypeScript)
 - [x] Support for basic data types (String, Int, Boolean, DateTime, Float, JSON)
 - [x] Relationship modeling (One-to-One, One-to-Many, Many-to-Many)
 
@@ -24,13 +24,13 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 
 ### Type-Safe Query Client
 
-- [ ] Basic CRUD operations (Create, Read, Update, Delete)
-- [ ] Query builder with fluent API
-- [ ] Type-safe select projections
-- [ ] Where clause filtering with runtime validation
+- [x] Basic CRUD operations (Create, Read, Update, Delete)
+- [x] Query builder with fluent API
+- [x] Type-safe select projections
+- [x] Where clause filtering with runtime validation
 - [ ] Support for joins with proper type inference
-- [ ] Pagination support (skip, take)
-- [ ] Sorting/ordering
+- [x] Pagination support (skip, take)
+- [x] Sorting/ordering
 
 ## Phase 2: Advanced Modeling Features
 
@@ -38,21 +38,21 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 
 - [x] Field-level validation rules
 - [ ] Custom field modifiers and decorators
-- [ ] Default values and auto-generated fields
+- [x] Default values and auto-generated fields
 - [x] Computed fields
 - [ ] Field encryption support
 - [ ] Soft deletes
-- [ ] Timestamps (createdAt, updatedAt)
+- [x] Timestamps (createdAt, updatedAt) (available via rewrites/triggers)
 
 ### Advanced Query Features
 
 - [ ] Aggregation functions (count, sum, avg, min, max)
 - [ ] Grouping and having clauses
-- [ ] Subquery support
-- [ ] Complex nested selects
+- [x] Subquery support
+- [x] Complex nested selects
 - [ ] Transaction support
 - [ ] Batch operations
-- [ ] Raw query execution with type safety
+- [x] Raw query execution with type safety
 
 ### Database Features
 
@@ -83,11 +83,11 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 
 ### Documentation & IDE Support
 
-- [ ] IntelliSense support for VSCode
-- [ ] Schema validation and linting
-- [ ] Helpful error messages
-- [ ] Auto-complete for query building
-- [ ] Schema documentation generation
+- [x] IntelliSense support for VSCode & Zed
+- [x] Schema validation and linting
+- [x] Helpful error messages
+- [x] Auto-complete for query building
+- [x] Schema documentation generation
 
 ## Phase 4: Advanced Features
 
