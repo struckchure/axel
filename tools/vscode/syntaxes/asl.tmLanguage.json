@@ -19,6 +19,9 @@
       "include": "#constraint-name"
     },
     {
+      "include": "#policy-predicate"
+    },
+    {
       "include": "#keywords"
     },
     {
@@ -105,7 +108,7 @@
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(scalar|type|model|enum|abstract|function|use|extension)\\b",
+          "match": "\\b(scalar|type|model|enum|abstract|function|use|extension|global)\\b",
           "name": "storage.type.asl"
         },
         {
@@ -127,6 +130,31 @@
       "end": "\\$\\$",
       "name": "string.quoted.other.dollar.asl",
       "contentName": "meta.embedded.block.sql"
+    },
+    "policy-predicate": {
+      "comment": "RLS policy `using (…)` / `with check (…)` predicates are AQL — highlight their interior with the AQL grammar. #aql-parens (listed first) swallows any nested parens (e.g. now()) so the only bare `)` the region sees is its own matching close paren.",
+      "begin": "\\b(using|with\\s+check)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.asl" },
+        "2": { "name": "punctuation.section.parens.begin.asl" }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.parens.end.asl" }
+      },
+      "contentName": "meta.embedded.block.aql",
+      "patterns": [
+        { "include": "#aql-parens" },
+        { "include": "source.aql" }
+      ]
+    },
+    "aql-parens": {
+      "begin": "\\(",
+      "end": "\\)",
+      "patterns": [
+        { "include": "#aql-parens" },
+        { "include": "source.aql" }
+      ]
     },
     "builtins": {
       "match": "\\b(str|int16|int32|int64|float32|float64|bool|uuid|datetime|date|time|json|bytes|decimal)\\b",

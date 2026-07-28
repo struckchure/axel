@@ -21,6 +21,7 @@ module.exports = grammar({
         $.scalar_type,
         $.enum_type,
         $.extension_definition,
+        $.global_definition,
         $.function_definition,
         $.type_definition,
       ),
@@ -28,6 +29,17 @@ module.exports = grammar({
     // use extension 'unaccent';
     extension_definition: ($) =>
       seq("use", "extension", field("name", $.string), ";"),
+
+    // global current_user: uuid;  /  global required tz: str;
+    global_definition: ($) =>
+      seq(
+        "global",
+        optional("required"),
+        field("name", $.field_identifier),
+        ":",
+        field("type", $.type_identifier),
+        ";",
+      ),
 
     // scalar type EmailStr extending str;
     scalar_type: ($) =>
@@ -231,8 +243,8 @@ module.exports = grammar({
         optional(
           seq("to", field("role", $.identifier), repeat(seq(",", field("role", $.identifier)))),
         ),
-        optional(seq("using", $.sql_paren)),
-        optional(seq("with", "check", $.sql_paren)),
+        optional(seq("using", field("using", $.aql_block))),
+        optional(seq("with", "check", field("check", $.aql_block))),
         ";",
       ),
 

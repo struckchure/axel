@@ -41,6 +41,7 @@
   "with"
   "check"
   "to"
+  "global"
 ] @keyword
 
 ; Function attribute directives (@immutable, @language, @parallel, …)

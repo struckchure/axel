@@ -215,6 +215,10 @@
           "named": true
         },
         {
+          "type": "global",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
@@ -228,6 +232,10 @@
         },
         {
           "type": "null",
+          "named": true
+        },
+        {
+          "type": "null_test",
           "named": true
         },
         {
@@ -314,6 +322,22 @@
     }
   },
   {
+    "type": "global",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "insert_expression",
     "named": true,
     "fields": {
@@ -383,6 +407,16 @@
         }
       ]
     }
+  },
+  {
+    "type": "null",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "null_test",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "offset_clause",
@@ -646,6 +680,10 @@
           "named": true
         },
         {
+          "type": "expression",
+          "named": true
+        },
+        {
           "type": "insert_statement",
           "named": true
         },
@@ -875,6 +913,10 @@
     "named": true
   },
   {
+    "type": "global",
+    "named": false
+  },
+  {
     "type": "identifier",
     "named": true
   },
@@ -895,6 +937,10 @@
     "named": true
   },
   {
+    "type": "is",
+    "named": false
+  },
+  {
     "type": "like",
     "named": false
   },
@@ -907,8 +953,12 @@
     "named": false
   },
   {
+    "type": "not",
+    "named": false
+  },
+  {
     "type": "null",
-    "named": true
+    "named": false
   },
   {
     "type": "offset",

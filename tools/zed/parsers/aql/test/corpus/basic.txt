@@ -310,3 +310,31 @@ insert User { email := $e } unless conflict on .email;
       (conflict_target
         field: (field_identifier
           (identifier))))))
+
+==================
+is null and global reference
+==================
+
+multi select Doc { id } filter .a is null or .owner = global current_user;
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (null_test)
+        (path
+          step: (field_identifier
+            (identifier)))
+        (global
+          name: (identifier))))))

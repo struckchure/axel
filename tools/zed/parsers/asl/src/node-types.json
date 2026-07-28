@@ -409,6 +409,32 @@
     }
   },
   {
+    "type": "global_definition",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "index",
     "named": true,
     "fields": {
@@ -444,6 +470,16 @@
     "type": "policy",
     "named": true,
     "fields": {
+      "check": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "aql_block",
+            "named": true
+          }
+        ]
+      },
       "command": {
         "multiple": false,
         "required": true,
@@ -473,17 +509,17 @@
             "named": true
           }
         ]
+      },
+      "using": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "aql_block",
+            "named": true
+          }
+        ]
       }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "sql_paren",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -606,6 +642,10 @@
         },
         {
           "type": "function_definition",
+          "named": true
+        },
+        {
+          "type": "global_definition",
           "named": true
         },
         {
@@ -988,6 +1028,10 @@
   },
   {
     "type": "function",
+    "named": false
+  },
+  {
+    "type": "global",
     "named": false
   },
   {

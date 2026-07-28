@@ -4,20 +4,37 @@
   "word": "identifier",
   "rules": {
     "source_file": {
-      "type": "REPEAT",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "directive"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "_statement"
-          }
-        ]
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "REPEAT1",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "directive"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_statement"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          ]
+        },
+        {
+          "type": "BLANK"
+        }
+      ]
     },
     "directive": {
       "type": "SEQ",
@@ -900,15 +917,24 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SEQ",
+              "type": "CHOICE",
               "members": [
                 {
-                  "type": "SYMBOL",
-                  "name": "_binary_operator"
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_binary_operator"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_operand"
+                    }
+                  ]
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "_operand"
+                  "name": "null_test"
                 }
               ]
             },
@@ -961,6 +987,31 @@
         {
           "type": "STRING",
           "value": "ilike"
+        }
+      ]
+    },
+    "null_test": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "is"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "not"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "null"
         }
       ]
     },
@@ -1035,6 +1086,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "global"
+        },
+        {
+          "type": "SYMBOL",
           "name": "null"
         },
         {
@@ -1060,6 +1115,23 @@
         {
           "type": "SYMBOL",
           "name": "identifier"
+        }
+      ]
+    },
+    "global": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "global"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
         }
       ]
     },

@@ -36,6 +36,13 @@
   "desc"
 ] @keyword.operator
 
+; Null test (is null / is not null)
+(null_test) @keyword.operator
+
+; Global references (global current_user)
+(global "global" @keyword)
+(global name: (identifier) @variable)
+
 ; Type names
 (type_identifier) @type
 (qualified_identifier scope: (identifier) @type)

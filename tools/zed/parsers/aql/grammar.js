@@ -15,7 +15,13 @@ module.exports = grammar({
   extras: ($) => [/\s/, $.comment],
 
   rules: {
-    source_file: ($) => repeat(choice($.directive, $._statement)),
+    // A file is either a sequence of statements, or a single bare expression —
+    // never both. The expression form lets an injected fragment (an RLS policy
+    // predicate or a trigger `do (…)` body) highlight with this grammar without
+    // colliding with the statement grammar (statements are keyword-led, so the
+    // two alternatives are chosen by the first token).
+    source_file: ($) =>
+      optional(choice(repeat1(choice($.directive, $._statement)), $.expression)),
 
     // Leading metadata declaration: @name CreateUser / @request Foo / @response User
     directive: ($) =>
@@ -185,12 +191,18 @@ module.exports = grammar({
     _and_expression: ($) =>
       seq($._comparison, repeat(seq("and", $._comparison))),
 
-    // primary ( op primary )?
+    // primary ( op primary )?  |  primary is [not] null
     _comparison: ($) =>
-      seq($._operand, optional(seq($._binary_operator, $._operand))),
+      seq(
+        $._operand,
+        optional(choice(seq($._binary_operator, $._operand), $.null_test)),
+      ),
 
     _binary_operator: ($) =>
       choice("!=", "<=", ">=", "=", "<", ">", "??", "in", "like", "ilike"),
+
+    // postfix `is null` / `is not null`
+    null_test: ($) => seq("is", optional("not"), "null"),
 
     // An operand is a primary with an optional trailing `<Type>` cast that applies
     // to any operand — a literal, path, (expr), or subquery projection. prec.right
@@ -211,6 +223,7 @@ module.exports = grammar({
         $.function_call,
         $.path,
         $.parameter,
+        $.global,
         $.null,
         $.boolean,
         $.string,
@@ -219,6 +232,9 @@ module.exports = grammar({
         $.qualified_identifier,
         $.identifier,
       ),
+
+    // global reference: `global current_user`
+    global: ($) => seq("global", field("name", $.identifier)),
 
     // An optional trailing `.field` projects a single column from the row. A
     // `<Type>` cast after it is captured by the enclosing operand.

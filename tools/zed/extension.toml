@@ -1,6 +1,6 @@
 id = "axel"
 name = "Axel"
-version = "0.0.10"
+version = "0.0.11"
 schema_version = 1
 authors = ["Mohammed Al-Ameen"]
 description = "Syntax highlighting and language server for Axel Schema (.asl) and Query (.aql)."

@@ -27,6 +27,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "global_definition"
+        },
+        {
+          "type": "SYMBOL",
           "name": "function_definition"
         },
         {
@@ -52,6 +56,51 @@
           "content": {
             "type": "SYMBOL",
             "name": "string"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ";"
+        }
+      ]
+    },
+    "global_definition": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "global"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "required"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "field_identifier"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "FIELD",
+          "name": "type",
+          "content": {
+            "type": "SYMBOL",
+            "name": "type_identifier"
           }
         },
         {
@@ -1348,8 +1397,12 @@
                   "value": "using"
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "sql_paren"
+                  "type": "FIELD",
+                  "name": "using",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "aql_block"
+                  }
                 }
               ]
             },
@@ -1373,8 +1426,12 @@
                   "value": "check"
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "sql_paren"
+                  "type": "FIELD",
+                  "name": "check",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "aql_block"
+                  }
                 }
               ]
             },

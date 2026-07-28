@@ -123,7 +123,28 @@ type KV {
       name: (field_identifier
         (identifier))
       command: (identifier)
-      (sql_paren
+      using: (aql_block
         (identifier)
         (identifier)
-        (sql_paren)))))
+        (aql_block)))))
+
+==================
+global declaration
+==================
+
+global current_user: uuid;
+global required tz: str;
+
+---
+
+(source_file
+  (global_definition
+    name: (field_identifier
+      (identifier))
+    type: (type_identifier
+      (identifier)))
+  (global_definition
+    name: (field_identifier
+      (identifier))
+    type: (type_identifier
+      (identifier))))

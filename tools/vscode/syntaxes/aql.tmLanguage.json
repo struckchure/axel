@@ -87,11 +87,11 @@
       }
     },
     "keywords": {
-      "match": "\\b(multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else)\\b",
+      "match": "\\b(multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
       "name": "keyword.control.aql"
     },
     "operator-keywords": {
-      "match": "\\b(and|or|in|like|ilike|asc|desc)\\b",
+      "match": "\\b(and|or|in|like|ilike|asc|desc|is|not)\\b",
       "name": "keyword.operator.word.aql"
     },
     "constants": {
