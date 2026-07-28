@@ -27,9 +27,11 @@ func TestGoCodegenUsesPgx(t *testing.T) {
 	out := readFile(t, filepath.Join(dir, "list_user.go"))
 	for _, want := range []string{
 		"pgx.RowToStructByName[ListUserRow]",
-		"db *pgxpool.Pool",
+		// Query functions now take the DBTX interface (satisfied by both
+		// *pgxpool.Pool and pgx.Tx) so they can run inside a global setter's
+		// transaction. pgxpool moved to runner.go and is no longer imported here.
+		"db DBTX",
 		"`json:\"id\" db:\"id\"`",
-		"github.com/jackc/pgx/v5/pgxpool",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("generated query missing %q:\n%s", want, out)
@@ -54,5 +56,9 @@ func TestGoCodegenUsesPgx(t *testing.T) {
 	}
 	if !strings.Contains(runnerOut, "func NewRunner(db *pgxpool.Pool)") {
 		t.Errorf("NewRunner should take *pgxpool.Pool:\n%s", runnerOut)
+	}
+	// The DBTX interface is defined in runner.go (shared by pool and tx).
+	if !strings.Contains(runnerOut, "type DBTX interface") {
+		t.Errorf("runner.go should define DBTX:\n%s", runnerOut)
 	}
 }

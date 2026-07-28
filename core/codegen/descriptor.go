@@ -16,6 +16,17 @@ type SchemaDescriptor struct {
 	Scalars []ScalarDescriptor `json:"scalars"`
 	Enums   []EnumDescriptor   `json:"enums"`
 	Types   []TypeDescriptor   `json:"types"`
+	Globals []GlobalDescriptor `json:"globals,omitempty"`
+}
+
+// GlobalDescriptor describes a Gel-style global variable (a Postgres session
+// setting, `app.<Name>`). Generators emit a `with<Name>(value, …)` setter that
+// pushes the value into the session before running the caller's queries.
+type GlobalDescriptor struct {
+	Name     string `json:"name"`
+	AQLType  string `json:"aql_type"` // declared ASL scalar, e.g. "uuid"
+	SQLType  string `json:"sql_type"` // e.g. "UUID"
+	Required bool   `json:"required"`
 }
 
 // TypeDescriptor describes one concrete or abstract object type.
@@ -32,14 +43,14 @@ type TypeDescriptor struct {
 
 // PropertyDescriptor describes a scalar column property.
 type PropertyDescriptor struct {
-	Name        string                `json:"name"`
-	Column      string                `json:"column"`
-	AQLType     string                `json:"aql_type"`
-	SQLType     string                `json:"sql_type"`
-	EnumType    string                `json:"enum_type,omitempty"`
-	IsRequired  bool                  `json:"is_required"`
-	IsMulti     bool                  `json:"is_multi"`
-	Default     string                `json:"default,omitempty"`
+	Name        string                 `json:"name"`
+	Column      string                 `json:"column"`
+	AQLType     string                 `json:"aql_type"`
+	SQLType     string                 `json:"sql_type"`
+	EnumType    string                 `json:"enum_type,omitempty"`
+	IsRequired  bool                   `json:"is_required"`
+	IsMulti     bool                   `json:"is_multi"`
+	Default     string                 `json:"default,omitempty"`
 	Constraints []ConstraintDescriptor `json:"constraints,omitempty"`
 }
 
@@ -248,6 +259,16 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 		}
 
 		desc.Types = append(desc.Types, td)
+	}
+
+	// Globals (declaration order, already deterministic).
+	for _, g := range ir.Globals {
+		desc.Globals = append(desc.Globals, GlobalDescriptor{
+			Name:     g.Name,
+			AQLType:  g.AQLType,
+			SQLType:  g.SQLType,
+			Required: g.Required,
+		})
 	}
 
 	return desc

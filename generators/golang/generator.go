@@ -214,27 +214,33 @@ func (g *GoGenerator) OnQuery(ctx *codegen.Context, q codegen.QueryDescriptor) e
 		emitRowTypes(&body, rowType, q.Result.Fields)
 	}
 
-	// Function body
+	// Function body. When the schema declares globals, functions take a trailing
+	// opts ...Option and can run inside a transaction that sets the globals.
+	hasGlobals := len(g.schema.Globals) > 0
 	switch q.Operation {
 	case "select":
 		if q.Result.IsScalar {
-			emitScalarFunc(&body, funcName, paramsType, q)
+			emitScalarFunc(&body, funcName, paramsType, q, hasGlobals)
 		} else if q.Result.IsMultiple {
-			emitMultiRowFunc(&body, funcName, paramsType, rowType, q)
+			emitMultiRowFunc(&body, funcName, paramsType, rowType, q, hasGlobals)
 		} else {
-			emitOneRowFunc(&body, funcName, paramsType, rowType, q)
+			emitOneRowFunc(&body, funcName, paramsType, rowType, q, hasGlobals)
 		}
 	case "insert", "update":
-		emitOneRowFunc(&body, funcName, paramsType, rowType, q)
+		emitOneRowFunc(&body, funcName, paramsType, rowType, q, hasGlobals)
 	case "delete":
-		emitDeleteFunc(&body, funcName, paramsType, q)
+		emitDeleteFunc(&body, funcName, paramsType, q, hasGlobals)
 	}
 
 	// Build full file with package + imports.
 	bs := body.String()
 	importSet := map[string]bool{
-		"context":                         true,
-		"github.com/jackc/pgx/v5/pgxpool": true,
+		"context": true,
+	}
+	// The db parameter is now the in-package DBTX interface, so pgxpool is only
+	// imported when the body actually references it (it no longer does).
+	if strings.Contains(bs, "pgxpool.") {
+		importSet["github.com/jackc/pgx/v5/pgxpool"] = true
 	}
 	if strings.Contains(bs, "pgx.") {
 		importSet["github.com/jackc/pgx/v5"] = true
@@ -280,9 +286,54 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 	// Embedded schema constant
 	fmt.Fprintf(&body, "const axelSchema = %s\n\n", backtick(string(schemaJSON)))
 
+	hasGlobals := len(g.schema.Globals) > 0
+
+	// DBTX — the query surface shared by *pgxpool.Pool and pgx.Tx, so the generated
+	// query functions run on either. The global setters use it to run the caller's
+	// queries inside a transaction.
+	fmt.Fprintf(&body, "type DBTX interface {\n")
+	fmt.Fprintf(&body, "\tQuery(context.Context, string, ...any) (pgx.Rows, error)\n")
+	fmt.Fprintf(&body, "\tQueryRow(context.Context, string, ...any) pgx.Row\n")
+	fmt.Fprintf(&body, "\tExec(context.Context, string, ...any) (pgconn.CommandTag, error)\n")
+	if hasGlobals {
+		fmt.Fprintf(&body, "\tBegin(context.Context) (pgx.Tx, error)\n")
+	}
+	fmt.Fprintf(&body, "}\n\n")
+
+	// Global options — the functional-options form, for setting globals on the
+	// standalone query functions (CreateUser(ctx, db, params, WithCurrentUser(id)))
+	// without going through the Runner. beginWithGlobals opens a transaction and
+	// applies each option's set_config; the query functions defer commit/rollback.
+	if hasGlobals {
+		fmt.Fprintf(&body, "type globalOpts struct{ settings map[string]string }\n\n")
+		fmt.Fprintf(&body, "// Option sets a global for the duration of a single query call.\n")
+		fmt.Fprintf(&body, "type Option func(*globalOpts)\n\n")
+		for _, gl := range g.schema.Globals {
+			ctor := "With" + toGoExportedName(gl.Name)
+			valType := aqlToGoType(gl.AQLType, false)
+			fmt.Fprintf(&body, "// %s sets the %q global for this call.\n", ctor, gl.Name)
+			fmt.Fprintf(&body, "func %s(value %s) Option {\n", ctor, valType)
+			fmt.Fprintf(&body, "\treturn func(o *globalOpts) { o.settings[%q] = fmt.Sprint(value) }\n", "app."+gl.Name)
+			fmt.Fprintf(&body, "}\n\n")
+		}
+		fmt.Fprintf(&body, "func beginWithGlobals(ctx context.Context, db DBTX, opts []Option) (pgx.Tx, func(error) error, error) {\n")
+		fmt.Fprintf(&body, "\to := globalOpts{settings: map[string]string{}}\n")
+		fmt.Fprintf(&body, "\tfor _, opt := range opts {\n\t\topt(&o)\n\t}\n")
+		fmt.Fprintf(&body, "\ttx, err := db.Begin(ctx)\n")
+		fmt.Fprintf(&body, "\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n")
+		fmt.Fprintf(&body, "\tfor name, value := range o.settings {\n")
+		fmt.Fprintf(&body, "\t\tif _, err := tx.Exec(ctx, \"select set_config($1, $2, true)\", name, value); err != nil {\n")
+		fmt.Fprintf(&body, "\t\t\t_ = tx.Rollback(ctx)\n\t\t\treturn nil, nil, err\n\t\t}\n\t}\n")
+		fmt.Fprintf(&body, "\tdone := func(err error) error {\n")
+		fmt.Fprintf(&body, "\t\tif err != nil {\n\t\t\t_ = tx.Rollback(ctx)\n\t\t\treturn err\n\t\t}\n")
+		fmt.Fprintf(&body, "\t\treturn tx.Commit(ctx)\n\t}\n")
+		fmt.Fprintf(&body, "\treturn tx, done, nil\n")
+		fmt.Fprintf(&body, "}\n\n")
+	}
+
 	// Queries struct — holds all typed compiled-query methods.
 	fmt.Fprintf(&body, "type Queries struct {\n")
-	fmt.Fprintf(&body, "\tdb *pgxpool.Pool\n")
+	fmt.Fprintf(&body, "\tdb DBTX\n")
 	fmt.Fprintf(&body, "}\n\n")
 
 	for _, q := range g.queries {
@@ -346,12 +397,36 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 	fmt.Fprintf(&body, "\treturn res.Rows, nil\n")
 	fmt.Fprintf(&body, "}\n\n")
 
+	// Global setters — one With<Name> per global. Each opens a transaction, pushes
+	// the value into the session via set_config('app.<name>', $1, true) (bound as a
+	// parameter, transaction-local), then runs the caller's queries against a
+	// Queries bound to that transaction. Rolls back on error. Safe under pooling.
+	for _, gl := range g.schema.Globals {
+		method := "With" + toGoExportedName(gl.Name)
+		valType := aqlToGoType(gl.AQLType, false)
+		setSQL := fmt.Sprintf("select set_config('app.%s', $1, true)", gl.Name)
+		fmt.Fprintf(&body, "func (r *Runner) %s(ctx context.Context, value %s, fn func(*Queries) error) error {\n", method, valType)
+		fmt.Fprintf(&body, "\ttx, err := r.db.Begin(ctx)\n")
+		fmt.Fprintf(&body, "\tif err != nil {\n\t\treturn err\n\t}\n")
+		fmt.Fprintf(&body, "\tdefer tx.Rollback(ctx)\n")
+		fmt.Fprintf(&body, "\tif _, err := tx.Exec(ctx, %q, fmt.Sprint(value)); err != nil {\n\t\treturn err\n\t}\n", setSQL)
+		fmt.Fprintf(&body, "\tif err := fn(&Queries{db: tx}); err != nil {\n\t\treturn err\n\t}\n")
+		fmt.Fprintf(&body, "\treturn tx.Commit(ctx)\n")
+		fmt.Fprintf(&body, "}\n\n")
+	}
+
 	var src bytes.Buffer
 	src.WriteString("// Code generated by axel codegen --generator go. DO NOT EDIT.\n\n")
 	fmt.Fprintf(&src, "package %s\n\n", g.pkgName)
 	fmt.Fprintf(&src, "import (\n")
 	fmt.Fprintf(&src, "\t\"context\"\n")
-	fmt.Fprintf(&src, "\t\"encoding/json\"\n\n")
+	fmt.Fprintf(&src, "\t\"encoding/json\"\n")
+	if len(g.schema.Globals) > 0 {
+		fmt.Fprintf(&src, "\t\"fmt\"\n")
+	}
+	fmt.Fprintf(&src, "\n")
+	fmt.Fprintf(&src, "\t%q\n", "github.com/jackc/pgx/v5")
+	fmt.Fprintf(&src, "\t%q\n", "github.com/jackc/pgx/v5/pgconn")
 	fmt.Fprintf(&src, "\t%q\n", "github.com/jackc/pgx/v5/pgxpool")
 	fmt.Fprintf(&src, "\t%q\n", modulePath+"/core/codegen")
 	fmt.Fprintf(&src, "\t%q\n", modulePath+"/core/runner")
@@ -448,11 +523,12 @@ func emitRowTypes(buf *bytes.Buffer, rootName string, fields []codegen.ResultFie
 	}
 }
 
-func emitScalarFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.QueryDescriptor) {
+func emitScalarFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.QueryDescriptor, hasGlobals bool) {
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
 
-	fmt.Fprintf(buf, "func %s(%s) (int64, error) {\n", funcName, funcSig(q, paramsType))
+	fmt.Fprintf(buf, "func %s(%s) %s {\n", funcName, funcSig(q, paramsType, hasGlobals), returnSig("int64", hasGlobals))
+	emitGlobalsPrologue(buf, "0, ", hasGlobals)
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
 	fmt.Fprintf(buf, "\tvar count int64\n")
 	fmt.Fprintf(buf, "\terr := db.QueryRow(ctx, query%s).Scan(&count)\n", paramArgs)
@@ -462,11 +538,12 @@ func emitScalarFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.Qu
 
 // emitOneRowFunc emits a function returning a single *Row via pgx struct
 // scanning. Used for single-row selects and INSERT/UPDATE ... RETURNING.
-func emitOneRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q codegen.QueryDescriptor) {
+func emitOneRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q codegen.QueryDescriptor, hasGlobals bool) {
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
 
-	fmt.Fprintf(buf, "func %s(%s) (*%s, error) {\n", funcName, funcSig(q, paramsType), rowType)
+	fmt.Fprintf(buf, "func %s(%s) %s {\n", funcName, funcSig(q, paramsType, hasGlobals), returnSig("*"+rowType, hasGlobals))
+	emitGlobalsPrologue(buf, "nil, ", hasGlobals)
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
 	fmt.Fprintf(buf, "\trows, err := db.Query(ctx, query%s)\n", paramArgs)
 	fmt.Fprintf(buf, "\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -478,11 +555,12 @@ func emitOneRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q c
 	fmt.Fprintf(buf, "}\n")
 }
 
-func emitMultiRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q codegen.QueryDescriptor) {
+func emitMultiRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q codegen.QueryDescriptor, hasGlobals bool) {
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
 
-	fmt.Fprintf(buf, "func %s(%s) ([]%s, error) {\n", funcName, funcSig(q, paramsType), rowType)
+	fmt.Fprintf(buf, "func %s(%s) %s {\n", funcName, funcSig(q, paramsType, hasGlobals), returnSig("[]"+rowType, hasGlobals))
+	emitGlobalsPrologue(buf, "nil, ", hasGlobals)
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
 	fmt.Fprintf(buf, "\trows, err := db.Query(ctx, query%s)\n", paramArgs)
 	fmt.Fprintf(buf, "\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -490,24 +568,62 @@ func emitMultiRowFunc(buf *bytes.Buffer, funcName, paramsType, rowType string, q
 	fmt.Fprintf(buf, "}\n")
 }
 
-func emitDeleteFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.QueryDescriptor) {
+func emitDeleteFunc(buf *bytes.Buffer, funcName, paramsType string, q codegen.QueryDescriptor, hasGlobals bool) {
 	sqlLit := backtick(q.SQL)
 	paramArgs := buildParamArgs(q.Params)
 
-	fmt.Fprintf(buf, "func %s(%s) error {\n", funcName, funcSig(q, paramsType))
+	ret := "error"
+	if hasGlobals {
+		ret = "(_err error)"
+	}
+	fmt.Fprintf(buf, "func %s(%s) %s {\n", funcName, funcSig(q, paramsType, hasGlobals), ret)
+	emitGlobalsPrologue(buf, "", hasGlobals)
 	fmt.Fprintf(buf, "\tconst query = %s\n", sqlLit)
 	fmt.Fprintf(buf, "\t_, err := db.Exec(ctx, query%s)\n", paramArgs)
 	fmt.Fprintf(buf, "\treturn err\n")
 	fmt.Fprintf(buf, "}\n")
 }
 
-// funcSig builds the parameter list for a generated query function, always
-// taking a context and a *pgxpool.Pool, plus params if any.
-func funcSig(q codegen.QueryDescriptor, paramsType string) string {
-	if len(q.Params) > 0 {
-		return fmt.Sprintf("ctx context.Context, db *pgxpool.Pool, params %s", paramsType)
+// returnSig builds the "(T, error)" result list, naming the returns (_res, _err)
+// when globals are in play so the deferred commit/rollback can observe the error.
+func returnSig(valType string, hasGlobals bool) string {
+	if hasGlobals {
+		return fmt.Sprintf("(_res %s, _err error)", valType)
 	}
-	return "ctx context.Context, db *pgxpool.Pool"
+	return fmt.Sprintf("(%s, error)", valType)
+}
+
+// emitGlobalsPrologue writes the opts→transaction preamble: when any Option is
+// passed, begin a transaction, apply the globals via set_config, rebind db to the
+// tx, and defer commit-or-rollback. zeroPrefix is the value part of the early
+// begin-error return ("nil, ", "0, ", or "" for the error-only signature).
+func emitGlobalsPrologue(buf *bytes.Buffer, zeroPrefix string, hasGlobals bool) {
+	if !hasGlobals {
+		return
+	}
+	fmt.Fprintf(buf, "\tif len(opts) > 0 {\n")
+	fmt.Fprintf(buf, "\t\ttx, done, gerr := beginWithGlobals(ctx, db, opts)\n")
+	fmt.Fprintf(buf, "\t\tif gerr != nil {\n\t\t\treturn %sgerr\n\t\t}\n", zeroPrefix)
+	fmt.Fprintf(buf, "\t\tdb = tx\n")
+	fmt.Fprintf(buf, "\t\tdefer func() { _err = done(_err) }()\n")
+	fmt.Fprintf(buf, "\t}\n")
+}
+
+// funcSig builds the parameter list for a generated query function, always taking
+// a context and a DBTX (satisfied by both *pgxpool.Pool and pgx.Tx), plus params
+// if any. Accepting the interface lets the same functions run on a pool or inside
+// a transaction — used by the global setters. When globals exist, a trailing
+// opts ...Option lets callers set globals without the Runner.
+func funcSig(q codegen.QueryDescriptor, paramsType string, hasGlobals bool) string {
+	var b strings.Builder
+	b.WriteString("ctx context.Context, db DBTX")
+	if len(q.Params) > 0 {
+		fmt.Fprintf(&b, ", params %s", paramsType)
+	}
+	if hasGlobals {
+		b.WriteString(", opts ...Option")
+	}
+	return b.String()
 }
 
 // buildParamArgs builds the variadic args for db.QueryRowContext/db.QueryContext.
