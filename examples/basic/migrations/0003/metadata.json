@@ -1,0 +1,494 @@
+{
+  "version": "0003",
+  "name": "",
+  "created_at": "2026-07-27T21:39:16.6327+01:00",
+  "checksum": "2c8becd0fed57f7e405d420b27475d2c2c388d245f57dd09bdbb0dbd18019b13",
+  "schema_snapshot": [
+    {
+      "Name": "Post",
+      "IsAbstract": false,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "title",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "content",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "slug",
+          "Type": "str",
+          "IsRequired": false,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "author",
+          "Type": "User",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "likes",
+          "Type": "User",
+          "IsRequired": false,
+          "IsMulti": true,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          },
+          "EnumType": "",
+          "EnumValues": null
+        }
+      ],
+      "Indexes": null,
+      "Constraints": null
+    },
+    {
+      "Name": "Base",
+      "IsAbstract": true,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        }
+      ],
+      "Indexes": null,
+      "Constraints": null
+    },
+    {
+      "Name": "User",
+      "IsAbstract": false,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "health",
+          "Type": "int32",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "active",
+          "Type": "bool",
+          "IsRequired": false,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "true",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "email",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "min_length",
+              "Args": [
+                "10"
+              ]
+            },
+            {
+              "Name": "max_length",
+              "Args": [
+                "100"
+              ]
+            }
+          ],
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "name",
+          "Type": "str",
+          "IsRequired": false,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "'n/a'",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "age",
+          "Type": "int32",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        }
+      ],
+      "Indexes": null,
+      "Constraints": null
+    },
+    {
+      "Name": "Comment",
+      "IsAbstract": false,
+      "Extends": "",
+      "Fields": [
+        {
+          "Name": "created_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "updated_at",
+          "Type": "datetime",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "now()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "id",
+          "Type": "uuid",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": [
+            {
+              "Name": "exclusive",
+              "Args": null
+            },
+            {
+              "Name": "pk",
+              "Args": null
+            }
+          ],
+          "Default": "gen_random_uuid()",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "content",
+          "Type": "str",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "",
+            "Type": ""
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "post",
+          "Type": "Post",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          },
+          "EnumType": "",
+          "EnumValues": null
+        },
+        {
+          "Name": "author",
+          "Type": "User",
+          "IsRequired": true,
+          "IsMulti": false,
+          "Constraints": null,
+          "Default": "",
+          "OnTarget": {
+            "Name": "id",
+            "Type": "uuid"
+          },
+          "EnumType": "",
+          "EnumValues": null
+        }
+      ],
+      "Indexes": null,
+      "Constraints": null
+    }
+  ],
+  "functions": [
+    {
+      "Name": "slugify",
+      "CreateSQL": "CREATE OR REPLACE FUNCTION \"slugify\"(value text) RETURNS text AS $$\nBEGIN\n  RETURN regexp_replace( regexp_replace(lower(public.unaccent(value)), '[^a-z0-9\\-_]+', '-', 'gi'), '(^-+|-+$)', '', 'g' );\nEND;\n$$ LANGUAGE plpgsql;",
+      "DropSQL": "DROP FUNCTION IF EXISTS \"slugify\"(text);"
+    },
+    {
+      "Name": "axel_rw_base_1",
+      "CreateSQL": "CREATE OR REPLACE FUNCTION \"axel_rw_base_1\"() RETURNS trigger AS $$\nBEGIN\n  IF TG_OP = 'UPDATE' THEN\n    NEW.\"updated_at\" := now();\n  END IF;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;",
+      "DropSQL": "DROP FUNCTION IF EXISTS \"axel_rw_base_1\"();"
+    },
+    {
+      "Name": "axel_rw_post_1",
+      "CreateSQL": "CREATE OR REPLACE FUNCTION \"axel_rw_post_1\"() RETURNS trigger AS $$\nBEGIN\n  IF TG_OP = 'INSERT' THEN\n    NEW.\"slug\" := slugify(NEW.\"title\");\n  END IF;\n  IF TG_OP = 'UPDATE' THEN\n    NEW.\"slug\" := slugify(NEW.\"title\");\n  END IF;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;",
+      "DropSQL": "DROP FUNCTION IF EXISTS \"axel_rw_post_1\"();"
+    }
+  ],
+  "triggers": [
+    {
+      "Name": "comment.rewrite.base",
+      "CreateSQL": "CREATE TRIGGER \"trg_comment_rewrite_base\" BEFORE UPDATE ON \"comment\"\n  FOR EACH ROW EXECUTE FUNCTION \"axel_rw_base_1\"();",
+      "DropSQL": "DROP TRIGGER IF EXISTS \"trg_comment_rewrite_base\" ON \"comment\";"
+    },
+    {
+      "Name": "post.rewrite.base",
+      "CreateSQL": "CREATE TRIGGER \"trg_post_rewrite_base\" BEFORE UPDATE ON \"post\"\n  FOR EACH ROW EXECUTE FUNCTION \"axel_rw_base_1\"();",
+      "DropSQL": "DROP TRIGGER IF EXISTS \"trg_post_rewrite_base\" ON \"post\";"
+    },
+    {
+      "Name": "post.rewrite.post",
+      "CreateSQL": "CREATE TRIGGER \"trg_post_rewrite_post\" BEFORE INSERT OR UPDATE ON \"post\"\n  FOR EACH ROW EXECUTE FUNCTION \"axel_rw_post_1\"();",
+      "DropSQL": "DROP TRIGGER IF EXISTS \"trg_post_rewrite_post\" ON \"post\";"
+    },
+    {
+      "Name": "user.rewrite.base",
+      "CreateSQL": "CREATE TRIGGER \"trg_user_rewrite_base\" BEFORE UPDATE ON \"user\"\n  FOR EACH ROW EXECUTE FUNCTION \"axel_rw_base_1\"();",
+      "DropSQL": "DROP TRIGGER IF EXISTS \"trg_user_rewrite_base\" ON \"user\";"
+    }
+  ],
+  "extensions": [
+    {
+      "Name": "unaccent",
+      "CreateSQL": "CREATE EXTENSION IF NOT EXISTS \"unaccent\";",
+      "DropSQL": "DROP EXTENSION IF EXISTS \"unaccent\";"
+    }
+  ],
+  "previous_version": "0002"
+}

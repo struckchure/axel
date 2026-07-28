@@ -27,6 +27,27 @@ type Trigger struct {
 	DropSQL   string // full "DROP TRIGGER IF EXISTS … ON …;"
 }
 
+// Extension is a resolved-to-SQL Postgres extension. Keyed by Name.
+type Extension struct {
+	Name      string // diff key: the extension name (e.g. "unaccent")
+	CreateSQL string // "CREATE EXTENSION IF NOT EXISTS \"…\";"
+	DropSQL   string // "DROP EXTENSION IF EXISTS \"…\";"
+}
+
+// SchemaIRToExtensions lowers declared extensions into flat SQL Extension values,
+// preserving declaration order.
+func SchemaIRToExtensions(ir *asl.SchemaIR) []Extension {
+	exts := make([]Extension, 0, len(ir.Extensions))
+	for _, name := range ir.Extensions {
+		exts = append(exts, Extension{
+			Name:      name,
+			CreateSQL: fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %q;", name),
+			DropSQL:   fmt.Sprintf("DROP EXTENSION IF EXISTS %q;", name),
+		})
+	}
+	return exts
+}
+
 // SchemaIRToFunctionsAndTriggers lowers rewrites, inline trigger bodies, and
 // declared functions into flat, fully-formed SQL Function/Trigger values (sorted
 // for deterministic diffs). Inline AQL bodies are compiled here via the AQL
@@ -42,11 +63,7 @@ func SchemaIRToFunctionsAndTriggers(ir *asl.SchemaIR) ([]Function, []Trigger, er
 	}
 	sort.Strings(fnNames)
 	for _, name := range fnNames {
-		fn, err := declaredFunctionSQL(ir, ir.Functions[name])
-		if err != nil {
-			return nil, nil, fmt.Errorf("function %q: %w", name, err)
-		}
-		fns = append(fns, fn)
+		fns = append(fns, declaredFunctionSQL(ir.Functions[name]))
 	}
 
 	// Concrete types, sorted for deterministic output.
@@ -205,46 +222,69 @@ func buildRewriteBody(byEvent map[string][]string) (events []string, body string
 }
 
 // declaredFunctionSQL builds the CREATE/DROP for a user-declared function.
-func declaredFunctionSQL(ir *asl.SchemaIR, fn *asl.ResolvedFunction) (Function, error) {
+func declaredFunctionSQL(fn *asl.ResolvedFunction) Function {
 	var argDecls, argTypes []string
-	var paramNames []string
 	for _, p := range fn.Params {
 		argDecls = append(argDecls, fmt.Sprintf("%s %s", p.Name, p.SQLType))
 		argTypes = append(argTypes, p.SQLType)
-		paramNames = append(paramNames, p.Name)
 	}
 
-	body, lang, err := functionBody(ir, fn, paramNames)
-	if err != nil {
-		return Function{}, err
-	}
+	body, lang := functionBody(fn)
 
 	create := fmt.Sprintf(
-		"CREATE OR REPLACE FUNCTION %q(%s) RETURNS %s AS $$\n%s\n$$ LANGUAGE %s;",
-		fn.Name, strings.Join(argDecls, ", "), fn.Returns, body, lang,
+		"CREATE OR REPLACE FUNCTION %q(%s) RETURNS %s AS $$\n%s\n$$ LANGUAGE %s%s;",
+		fn.Name, strings.Join(argDecls, ", "), fn.Returns, body, lang, funcAttrSuffix(fn),
 	)
 	drop := fmt.Sprintf("DROP FUNCTION IF EXISTS %q(%s);", fn.Name, strings.Join(argTypes, ", "))
-	return Function{Name: fn.Name, CreateSQL: create, DropSQL: drop}, nil
+	return Function{Name: fn.Name, CreateSQL: create, DropSQL: drop}
 }
 
-// functionBody returns the plpgsql/sql body and language for a declared function.
-func functionBody(ir *asl.SchemaIR, fn *asl.ResolvedFunction, paramNames []string) (body, lang string, err error) {
-	if fn.BodySQL != "" {
-		return fn.BodySQL, fn.Language, nil
+// funcAttrSuffix renders a function's attributes as a SQL suffix (leading space
+// on each present attribute) appended after `LANGUAGE <lang>`. Emitted in a fixed
+// canonical order so the string-diff stays stable regardless of directive order.
+func funcAttrSuffix(fn *asl.ResolvedFunction) string {
+	var b strings.Builder
+	switch fn.Volatility {
+	case "immutable":
+		b.WriteString(" IMMUTABLE")
+	case "stable":
+		b.WriteString(" STABLE")
+	case "volatile":
+		b.WriteString(" VOLATILE")
 	}
-	// AQL body: compile as a standalone function (no enclosing type bound).
-	stmt, err := aql.ParseString(fn.BodyAQL)
-	if err != nil {
-		return "", "", fmt.Errorf("body: %w", err)
+	if fn.Strict {
+		b.WriteString(" STRICT")
 	}
-	sql, err := compiler.CompileTriggerBody(stmt, ir, nil, paramNames)
-	if err != nil {
-		return "", "", fmt.Errorf("body: %w", err)
+	if fn.Leakproof {
+		b.WriteString(" LEAKPROOF")
 	}
-	if fn.Returns == "trigger" {
-		return fmt.Sprintf("BEGIN\n  %s;\n  RETURN COALESCE(NEW, OLD);\nEND;", sql), "plpgsql", nil
+	switch fn.Security {
+	case "definer":
+		b.WriteString(" SECURITY DEFINER")
+	case "invoker":
+		b.WriteString(" SECURITY INVOKER")
 	}
-	return fmt.Sprintf("BEGIN\n  RETURN (%s);\nEND;", sql), "plpgsql", nil
+	switch fn.Parallel {
+	case "safe":
+		b.WriteString(" PARALLEL SAFE")
+	case "unsafe":
+		b.WriteString(" PARALLEL UNSAFE")
+	case "restricted":
+		b.WriteString(" PARALLEL RESTRICTED")
+	}
+	if fn.Cost != "" {
+		fmt.Fprintf(&b, " COST %s", fn.Cost)
+	}
+	return b.String()
+}
+
+// functionBody returns the plpgsql/sql body and language for a declared
+// function. The `return <expr>;` expression is raw Postgres, wrapped per language.
+func functionBody(fn *asl.ResolvedFunction) (body, lang string) {
+	if fn.Language == "sql" {
+		return fmt.Sprintf("  SELECT %s;", fn.ReturnSQL), "sql"
+	}
+	return fmt.Sprintf("BEGIN\n  RETURN %s;\nEND;", fn.ReturnSQL), fn.Language
 }
 
 // triggerSQL builds the SQL for one declared trigger. For an inline do-body it

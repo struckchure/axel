@@ -1,5 +1,12 @@
-# Axel Schema Language example
-# File extension: .asl
+use extension 'unaccent';
+
+@language plpgsql
+function slugify(value: text) -> text {
+  return regexp_replace(
+    regexp_replace(lower(public.unaccent(value)), '[^a-z0-9\-_]+', '-', 'gi'),
+    '(^-+|-+$)', '', 'g'
+  );
+};
 
 abstract type Base {
   required id: uuid {
@@ -40,6 +47,7 @@ type Post extending Base {
   required link author: User;
   multi link likes: User;
   slug: str {
-    rewrite create, update := __new__.content;
+    constraint exclusive;
+    rewrite create, update := slugify(__new__.title);
   };
 }

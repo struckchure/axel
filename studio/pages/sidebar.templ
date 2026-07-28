@@ -1,0 +1,63 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/struckchure/axel/studio/db"
+)
+
+templ sidebar(v StudioView) {
+	<aside class="w-64 shrink-0 border-r border-border bg-sidebar flex flex-col">
+		<div class="p-3 border-b border-border">
+			<div class="relative">
+				<span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+					@iconSearch()
+				</span>
+				<input
+					type="search"
+					placeholder="Filter tables…"
+					oninput="filterTables(this.value)"
+					class="w-full h-8 pl-8 pr-2 bg-background border border-input text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/40 placeholder:text-muted-foreground"
+				/>
+			</div>
+		</div>
+		<nav class="flex-1 overflow-y-auto py-2" id="table-list">
+			for _, g := range groupBySchema(v.Tables) {
+				<div class="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+					{ g.Schema }
+				</div>
+				for _, t := range g.Tables {
+					@tableLink(v, t)
+				}
+			}
+			if len(v.Tables) == 0 {
+				<div class="px-3 py-6 text-center text-xs text-muted-foreground">No tables found</div>
+			}
+		</nav>
+		<div class="p-3 border-t border-border text-[11px] text-muted-foreground">
+			{ fmt.Sprintf("%d tables", len(v.Tables)) }
+		</div>
+	</aside>
+}
+
+templ tableLink(v StudioView, t db.Table) {
+	<a
+		href={ templ.SafeURL(tableURL(t)) }
+		hx-get={ tableURL(t) }
+		hx-target="#studio"
+		hx-swap="outerHTML"
+		hx-push-url="true"
+		data-table={ t.Name }
+		class={
+			"group flex items-center gap-2 mx-2 px-2 py-1.5 cursor-pointer text-[13px] transition-colors",
+			templ.KV("bg-sidebar-accent text-sidebar-accent-foreground font-medium", isActive(v, t)),
+			templ.KV("text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground", !isActive(v, t)),
+		}
+	>
+		<span class="text-muted-foreground group-hover:text-foreground">@iconTable()</span>
+		<span class="truncate flex-1">{ t.Name }</span>
+		if t.Rows > 0 {
+			<span class="text-[11px] text-muted-foreground tabular-nums">{ comma(t.Rows) }</span>
+		}
+	</a>
+}

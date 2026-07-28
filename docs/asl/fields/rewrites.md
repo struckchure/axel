@@ -17,11 +17,13 @@ updated_at: datetime {
 ```
 
 The value may be a builtin function (`datetime_current()` → `now()`), a literal,
-or a row-reference column — `__new__.<field>` / `__subject__.<field>` (the row
-being written) or `__old__.<field>` (the pre-update row, `UPDATE` only):
+a row-reference column — `__new__.<field>` / `__subject__.<field>` (the row
+being written) or `__old__.<field>` (the pre-update row, `UPDATE` only) — or a
+call to a declared [function](/asl/functions) passing row references and literals:
 
 ```asl
-slug: str { rewrite create, update := __new__.title; };   # NEW."title"
+slug: str { rewrite create, update := __new__.title; };            # NEW."title"
+slug: str { rewrite create, update := slugify(__new__.title); };   # slugify(NEW."title")
 ```
 
 Events are `insert` / `update`; `create` is accepted as an alias for `insert`.

@@ -233,21 +233,22 @@ func TestDoBodyTrigger(t *testing.T) {
 // A declared function: AQL body compiles to plpgsql; raw $$ body passes through.
 func TestDeclaredFunctions(t *testing.T) {
 	schema := `
-type AuditLog { id: uuid; required table_name: str; }
-function log_it() -> trigger {
-  body := ( insert AuditLog { table_name := 'x' } );
+@language sql
+@immutable
+function shout(value: text) -> text {
+  return upper(value);
 };
-function raw_slug() -> trigger {
-  language := plpgsql;
-  body := $$ BEGIN NEW.slug := lower(NEW.name); RETURN NEW; END; $$;
+function touch_row() -> trigger {
+  return NEW;
 };
 `
 	up := genUpTriggers(t, schema)
 	for _, want := range []string{
-		`CREATE OR REPLACE FUNCTION "log_it"() RETURNS trigger AS $$`,
-		`INSERT INTO "audit_log"`,
-		`CREATE OR REPLACE FUNCTION "raw_slug"() RETURNS trigger AS $$`,
-		`NEW.slug := lower(NEW.name); RETURN NEW;`,
+		`CREATE OR REPLACE FUNCTION "shout"(value text) RETURNS text AS $$`,
+		`SELECT upper(value);`,
+		`$$ LANGUAGE sql IMMUTABLE;`,
+		`CREATE OR REPLACE FUNCTION "touch_row"() RETURNS trigger AS $$`,
+		`RETURN NEW;`,
 	} {
 		if !strings.Contains(up, want) {
 			t.Errorf("declared function DDL missing %q:\n%s", want, up)
@@ -258,7 +259,7 @@ function raw_slug() -> trigger {
 // The execute-form references a declared function without synthesizing one.
 func TestExecuteFormTrigger(t *testing.T) {
 	schema := `
-function touch() -> trigger { body := $$ BEGIN RETURN NEW; END; $$; };
+function touch() -> trigger { return NEW; };
 type Widget {
   id: uuid;
   name: str;

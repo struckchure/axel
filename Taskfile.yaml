@@ -1,0 +1,20 @@
+version: "3"
+
+tasks:
+  templ:
+    desc: Run templ with integrated server and hot reload
+    dir: ./studio
+    cmds:
+      - templ generate
+      - go run ../cmd studio
+
+  tailwind:
+    desc: Watch Tailwind CSS changes
+    dir: ./studio
+    cmds:
+      - tailwindcss -i ./assets/css/input.css -o ./assets/css/output.css --watch
+
+  dev:
+    desc: Start development server with hot reload
+    cmds:
+      - task --parallel tailwind templ

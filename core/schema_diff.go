@@ -107,6 +107,38 @@ func DiffFunctions(oldFns, newFns []Function) []SchemaChange {
 	return changes
 }
 
+// DiffExtensions compares two extension sets (keyed by name). Extensions are
+// only added or dropped — CREATE EXTENSION IF NOT EXISTS has no mutable body.
+func DiffExtensions(oldExts, newExts []Extension) []SchemaChange {
+	oldMap := make(map[string]Extension, len(oldExts))
+	for _, e := range oldExts {
+		oldMap[e.Name] = e
+	}
+	newMap := make(map[string]Extension, len(newExts))
+	for _, e := range newExts {
+		newMap[e.Name] = e
+	}
+
+	var changes []SchemaChange
+	for _, ne := range newExts {
+		if _, ok := oldMap[ne.Name]; !ok {
+			changes = append(changes, SchemaChange{
+				Type: AddExtension, NewValue: ne,
+				Description: fmt.Sprintf("Enable extension '%s'", ne.Name),
+			})
+		}
+	}
+	for _, oe := range oldExts {
+		if _, ok := newMap[oe.Name]; !ok {
+			changes = append(changes, SchemaChange{
+				Type: DropExtension, OldValue: oe,
+				Description: fmt.Sprintf("Drop extension '%s'", oe.Name),
+			})
+		}
+	}
+	return changes
+}
+
 // DiffTriggers compares two trigger sets (keyed by name), comparing the full
 // CREATE SQL. A changed definition is a Modify (drop + create).
 func DiffTriggers(oldTrigs, newTrigs []Trigger) []SchemaChange {

@@ -16,12 +16,12 @@ abstract type Base {
 }
 
 function log_changes() -> trigger {
-  body := ( insert AuditLog { table_name := 'application', action := event, new_data := to_jsonb(__new__) } );
+  return NEW;
 };
 
+@language plpgsql
 function raw_fn() -> trigger {
-  language := plpgsql;
-  body := $$ BEGIN NEW.slug := lower(NEW.name); RETURN NEW; END; $$;
+  return NEW;
 };
 
 type Application extends Base {
@@ -67,8 +67,8 @@ type Application extends Base {
 					if len(it.Rewrite.Events) != 1 || it.Rewrite.Events[0] != "update" {
 						t.Errorf("rewrite events = %v", it.Rewrite.Events)
 					}
-					if it.Rewrite.Func == nil || *it.Rewrite.Func != "datetime_current" {
-						t.Errorf("rewrite func = %v", it.Rewrite.Func)
+					if it.Rewrite.Call == nil || it.Rewrite.Call.Func != "datetime_current" {
+						t.Errorf("rewrite call = %v", it.Rewrite.Call)
 					}
 				}
 			}
@@ -104,39 +104,24 @@ type Application extends Base {
 		t.Errorf("execute trigger not parsed: %+v", execTrig)
 	}
 
-	// Function bodies
-	var aqlFn, sqlFn *FunctionDecl
+	// Function bodies: both use `return <expr>;`.
+	var logFn, rawFn *FunctionDecl
 	for _, d := range sf.Definitions {
 		if d.Function == nil {
 			continue
 		}
 		switch d.Function.Name {
 		case "log_changes":
-			aqlFn = d.Function
+			logFn = d.Function
 		case "raw_fn":
-			sqlFn = d.Function
+			rawFn = d.Function
 		}
 	}
-	if aqlFn == nil || len(aqlFn.Items) != 1 || aqlFn.Items[0].BodyAQL == nil {
-		t.Fatalf("log_changes AQL body not parsed: %+v", aqlFn)
+	if logFn == nil || logFn.Return == nil || !strings.Contains(logFn.Return.Raw, "NEW") {
+		t.Fatalf("log_changes return body not parsed: %+v", logFn)
 	}
-	if !strings.Contains(aqlFn.Items[0].BodyAQL.Raw, "to_jsonb(__new__)") {
-		t.Errorf("aql fn body raw:\n%q", aqlFn.Items[0].BodyAQL.Raw)
-	}
-	if sqlFn == nil {
-		t.Fatal("raw_fn not parsed")
-	}
-	var sawSQL bool
-	for _, it := range sqlFn.Items {
-		if it.BodySQL != nil {
-			sawSQL = true
-			if !strings.Contains(*it.BodySQL, "RETURN NEW") {
-				t.Errorf("sql body: %q", *it.BodySQL)
-			}
-		}
-	}
-	if !sawSQL {
-		t.Error("raw_fn $$ body not parsed")
+	if rawFn == nil || rawFn.Return == nil || !strings.Contains(rawFn.Return.Raw, "NEW") {
+		t.Fatalf("raw_fn return body not parsed: %+v", rawFn)
 	}
 }
 
@@ -150,7 +135,7 @@ abstract type Base {
   };
 }
 function log_changes() -> trigger {
-  body := ( insert AuditLog { x := __new__.id } );
+  return NEW;
 };
 type Application extends Base {
   name: str { rewrite insert, update := __subject__.name; };
@@ -233,7 +218,7 @@ func TestResolveTriggerErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown function":  `type A { id: uuid; trigger t after insert execute nope(); }`,
 		"bad rewrite event": `type A { id: uuid; x: str { rewrite delete := 'y'; }; }`,
-		"not-trigger fn":    `function f() -> str { body := $$ select 1 $$; }; type A { id: uuid; trigger t after insert execute f(); }`,
+		"not-trigger fn":    `function f() -> str { return '1'; }; type A { id: uuid; trigger t after insert execute f(); }`,
 	}
 	for name, src := range cases {
 		sf, err := Parse([]byte(src))

@@ -1,0 +1,54 @@
+package pages
+
+// Studio is the full page. HTMX navigations re-render StudioBody only.
+templ Studio(v StudioView) {
+	@Layout("Axel Studio") {
+		@topbar(v)
+		@StudioBody(v)
+	}
+}
+
+templ topbar(v StudioView) {
+	<header class="h-12 shrink-0 border-b border-border bg-card flex items-center gap-3 px-4">
+		<div class="flex items-center gap-2 font-semibold tracking-tight">
+			<span class="text-primary">@iconDatabase()</span>
+			Axel <span class="text-muted-foreground font-normal">Studio</span>
+		</div>
+		<div class="flex items-center gap-2 ml-2 pl-3 border-l border-border">
+			<span class={ "size-2", statusDot(v.Live) }></span>
+			<span class="text-muted-foreground">{ v.ConnName }</span>
+			if !v.Live {
+				<span class="text-[11px] px-1.5 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium">offline</span>
+			}
+			if v.AQLLive {
+				<span class="text-[11px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">AQL live</span>
+			}
+		</div>
+		<div class="ml-auto flex items-center gap-1">
+			<button
+				onclick="toggleTheme()"
+				class="size-8 inline-flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+				title="Toggle theme"
+			>
+				@iconSun()
+			</button>
+		</div>
+	</header>
+}
+
+func statusDot(live bool) string {
+	if live {
+		return "bg-emerald-500 rounded-full"
+	}
+	return "bg-amber-500 rounded-full"
+}
+
+// StudioBody is the swap target for HTMX navigation.
+templ StudioBody(v StudioView) {
+	<div id="studio" class="flex h-[calc(100vh-3rem)]">
+		@sidebar(v)
+		<main class="relative flex-1 min-w-0 flex flex-col">
+			@panel(v)
+		</main>
+	</div>
+}

@@ -11,8 +11,20 @@ type SourceFile struct {
 type Definition struct {
 	ScalarType *ScalarTypeDef `parser:"  @@"`
 	EnumType   *EnumTypeDef   `parser:"| @@"`
+	Extension  *ExtensionDecl `parser:"| @@"`
 	Function   *FunctionDecl  `parser:"| @@"`
 	TypeDef    *TypeDef       `parser:"| @@"`
+}
+
+// ExtensionDecl enables a Postgres extension, lowered to
+// CREATE EXTENSION IF NOT EXISTS. The name is a quoted string so extensions with
+// hyphens (e.g. 'uuid-ossp') are expressible.
+//
+//	use extension 'unaccent';
+type ExtensionDecl struct {
+	Pos    lexer.Position
+	Name   string `parser:"'use' 'extension' @String ';'"`
+	EndPos lexer.Position
 }
 
 // ScalarTypeDef defines a named scalar alias.
@@ -101,22 +113,39 @@ type FieldBodyItem struct {
 // RewriteDecl is a field-level rewrite — sugar that folds into a BEFORE trigger
 // that assigns the field on the named events.
 //
-//	rewrite update := datetime_current();      # builtin function → now()
-//	rewrite insert, update := __new__.slug      # a column of the row being written
-//	rewrite update := __old__.status            # the pre-update row (UPDATE only)
-//	rewrite update := 'edited'                  # a literal
+//	rewrite update := datetime_current();        # builtin function → now()
+//	rewrite create, update := slugify(__new__.title)  # a function call on the row
+//	rewrite insert, update := __new__.slug        # a column of the row being written
+//	rewrite update := __old__.status              # the pre-update row (UPDATE only)
+//	rewrite update := 'edited'                    # a literal
 //
 // Row references use the same magic identifiers as triggers: __new__ / __old__ /
 // __subject__ (an alias for __new__). Events are insert / update (create is
 // accepted as an alias for insert).
 type RewriteDecl struct {
 	Pos    lexer.Position
-	Events []string `parser:"'rewrite' @Ident ( ',' @Ident )* ':='"`
-	Func   *string  `parser:"( @Ident '(' ')'"`
-	Row    *string  `parser:"| @Ident '.'"`
-	Field  *string  `parser:"@Ident"`
-	Lit    *string  `parser:"| @( String | Int ) ) ';'?"`
+	Events []string     `parser:"'rewrite' @Ident ( ',' @Ident )* ':='"`
+	Call   *RewriteCall `parser:"( @@"`
+	Row    *string      `parser:"| @Ident '.'"`
+	Field  *string      `parser:"  @Ident"`
+	Lit    *string      `parser:"| @( String | Int ) ) ';'?"`
 	EndPos lexer.Position
+}
+
+// RewriteCall is a function call used as a rewrite value: `name( args? )`. Zero
+// args covers builtins (datetime_current()); arguments are row references or
+// literals (slugify(__new__.title)).
+type RewriteCall struct {
+	Func string        `parser:"@Ident '('"`
+	Args []*RewriteArg `parser:"( @@ ( ',' @@ )* )? ')'"`
+}
+
+// RewriteArg is one argument to a rewrite function call: a row reference
+// (__new__.field) or a literal.
+type RewriteArg struct {
+	Row   *string `parser:"( @Ident '.'"`
+	Field *string `parser:"  @Ident )"`
+	Lit   *string `parser:"| @( String | Int )"`
 }
 
 // FieldConstraintDecl: constraint exclusive; / constraint min_length(10);
@@ -199,30 +228,41 @@ type TriggerDecl struct {
 	EndPos  lexer.Position
 }
 
-// FunctionDecl is a top-level Postgres function. Its body is either raw SQL
-// (dollar-quoted) or an inline AQL statement.
+// FunctionDecl is a top-level Postgres function. Attributes are declared as
+// leading directives (decorator-style, above the declaration); the body is a
+// single `return <sql-expr>;` — a raw Postgres expression the lowerer wraps
+// (`BEGIN RETURN …; END;` for plpgsql, `SELECT …;` for `@language sql`).
 //
-//	function touch() -> trigger { body := ( update … ); };
-//	function my_fn() -> trigger { language := plpgsql; body := $$ … $$; };
+//	@language plpgsql
+//	@immutable
+//	@strict
+//	function slugify(value: text) -> text { return lower(value); };
 type FunctionDecl struct {
-	Pos     lexer.Position
-	Name    string       `parser:"'function' @Ident '('"`
-	Params  []*FuncParam `parser:"( @@ ( ',' @@ )* )? ')'"`
-	Returns string       `parser:"'->' @Ident '{'"`
-	Items   []*FuncItem  `parser:"@@* '}' ';'?"`
-	EndPos  lexer.Position
+	Pos         lexer.Position
+	Directives  []*FuncDirective `parser:"@@*"`
+	Name        string           `parser:"'function' @Ident '('"`
+	Params      []*FuncParam     `parser:"( @@ ( ',' @@ )* )? ')'"`
+	Returns     string           `parser:"'->' @Ident"`
+	ReturnArray bool             `parser:"( @'[' ']' )?"`
+	Return      *ReturnExpr      `parser:"'{' 'return' @@ '}' ';'?"`
+	EndPos      lexer.Position
 }
 
-// FuncParam is one `name: type` parameter of a function.
+// FuncDirective is a leading `@name value?` attribute on a function. The value is
+// optional so valueless flags (`@immutable`, `@strict`) and valued ones
+// (`@language plpgsql`, `@parallel safe`) share one shape. Parsing is a custom
+// Parseable (see directives.go) so a valueless flag doesn't greedily swallow the
+// following `function` keyword.
+type FuncDirective struct {
+	Pos   lexer.Position
+	Name  string
+	Value *string
+}
+
+// FuncParam is one `name: type` parameter of a function. `type` may be a raw
+// Postgres type (passed through) or an ASL scalar; a trailing `[]` marks an array.
 type FuncParam struct {
-	Name string `parser:"@Ident ':'"`
-	Type string `parser:"@Ident"`
-}
-
-// FuncItem is one item in a function body block: `language := ident` or
-// `body := ( aql )` / `body := $$ sql $$`.
-type FuncItem struct {
-	Language *string   `parser:"  'language' ':=' @Ident ';'?"`
-	BodySQL  *string   `parser:"| 'body' ':=' @DollarString ';'?"`
-	BodyAQL  *AQLBlock `parser:"| 'body' ':=' @@ ';'?"`
+	Name  string `parser:"@Ident ':'"`
+	Type  string `parser:"@Ident"`
+	Array bool   `parser:"( @'[' ']' )?"`
 }

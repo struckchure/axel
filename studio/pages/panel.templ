@@ -1,0 +1,59 @@
+package pages
+
+import "fmt"
+
+templ panel(v StudioView) {
+	if v.Active == nil {
+		@emptyState(v)
+	} else {
+		<div class="h-11 shrink-0 border-b border-border flex items-center gap-1 px-3">
+			<div class="flex items-center gap-1.5 font-medium mr-3">
+				<span class="text-muted-foreground">@iconTable()</span>
+				<span class="text-muted-foreground">{ v.Active.Schema }.</span>{ v.Active.Name }
+			</div>
+			@tab(v, "data", "Data")
+			@tab(v, "structure", "Structure")
+			@tab(v, "aql", "AQL")
+			@tab(v, "sql", "SQL")
+		</div>
+		switch v.Tab {
+			case "structure":
+				@structureView(v)
+			case "aql":
+				@aqlView(v)
+			case "sql":
+				@sqlView(v)
+			default:
+				@dataView(v)
+		}
+	}
+}
+
+templ tab(v StudioView, id, label string) {
+	<a
+		href={ templ.SafeURL(v.nav(id, nil)) }
+		hx-get={ v.nav(id, nil) }
+		hx-target="#studio"
+		hx-swap="outerHTML"
+		hx-push-url="true"
+		class={
+			"px-3 h-7 inline-flex items-center text-[13px] transition-colors cursor-pointer",
+			templ.KV("bg-secondary text-secondary-foreground font-medium", v.Tab == id),
+			templ.KV("text-muted-foreground hover:text-foreground hover:bg-accent/60", v.Tab != id),
+		}
+	>
+		{ label }
+	</a>
+}
+
+templ emptyState(v StudioView) {
+	<div class="flex-1 flex flex-col items-center justify-center text-center gap-3 text-muted-foreground">
+		<div class="size-14 bg-secondary flex items-center justify-center text-primary">
+			@iconDatabase()
+		</div>
+		<div class="space-y-1">
+			<p class="font-medium text-foreground">{ fmt.Sprintf("Connected to %s", v.ConnName) }</p>
+			<p class="text-xs">Select a table from the sidebar to browse its data.</p>
+		</div>
+	</div>
+}

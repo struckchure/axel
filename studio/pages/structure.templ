@@ -1,0 +1,70 @@
+package pages
+
+import "github.com/struckchure/axel/studio/db"
+
+templ structureView(v StudioView) {
+	<div class="flex-1 min-h-0 overflow-auto p-4">
+		<div class="max-w-4xl">
+			<table class="w-full text-[13px] border border-border overflow-hidden">
+				<thead>
+					<tr class="bg-muted text-left text-muted-foreground text-[11px] uppercase tracking-wider">
+						<th class="px-3 py-2 font-medium">Column</th>
+						<th class="px-3 py-2 font-medium">Type</th>
+						<th class="px-3 py-2 font-medium">Nullable</th>
+						<th class="px-3 py-2 font-medium">Default</th>
+						<th class="px-3 py-2 font-medium">Key</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, c := range v.Active.Columns {
+						@structureRow(c)
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
+
+templ structureRow(c db.Column) {
+	<tr class="border-t border-border hover:bg-accent/40">
+		<td class="px-3 py-2 font-medium">{ c.Name }</td>
+		<td class="px-3 py-2 font-mono text-[12px]">
+			<span class={ templ.KV("text-blue-600 dark:text-blue-400", c.IsLink), templ.KV("text-muted-foreground", !c.IsLink) }>{ c.DataType }</span>
+			if c.SQLType != "" {
+				<span class="text-muted-foreground/50 ml-1.5">{ c.SQLType }</span>
+			}
+		</td>
+		<td class="px-3 py-2">
+			if c.Nullable {
+				<span class="text-muted-foreground">nullable</span>
+			} else {
+				<span class="text-foreground">not null</span>
+			}
+		</td>
+		<td class="px-3 py-2 font-mono text-[12px] text-muted-foreground">
+			if c.Default != "" {
+				{ c.Default }
+			} else {
+				<span class="text-muted-foreground/40">—</span>
+			}
+		</td>
+		<td class="px-3 py-2">
+			if c.IsPrimaryKey {
+				<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400">
+					@iconKey()
+					PK
+				</span>
+			} else if c.IsForeignKey {
+				<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400" title={ "References " + c.ForeignRef }>
+					@iconLink()
+					FK
+				</span>
+			} else if c.IsMulti {
+				<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium border border-blue-500/40 text-blue-600 dark:text-blue-400">
+					@iconLink()
+					multi
+				</span>
+			}
+		</td>
+	</tr>
+}

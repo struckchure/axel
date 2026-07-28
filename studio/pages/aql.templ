@@ -1,0 +1,75 @@
+package pages
+
+import "fmt"
+
+templ aqlView(v StudioView) {
+	<div class="flex-1 min-h-0 flex flex-col">
+		<form
+			class="p-3 border-b border-border"
+			hx-post="/aql"
+			hx-target="#aql-result"
+			hx-swap="innerHTML"
+		>
+			<div class="flex items-center justify-between mb-1.5">
+				<span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">AQL</span>
+				@aqlBadge(v)
+			</div>
+			<textarea
+				name="aql"
+				rows="6"
+				spellcheck="false"
+				placeholder="multi select User { id, email } filter .active = true;"
+				class="w-full font-mono text-[13px] p-3 bg-muted border border-input outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y"
+			>{ defaultAQL(v) }</textarea>
+			<div class="flex items-center justify-between mt-2">
+				<span class="text-xs text-muted-foreground">
+					if v.AQLLive {
+						{ fmt.Sprintf("Runs read & write AQL against %s.", v.ConnName) }
+					} else if v.HasSchema {
+						Compiles AQL to SQL — connect a live database to execute.
+					} else {
+						No schema loaded. Start with <code class="font-mono">-schema &lt;file.asl&gt;</code>.
+					}
+				</span>
+				<button
+					type="submit"
+					disabled?={ !v.HasSchema }
+					class="inline-flex items-center gap-1.5 h-8 px-3 bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+				>
+					@iconPlay()
+					if v.AQLLive {
+						Run
+					} else {
+						Compile
+					}
+				</button>
+			</div>
+		</form>
+		<div id="aql-result" class="flex-1 min-h-0 overflow-auto">
+			<div class="h-full flex items-center justify-center text-muted-foreground text-xs">
+				if v.HasSchema {
+					Run an AQL statement to see results.
+				} else {
+					AQL is axel's typed query language. Load a schema to use it here.
+				}
+			</div>
+		</div>
+	</div>
+}
+
+templ aqlBadge(v StudioView) {
+	if v.AQLLive {
+		<span class="text-[11px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">live</span>
+	} else if v.HasSchema {
+		<span class="text-[11px] px-1.5 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium">compile-only</span>
+	} else {
+		<span class="text-[11px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">no schema</span>
+	}
+}
+
+func defaultAQL(v StudioView) string {
+	if v.Active != nil && v.Active.Type != "" {
+		return fmt.Sprintf("multi select %s { * } limit 50;", v.Active.Type)
+	}
+	return ""
+}

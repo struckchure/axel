@@ -271,6 +271,31 @@ func (m *MigrationManager) GetLastFunctionsAndTriggers() ([]Function, []Trigger,
 	return metadata.Functions, metadata.Triggers, nil
 }
 
+// GetLastExtensions returns the extension snapshot from the last migration's
+// metadata (nil when there is none — old metadata without the field yields nil,
+// so every declared extension diffs as an addition).
+func (m *MigrationManager) GetLastExtensions() ([]Extension, error) {
+	migrations, err := m.GetAvailableMigrations()
+	if err != nil {
+		return nil, err
+	}
+	if len(migrations) == 0 {
+		return nil, nil
+	}
+
+	lastMigration := migrations[len(migrations)-1]
+	metadataPath := filepath.Join(m.config.MigrationsDir, lastMigration.Version, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return nil, err
+	}
+	var metadata MigrationMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return nil, err
+	}
+	return metadata.Extensions, nil
+}
+
 // CalculateChecksum computes SHA256 hash of content
 func CalculateChecksum(content string) string {
 	hash := sha256.Sum256([]byte(content))
@@ -278,7 +303,7 @@ func CalculateChecksum(content string) string {
 }
 
 // CreateMigrationDir creates a new migration directory with metadata
-func (m *MigrationManager) CreateMigrationDir(version, name string, schema []Model, functions []Function, triggers []Trigger, upSQL, downSQL string) error {
+func (m *MigrationManager) CreateMigrationDir(version, name string, schema []Model, functions []Function, triggers []Trigger, extensions []Extension, upSQL, downSQL string) error {
 	migrationDir := filepath.Join(m.config.MigrationsDir, version)
 	if err := os.MkdirAll(migrationDir, 0755); err != nil {
 		return err
@@ -313,6 +338,7 @@ func (m *MigrationManager) CreateMigrationDir(version, name string, schema []Mod
 		SchemaSnapshot:  schema,
 		Functions:       functions,
 		Triggers:        triggers,
+		Extensions:      extensions,
 		PreviousVersion: previousVersion,
 	}
 

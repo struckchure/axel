@@ -43,8 +43,19 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 		Functions:   make(map[string]*ResolvedFunction),
 	}
 
-	// Pass 1: register scalar types, enum types, and functions.
+	// Pass 1: register scalar types, enum types, functions, and extensions.
+	seenExt := map[string]bool{}
 	for _, def := range src.Definitions {
+		if def.Extension != nil {
+			name := stripSingleQuotes(def.Extension.Name)
+			if name == "" {
+				return nil, fmt.Errorf("extension name may not be empty")
+			}
+			if !seenExt[name] {
+				seenExt[name] = true
+				ir.Extensions = append(ir.Extensions, name)
+			}
+		}
 		if def.Function != nil {
 			fn, err := r.resolveFunction(def.Function, ir)
 			if err != nil {
@@ -233,43 +244,89 @@ func (r *Resolver) resolveFunction(fd *FunctionDecl, ir *SchemaIR) (*ResolvedFun
 	if fd.Returns == "trigger" {
 		fn.Returns = "trigger"
 	} else {
-		sqlType, err := r.resolveBaseType(fd.Returns, ir)
-		if err != nil {
-			return nil, fmt.Errorf("return type: %w", err)
-		}
-		fn.Returns = sqlType
+		fn.Returns = resolveFunctionType(fd.Returns, fd.ReturnArray, ir)
 	}
 
 	for _, p := range fd.Params {
-		sqlType, err := r.resolveBaseType(p.Type, ir)
-		if err != nil {
-			return nil, fmt.Errorf("param %q: %w", p.Name, err)
-		}
-		fn.Params = append(fn.Params, ResolvedFuncParam{Name: p.Name, SQLType: sqlType})
+		fn.Params = append(fn.Params, ResolvedFuncParam{
+			Name:    p.Name,
+			SQLType: resolveFunctionType(p.Type, p.Array, ir),
+		})
 	}
 
-	var haveBody bool
-	for _, it := range fd.Items {
-		switch {
-		case it.Language != nil:
-			fn.Language = *it.Language
-		case it.BodySQL != nil:
-			fn.BodySQL = stripDollarQuotes(*it.BodySQL)
-			haveBody = true
-		case it.BodyAQL != nil:
-			fn.BodyAQL = it.BodyAQL.Raw
-			haveBody = true
-		}
+	if err := applyFuncDirectives(fn, fd.Directives); err != nil {
+		return nil, err
 	}
-	if !haveBody {
+
+	if fd.Return == nil {
 		return nil, fmt.Errorf("missing body")
 	}
-	if fn.BodyAQL != "" {
-		// An AQL body compiles to a plpgsql function; a `language` override is
-		// only meaningful for a raw SQL body.
-		fn.Language = "plpgsql"
-	}
+	fn.ReturnSQL = fd.Return.Raw
 	return fn, nil
+}
+
+// applyFuncDirectives folds leading @-directives into the resolved function's
+// attribute fields, rejecting unknown names and conflicting volatilities.
+func applyFuncDirectives(fn *ResolvedFunction, dirs []*FuncDirective) error {
+	for _, d := range dirs {
+		val := ""
+		if d.Value != nil {
+			val = stripSingleQuotes(*d.Value)
+		}
+		switch d.Name {
+		case "language":
+			if val == "" {
+				return fmt.Errorf("@language requires a value (e.g. @language plpgsql)")
+			}
+			fn.Language = val
+		case "immutable", "stable", "volatile":
+			if fn.Volatility != "" && fn.Volatility != d.Name {
+				return fmt.Errorf("conflicting volatility: @%s and @%s", fn.Volatility, d.Name)
+			}
+			fn.Volatility = d.Name
+		case "strict":
+			fn.Strict = true
+		case "leakproof":
+			fn.Leakproof = true
+		case "parallel":
+			if val != "safe" && val != "unsafe" && val != "restricted" {
+				return fmt.Errorf("@parallel must be safe, unsafe, or restricted (got %q)", val)
+			}
+			fn.Parallel = val
+		case "security":
+			if val != "definer" && val != "invoker" {
+				return fmt.Errorf("@security must be definer or invoker (got %q)", val)
+			}
+			fn.Security = val
+		case "cost":
+			if val == "" {
+				return fmt.Errorf("@cost requires a value")
+			}
+			fn.Cost = val
+		default:
+			return fmt.Errorf("unknown function directive @%s", d.Name)
+		}
+	}
+	return nil
+}
+
+// resolveFunctionType maps a function parameter/return type to its SQL form. ASL
+// builtins, scalar aliases, and enums map to their SQL equivalents; anything else
+// is a raw Postgres type and passes through verbatim (functions "map directly to
+// Postgres, no aliasing"). A trailing [] marks an array.
+func resolveFunctionType(name string, array bool, ir *SchemaIR) string {
+	sqlType := name
+	if s, ok := builtinTypes[name]; ok {
+		sqlType = s
+	} else if scalar, ok := ir.ScalarTypes[name]; ok {
+		sqlType = scalar.SQLType
+	} else if _, ok := ir.EnumTypes[name]; ok {
+		sqlType = "TEXT"
+	}
+	if array {
+		sqlType += "[]"
+	}
+	return sqlType
 }
 
 // stripDollarQuotes removes the surrounding $$ from a DollarString token value.
@@ -389,8 +446,12 @@ func resolveRewrite(rw *RewriteDecl, sqlType, origin string) (ResolvedRewrite, e
 	}
 	out := ResolvedRewrite{Events: events, Origin: origin}
 	switch {
-	case rw.Func != nil:
-		out.ValueSQL = mapFuncDefault(*rw.Func, sqlType)
+	case rw.Call != nil:
+		sql, err := resolveRewriteCall(rw.Call, sqlType)
+		if err != nil {
+			return ResolvedRewrite{}, err
+		}
+		out.ValueSQL = sql
 	case rw.Row != nil:
 		row, ok := triggerRowSQL(*rw.Row)
 		if !ok {
@@ -403,6 +464,40 @@ func resolveRewrite(rw *RewriteDecl, sqlType, origin string) (ResolvedRewrite, e
 		return ResolvedRewrite{}, fmt.Errorf("rewrite has no value")
 	}
 	return out, nil
+}
+
+// resolveRewriteCall builds the SQL for a rewrite function call. A zero-arg call
+// goes through mapFuncDefault so builtins keep their mapping (datetime_current()
+// → now()); a call with arguments is emitted verbatim with resolved arguments
+// (slugify(__new__.title) → slugify(NEW."title")).
+func resolveRewriteCall(call *RewriteCall, sqlType string) (string, error) {
+	if len(call.Args) == 0 {
+		return mapFuncDefault(call.Func, sqlType), nil
+	}
+	args := make([]string, 0, len(call.Args))
+	for _, a := range call.Args {
+		s, err := resolveRewriteArg(a, sqlType)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, s)
+	}
+	return fmt.Sprintf("%s(%s)", call.Func, strings.Join(args, ", ")), nil
+}
+
+// resolveRewriteArg resolves one rewrite call argument to SQL.
+func resolveRewriteArg(a *RewriteArg, sqlType string) (string, error) {
+	switch {
+	case a.Row != nil:
+		row, ok := triggerRowSQL(*a.Row)
+		if !ok {
+			return "", fmt.Errorf("rewrite argument %q.%s is not a row reference (use __new__, __old__, or __subject__)", *a.Row, deref(a.Field))
+		}
+		return fmt.Sprintf("%s.%q", row, toSnakeCase(*a.Field)), nil
+	case a.Lit != nil:
+		return mapLitDefault(*a.Lit, sqlType), nil
+	}
+	return "", fmt.Errorf("rewrite argument has no value")
 }
 
 // canonEvent maps friendly event aliases to their canonical names.

@@ -87,3 +87,4 @@ cache
 tools/zed/grammars/
 
 *.vsix
+graphify-out

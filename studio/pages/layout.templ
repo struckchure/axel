@@ -1,0 +1,32 @@
+package pages
+
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="en" class="h-full">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title }</title>
+			<link rel="stylesheet" href="/assets/css/output.css"/>
+			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+			// Apply the persisted theme before paint to avoid a flash.
+			<script>
+				(function () {
+					const t = localStorage.getItem("theme");
+					if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches)) {
+						document.documentElement.classList.add("dark");
+					}
+				})();
+				function toggleTheme() {
+					const el = document.documentElement;
+					el.classList.toggle("dark");
+					localStorage.setItem("theme", el.classList.contains("dark") ? "dark" : "light");
+				}
+			</script>
+			@editorScript()
+		</head>
+		<body class="h-full bg-background text-foreground antialiased text-sm">
+			{ children... }
+		</body>
+	</html>
+}

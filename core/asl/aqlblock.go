@@ -8,7 +8,7 @@ import (
 )
 
 // AQLBlock captures a parenthesized AQL body embedded in a `.asl` file — the
-// `do ( … )` of a trigger or the `body := ( … )` of a function. The ASL grammar
+// `do ( … )` of a trigger. The ASL grammar
 // does not parse the AQL itself; this custom Parseable consumes the balanced
 // `( … )` span and stores the raw text, which the resolver later hands to
 // aql.ParseString. This keeps the two grammars fully decoupled.
@@ -25,7 +25,7 @@ type AQLBlock struct {
 func (b *AQLBlock) Parse(lex *lexer.PeekingLexer) error {
 	open := lex.Peek()
 	if open.Value != "(" {
-		// A `(` is mandatory here (right after `do` / `body :=`), so a missing
+		// A `(` is mandatory here (right after `do`), so a missing
 		// one is a hard error rather than a "try the next alternative" signal.
 		return fmt.Errorf("expected '(' to open an AQL block, got %q", open.Value)
 	}

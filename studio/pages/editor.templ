@@ -1,0 +1,153 @@
+package pages
+
+// editorScript holds the Gel-style staged row editor: edits/deletes/inserts
+// collect in the DOM and apply as AQL (plus junction rows for multi links) in
+// one batch via /mutate.
+templ editorScript() {
+	<script>
+		function axelGrid() { return document.querySelector("[data-axel-grid]"); }
+
+		function axelEdited(td) { td.classList.add("axel-edited"); axelBar(); }
+		function axelSelectEdited(sel) { sel.closest("td").classList.add("axel-edited"); axelBar(); }
+
+		// Insert a draft row by cloning the hidden template.
+		function axelAddRow() {
+			const grid = axelGrid();
+			const tmpl = document.getElementById("axel-newrow");
+			if (!grid || !tmpl) return;
+			grid.querySelector("tbody").prepend(tmpl.content.firstElementChild.cloneNode(true));
+			axelBar();
+		}
+		function axelToggleDelete(btn) { btn.closest("tr").classList.toggle("axel-del"); axelBar(); }
+		function axelRemoveDraft(btn) { btn.closest("tr").remove(); axelBar(); }
+
+		// Cell value: a link picker's selected id, or the cell's text.
+		function axelCellValue(td) {
+			const sel = td.querySelector("select[data-link]");
+			return sel ? sel.value : td.textContent.trim();
+		}
+
+		// Multi-link chips.
+		function axelChipIds(td) {
+			return Array.from(td.querySelectorAll(".axel-chip")).map(function (c) { return c.dataset.id; });
+		}
+		function axelChipRemove(btn) {
+			const td = btn.closest("td");
+			btn.closest(".axel-chip").remove();
+			td.classList.add("axel-edited");
+			axelBar();
+		}
+		function axelChipAdd(sel) {
+			const id = sel.value;
+			if (!id) return;
+			const td = sel.closest("td");
+			if (td.querySelector('.axel-chip[data-id="' + (window.CSS ? CSS.escape(id) : id) + '"]')) { sel.value = ""; return; }
+			const label = sel.options[sel.selectedIndex].dataset.label || id;
+			const chip = document.createElement("span");
+			chip.className = "axel-chip inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-secondary text-secondary-foreground text-xs font-medium";
+			chip.dataset.id = id;
+			const text = document.createTextNode(label + " ");
+			const x = document.createElement("button");
+			x.type = "button";
+			x.textContent = "×";
+			x.className = "hover:text-destructive leading-none";
+			x.setAttribute("onclick", "axelChipRemove(this)");
+			chip.appendChild(text);
+			chip.appendChild(x);
+			sel.parentNode.insertBefore(chip, sel);
+			sel.value = "";
+			td.classList.add("axel-edited");
+			axelBar();
+		}
+
+		function axelCounts(grid) {
+			let ins = 0, del = 0, upd = 0;
+			grid.querySelectorAll("tbody tr").forEach(function (tr) {
+				if (tr.hasAttribute("data-draft")) { ins++; return; }
+				if (tr.classList.contains("axel-del")) { del++; return; }
+				if (tr.querySelector("td.axel-edited")) upd++;
+			});
+			return { ins: ins, del: del, upd: upd, total: ins + del + upd };
+		}
+
+		function axelBar() {
+			const grid = axelGrid(), bar = document.getElementById("axel-review");
+			if (!grid || !bar) return;
+			const c = axelCounts(grid);
+			if (c.total === 0) { bar.classList.add("hidden"); return; }
+			const parts = [];
+			if (c.ins) parts.push(c.ins + " insert" + (c.ins > 1 ? "s" : ""));
+			if (c.upd) parts.push(c.upd + " update" + (c.upd > 1 ? "s" : ""));
+			if (c.del) parts.push(c.del + " delete" + (c.del > 1 ? "s" : ""));
+			document.getElementById("axel-summary").textContent = parts.join(" · ");
+			document.getElementById("axel-error").classList.add("hidden");
+			bar.classList.remove("hidden");
+		}
+
+		function axelReload() {
+			htmx.ajax("GET", location.pathname + location.search, { target: "#studio", swap: "outerHTML" });
+		}
+		function axelDiscard() { axelReload(); }
+
+		async function axelSave() {
+			const grid = axelGrid();
+			if (!grid) return;
+			const type = grid.dataset.type, muts = [];
+			grid.querySelectorAll("tbody tr").forEach(function (tr) {
+				if (tr.hasAttribute("data-draft")) {
+					const set = {}, multi = {};
+					tr.querySelectorAll("[data-col]").forEach(function (td) {
+						if (td.hasAttribute("data-multi")) multi[td.dataset.col] = axelChipIds(td);
+						else set[td.dataset.col] = axelCellValue(td);
+					});
+					muts.push({ op: "insert", type: type, set: set, multi: multi });
+				} else if (tr.classList.contains("axel-del")) {
+					muts.push({ op: "delete", type: type, id: tr.dataset.id });
+				} else {
+					const edited = tr.querySelectorAll("td.axel-edited");
+					if (edited.length) {
+						const set = {}, multi = {};
+						edited.forEach(function (td) {
+							if (td.hasAttribute("data-multi")) multi[td.dataset.col] = axelChipIds(td);
+							else set[td.dataset.col] = axelCellValue(td);
+						});
+						muts.push({ op: "update", type: type, id: tr.dataset.id, set: set, multi: multi });
+					}
+				}
+			});
+			if (!muts.length) return;
+			const save = document.getElementById("axel-save");
+			save.disabled = true;
+			try {
+				const res = await fetch("/mutate", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(muts),
+				});
+				const body = await res.json();
+				if (body.error) {
+					const err = document.getElementById("axel-error");
+					err.textContent = body.error;
+					err.classList.remove("hidden");
+					err.title = body.error;
+					save.disabled = false;
+					return;
+				}
+				axelReload();
+			} catch (e) {
+				const err = document.getElementById("axel-error");
+				err.textContent = String(e);
+				err.classList.remove("hidden");
+				save.disabled = false;
+			}
+		}
+
+		// Client-side table filter in the sidebar.
+		function filterTables(q) {
+			q = q.toLowerCase();
+			document.querySelectorAll("#table-list [data-table]").forEach(function (el) {
+				el.style.display = el.dataset.table.includes(q) ? "" : "none";
+			});
+		}
+	</script>
+}

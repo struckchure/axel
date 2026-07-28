@@ -35,14 +35,20 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 		}
 	}
 
-	// Separate AddModel changes from others and sort them by dependencies
+	// Separate extension and AddModel changes from others. Extensions must be
+	// created before any table/function that may depend on them, so they lead;
+	// AddModel follows (dependency-sorted); everything else keeps its order.
+	var extChanges []SchemaChange
 	var addModelChanges []SchemaChange
 	var otherChanges []SchemaChange
 
 	for _, change := range changes {
-		if change.Type == AddModel {
+		switch change.Type {
+		case AddExtension, DropExtension:
+			extChanges = append(extChanges, change)
+		case AddModel:
 			addModelChanges = append(addModelChanges, change)
-		} else {
+		default:
 			otherChanges = append(otherChanges, change)
 		}
 	}
@@ -65,8 +71,13 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 		}
 	}
 
-	// Merge back: AddModel changes first (sorted), then others
-	sortedChanges := append(addModelChanges, otherChanges...)
+	// Merge back: extensions first, then AddModel (sorted), then others. Because
+	// down statements are reversed for rollback, processing extensions first also
+	// makes their DROPs run last on the way down.
+	sortedChanges := make([]SchemaChange, 0, len(extChanges)+len(addModelChanges)+len(otherChanges))
+	sortedChanges = append(sortedChanges, extChanges...)
+	sortedChanges = append(sortedChanges, addModelChanges...)
+	sortedChanges = append(sortedChanges, otherChanges...)
 
 	// Process changes in order
 	for _, change := range sortedChanges {
@@ -185,6 +196,16 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 				upStatements = append(upStatements, typeConstraintDropSQL(change.ModelName, tc))
 				downStatements = append(downStatements, down)
 			}
+
+		case AddExtension:
+			ext := change.NewValue.(Extension)
+			upStatements = append(upStatements, ext.CreateSQL)
+			downStatements = append(downStatements, ext.DropSQL)
+
+		case DropExtension:
+			ext := change.OldValue.(Extension)
+			upStatements = append(upStatements, ext.DropSQL)
+			downStatements = append(downStatements, ext.CreateSQL)
 
 		case AddFunction:
 			fn := change.NewValue.(Function)

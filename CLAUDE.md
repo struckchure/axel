@@ -4,6 +4,11 @@ globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
 alwaysApply: false
 ---
 
+## Workflow
+
+- NEVER run browser tests (opening the app in a browser, taking screenshots, driving the UI) without asking first. Verify with builds, `curl`, and unit tests instead, and only open a browser when the user explicitly agrees.
+- Git commit messages: do NOT append the `Co-Authored-By: Claude ...` line or any Claude / Claude Code attribution footer.
+
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`

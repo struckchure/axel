@@ -1,0 +1,110 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/struckchure/axel/studio/db"
+)
+
+templ sqlView(v StudioView) {
+	<div class="flex-1 min-h-0 flex flex-col">
+		<form
+			class="p-3 border-b border-border"
+			hx-post="/query"
+			hx-target="#sql-result"
+			hx-swap="innerHTML"
+		>
+			<textarea
+				name="sql"
+				rows="5"
+				spellcheck="false"
+				placeholder="SELECT * FROM ..."
+				class="w-full font-mono text-[13px] p-3 bg-muted border border-input outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y"
+			>{ defaultSQL(v) }</textarea>
+			<div class="flex items-center justify-between mt-2">
+				<span class="text-xs text-muted-foreground">Read-only queries run against { v.ConnName }.</span>
+				<button
+					type="submit"
+					class="inline-flex items-center gap-1.5 h-8 px-3 bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors"
+				>
+					@iconPlay()
+					Run
+				</button>
+			</div>
+		</form>
+		<div id="sql-result" class="flex-1 min-h-0 overflow-auto">
+			if v.Query != nil {
+				@queryResult(*v.Query)
+			} else {
+				<div class="h-full flex items-center justify-center text-muted-foreground text-xs">
+					Run a query to see results.
+				</div>
+			}
+		</div>
+	</div>
+}
+
+func defaultSQL(v StudioView) string {
+	if v.QuerySQL != "" {
+		return v.QuerySQL
+	}
+	if v.Active != nil {
+		return fmt.Sprintf("SELECT * FROM %s.%s LIMIT 100;", v.Active.Schema, v.Active.Name)
+	}
+	return ""
+}
+
+// compiledSQL shows the SQL an AQL statement lowers to, when present.
+templ compiledSQL(r db.QueryResult) {
+	if r.SQL != "" {
+		<details class="m-3 border border-border bg-muted/50 text-[12px]" open>
+			<summary class="px-3 py-1.5 cursor-pointer text-muted-foreground select-none">compiled SQL</summary>
+			<pre class="px-3 pb-3 pt-1 font-mono overflow-x-auto whitespace-pre-wrap text-foreground/90">{ r.SQL }</pre>
+		</details>
+	}
+}
+
+// QueryResultFragment is the standalone hx-post response for the consoles.
+templ QueryResultFragment(r db.QueryResult) {
+	@queryResult(r)
+}
+
+templ queryResult(r db.QueryResult) {
+	if r.Err != "" {
+		<div class="m-3 p-3 bg-destructive/10 border border-destructive/30 text-destructive text-[13px] font-mono whitespace-pre-wrap">
+			{ r.Err }
+		</div>
+		@compiledSQL(r)
+	} else {
+		<div class="px-3 py-2 border-b border-border text-xs text-muted-foreground flex items-center gap-3">
+			<span class="text-emerald-600 dark:text-emerald-400 font-medium">{ r.Command }</span>
+			if len(r.Columns) > 0 {
+				<span>{ fmt.Sprintf("%d rows", len(r.Rows)) }</span>
+			}
+			if r.Elapsed != "" {
+				<span class="ml-auto tabular-nums">{ r.Elapsed }</span>
+			}
+		</div>
+		@compiledSQL(r)
+		if len(r.Columns) > 0 {
+			<table class="border-separate border-spacing-0 w-full text-[13px]">
+				<thead class="sticky top-0">
+					<tr>
+						for _, col := range r.Columns {
+							<th class="bg-muted border-b border-r border-border px-3 py-1.5 text-left font-medium whitespace-nowrap">{ col }</th>
+						}
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range r.Rows {
+						<tr class="hover:bg-accent/40">
+							for _, val := range row {
+								@cell(formatCell(val))
+							}
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	}
+}

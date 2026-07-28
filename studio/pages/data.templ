@@ -1,0 +1,343 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/struckchure/axel/studio/db"
+)
+
+templ dataView(v StudioView) {
+	if v.DataErr != "" {
+		@dataError(v)
+	} else {
+		@dataGrid(v)
+	}
+}
+
+templ dataError(v StudioView) {
+	<div class="flex-1 flex flex-col items-center justify-center text-center gap-3 p-8">
+		<div class="size-12 bg-destructive/10 flex items-center justify-center text-destructive">
+			@iconDatabase()
+		</div>
+		<div class="space-y-1 max-w-lg">
+			<p class="font-medium text-foreground">Couldn't read this table</p>
+			<p class="text-xs text-muted-foreground font-mono break-words whitespace-pre-wrap">{ v.DataErr }</p>
+			<p class="text-xs text-muted-foreground pt-1">If the table hasn't been created yet, run your axel migrations first.</p>
+		</div>
+	</div>
+}
+
+templ dataGrid(v StudioView) {
+	if v.Editable() {
+		@editToolbar()
+	}
+	<div class="flex-1 min-h-0 overflow-auto">
+		<table
+			class="border-separate border-spacing-0 w-full text-[13px]"
+			if v.Editable() {
+				data-axel-grid
+				data-type={ v.Active.Type }
+			}
+		>
+			<thead class="sticky top-0 z-10">
+				<tr>
+					<th class="sticky left-0 z-20 bg-muted border-b border-r border-border w-10 text-muted-foreground text-[11px] font-normal">#</th>
+					for _, c := range v.Rows.Columns {
+						@columnHeader(v, c)
+					}
+				</tr>
+			</thead>
+			<tbody>
+				for i, row := range v.Rows.Values {
+					<tr class="group hover:bg-accent/40" data-id={ pkValue(v.Rows.Columns, row) }>
+						@rowIndexCell(v, i)
+						for j, val := range row {
+							{{ c := v.Rows.Columns[j] }}
+							if c.IsLink && c.IsMulti && v.Editable() {
+								@chipsCell(v, c, multiIDs(val))
+							} else if c.IsLink && !c.IsMulti && v.Editable() {
+								@linkEditCell(v, c, val)
+							} else if c.IsLink {
+								@linkCell(c, val)
+							} else if v.Editable() && isEditable(c) {
+								@editCell(c, val)
+							} else {
+								@cell(formatCell(val))
+							}
+						}
+					</tr>
+				}
+				if len(v.Rows.Values) == 0 {
+					<tr>
+						<td colspan={ fmt.Sprintf("%d", len(v.Rows.Columns)+1) } class="border-b border-border text-center py-16 text-muted-foreground">
+							This table is empty.
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+	if v.Editable() {
+		@newRowTemplate(v)
+		@reviewBar()
+	}
+	@pagination(v)
+}
+
+templ editToolbar() {
+	<div class="h-9 shrink-0 border-b border-border bg-card/60 flex items-center px-3 gap-2">
+		<button
+			type="button"
+			onclick="axelAddRow()"
+			class="inline-flex items-center gap-1.5 h-7 px-2.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+		>
+			<span class="text-base leading-none">+</span> Insert row
+		</button>
+		<span class="text-[11px] text-muted-foreground ml-1">Double-click a cell to edit · edits apply as AQL</span>
+	</div>
+}
+
+templ rowIndexCell(v StudioView, i int) {
+	<td class="sticky left-0 z-10 bg-card group-hover:bg-accent/40 border-b border-r border-border text-center text-[11px] text-muted-foreground tabular-nums w-10">
+		if v.Editable() {
+			<span class="group-hover:hidden">{ fmt.Sprintf("%d", v.Rows.Offset+i+1) }</span>
+			<button
+				type="button"
+				title="Mark row for deletion"
+				onclick="axelToggleDelete(this)"
+				class="hidden group-hover:inline-flex items-center justify-center size-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+			>×</button>
+		} else {
+			{ fmt.Sprintf("%d", v.Rows.Offset+i+1) }
+		}
+	</td>
+}
+
+templ columnHeader(v StudioView, c db.Column) {
+	<th class="bg-muted border-b border-r border-border px-0 text-left font-medium whitespace-nowrap">
+		if c.IsLink {
+			<div class="flex items-center gap-1.5 px-3 py-1.5">
+				<span class="text-blue-500" title={ "References " + c.ForeignRef }>@iconLink()</span>
+				<span>{ c.Name }</span>
+				<span class="text-[10px] font-normal text-muted-foreground lowercase">{ c.DataType }</span>
+			</div>
+		} else {
+			<a
+				href={ templ.SafeURL(v.sortURL(c.Name)) }
+				hx-get={ v.sortURL(c.Name) }
+				hx-target="#studio"
+				hx-swap="outerHTML"
+				hx-push-url="true"
+				class="flex items-center gap-1.5 px-3 py-1.5 hover:bg-accent/60 transition-colors"
+			>
+				if c.IsPrimaryKey {
+					<span class="text-amber-500" title="Primary key">@iconKey()</span>
+				}
+				<span>{ c.Name }</span>
+				<span class="text-[10px] font-normal text-muted-foreground lowercase">{ c.DataType }</span>
+				if ind := v.sortIndicator(c.Name); ind != "" {
+					<span class="text-primary font-semibold">{ ind }</span>
+				}
+			</a>
+		}
+	</th>
+}
+
+// editCell is an inline-editable scalar cell.
+templ editCell(c db.Column, val any) {
+	<td
+		data-col={ c.Name }
+		contenteditable="true"
+		spellcheck="false"
+		oninput="axelEdited(this)"
+		onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();} if(event.key==='Escape'){this.blur();}"
+		class="axel-cell border-b border-r border-border px-3 py-1.5 max-w-sm truncate outline-none focus:whitespace-normal"
+	>{ editText(val) }</td>
+}
+
+// linkSelect is a dropdown of candidate target rows for a single link.
+templ linkSelect(v StudioView, c db.Column, current string) {
+	<select
+		data-link
+		onchange="axelSelectEdited(this)"
+		class="w-full bg-transparent px-3 py-1.5 outline-none text-blue-600 dark:text-blue-400 cursor-pointer appearance-none"
+	>
+		<option value="" class="bg-popover text-foreground">—</option>
+		for _, opt := range v.LinkOptions[c.Name] {
+			<option value={ opt.ID } selected?={ opt.ID == current } class="bg-popover text-foreground">{ opt.Label }</option>
+		}
+	</select>
+}
+
+templ linkEditCell(v StudioView, c db.Column, val any) {
+	<td data-col={ c.Name } class="axel-cell border-b border-r border-border p-0 max-w-xs">
+		@linkSelect(v, c, editText(val))
+	</td>
+}
+
+// chipsCell is an editable multi-link cell: selected targets as removable chips
+// plus an "add" dropdown. Membership reconciles against the junction table.
+templ chipsCell(v StudioView, c db.Column, ids []string) {
+	<td data-col={ c.Name } data-multi class="axel-cell border-b border-r border-border px-2 py-1.5 max-w-md align-top">
+		<div class="flex flex-wrap items-center gap-1">
+			for _, id := range ids {
+				@chip(id, optionLabel(v.LinkOptions[c.Name], id))
+			}
+			@chipAdder(v, c)
+		</div>
+	</td>
+}
+
+templ chip(id, label string) {
+	<span class="axel-chip inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-secondary text-secondary-foreground text-xs font-medium" data-id={ id }>
+		{ label }
+		<button type="button" onclick="axelChipRemove(this)" class="hover:text-destructive leading-none">×</button>
+	</span>
+}
+
+templ chipAdder(v StudioView, c db.Column) {
+	<select onchange="axelChipAdd(this)" class="bg-transparent text-[11px] text-muted-foreground outline-none cursor-pointer appearance-none py-0.5">
+		<option value="" class="bg-popover text-foreground">+ add</option>
+		for _, opt := range v.LinkOptions[c.Name] {
+			<option value={ opt.ID } data-label={ opt.Label } class="bg-popover text-foreground">{ opt.Label }</option>
+		}
+	</select>
+}
+
+// linkCell renders a read-only relationship: a single link as its id, a multi
+// link as a count badge.
+templ linkCell(c db.Column, val any) {
+	<td class="border-b border-r border-border px-3 py-1.5 max-w-xs truncate" title={ linkTitle(val) }>
+		if c.IsMulti {
+			if n := linkCount(val); n > 0 {
+				<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium">
+					@iconLink()
+					{ fmt.Sprintf("%d", n) }
+				</span>
+			} else {
+				<span class="text-muted-foreground/40">—</span>
+			}
+		} else if val == nil {
+			<span class="text-muted-foreground/40">—</span>
+		} else {
+			<span class="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
+				@iconLink()
+				<span class="font-mono text-[12px] truncate">{ linkText(val) }</span>
+			</span>
+		}
+	</td>
+}
+
+templ cell(c Cell) {
+	<td
+		class={
+			"border-b border-r border-border px-3 py-1.5 max-w-sm truncate",
+			cellKindClass(c.Kind),
+		}
+		if c.Full != "" {
+			title={ c.Full }
+		}
+	>
+		if c.Kind == "null" {
+			<span class="text-muted-foreground/50 italic">NULL</span>
+		} else if c.Kind == "bool" {
+			<span class={ "px-1.5 py-0.5 text-[11px] font-medium", boolClass(c.Display) }>{ c.Display }</span>
+		} else {
+			{ c.Display }
+		}
+	</td>
+}
+
+func cellKindClass(kind string) string {
+	switch kind {
+	case "number":
+		return "text-right tabular-nums text-foreground"
+	case "time":
+		return "text-muted-foreground tabular-nums whitespace-nowrap"
+	case "json":
+		return "font-mono text-[12px] text-violet-600 dark:text-violet-400"
+	default:
+		return "text-foreground"
+	}
+}
+
+func boolClass(v string) string {
+	if v == "true" {
+		return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+	}
+	return "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+}
+
+// newRowTemplate is cloned by the toolbar to create a draft insert row.
+templ newRowTemplate(v StudioView) {
+	<template id="axel-newrow">
+		<tr class="group axel-draft" data-draft>
+			<td class="sticky left-0 z-10 bg-card border-b border-r border-border text-center w-10">
+				<button type="button" title="Discard draft row" onclick="axelRemoveDraft(this)" class="inline-flex items-center justify-center size-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10">×</button>
+			</td>
+			for _, c := range v.Rows.Columns {
+				if c.IsLink && c.IsMulti {
+					@chipsCell(v, c, nil)
+				} else if c.IsLink && !c.IsMulti {
+					<td data-col={ c.Name } class="axel-cell border-b border-r border-border p-0">
+						@linkSelect(v, c, "")
+					</td>
+				} else if isEditable(c) {
+					<td data-col={ c.Name } contenteditable="true" spellcheck="false" oninput="axelBar()" class="axel-cell border-b border-r border-border px-3 py-1.5 outline-none" data-placeholder={ c.Name }></td>
+				} else {
+					<td class="border-b border-r border-border px-3 py-1.5 text-muted-foreground/40 italic">
+						if c.IsPrimaryKey {
+							auto
+						}
+					</td>
+				}
+			}
+		</tr>
+	</template>
+}
+
+// reviewBar floats above the grid when there are staged changes.
+templ reviewBar() {
+	<div id="axel-review" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-3 py-2 border border-border bg-popover shadow-lg text-[13px]">
+		<span id="axel-summary" class="text-muted-foreground"></span>
+		<span id="axel-error" class="hidden max-w-md truncate text-destructive text-xs font-mono"></span>
+		<div class="flex items-center gap-1.5">
+			<button type="button" onclick="axelDiscard()" class="h-7 px-2.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">Discard</button>
+			<button id="axel-save" type="button" onclick="axelSave()" class="h-7 px-3 bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors">Save changes</button>
+		</div>
+	</div>
+}
+
+templ pagination(v StudioView) {
+	<div class="h-10 shrink-0 border-t border-border bg-card flex items-center justify-between px-3 text-xs text-muted-foreground">
+		<div>{ v.RangeLabel() }</div>
+		<div class="flex items-center gap-1">
+			<span class="mr-2">Page { fmt.Sprintf("%d", v.Page()) } of { fmt.Sprintf("%d", v.Pages()) }</span>
+			@pageButton(v, v.Page()-1, v.Page() <= 1) {
+				@iconChevronLeft()
+			}
+			@pageButton(v, v.Page()+1, v.Page() >= v.Pages()) {
+				@iconChevronRight()
+			}
+		</div>
+	</div>
+}
+
+templ pageButton(v StudioView, page int, disabled bool) {
+	if disabled {
+		<span class="size-7 inline-flex items-center justify-center text-muted-foreground/40">
+			{ children... }
+		</span>
+	} else {
+		<a
+			href={ templ.SafeURL(v.pageURL(page)) }
+			hx-get={ v.pageURL(page) }
+			hx-target="#studio"
+			hx-swap="outerHTML"
+			hx-push-url="true"
+			class="size-7 inline-flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-colors"
+		>
+			{ children... }
+		</a>
+	}
+}

@@ -19,6 +19,12 @@ var aslKeywords = []string{
 	"on", "computed", "default",
 	"rewrite", "trigger", "function", "before", "after", "do", "execute",
 	"when", "for", "each", "row", "statement", "language", "body",
+	// Functions & extensions
+	"use", "extension", "return",
+	// Function attribute directives (used as @name)
+	"immutable", "stable", "volatile", "strict", "leakproof",
+	"parallel", "safe", "unsafe", "restricted", "security", "definer",
+	"invoker", "cost",
 }
 
 // QueryCompletion returns context-aware completions for an AQL document at the

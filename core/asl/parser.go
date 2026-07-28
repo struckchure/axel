@@ -21,8 +21,10 @@ var aslLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "String", Pattern: `'[^']*'`},
 	{Name: "Int", Pattern: `[0-9]+`},
 	// `$` (AQL param prefix) and `*` (AQL splat) are here so an embedded AQL body
-	// (see AQLBlock) tokenizes without error; no ASL rule references them directly.
-	{Name: "Punct", Pattern: `[{};,:()\[\]@!<>=|.?$*]`},
+	// (see AQLBlock) tokenizes without error; the arithmetic/operator chars
+	// (`+ - / % ^ & ~`) let a raw `return <sql-expr>;` body (see ReturnExpr)
+	// tokenize. No ASL rule references any of these directly.
+	{Name: "Punct", Pattern: `[{};,:()\[\]@!<>=|.?$*+/%^&~-]`},
 })
 
 var aslParser = participle.MustBuild[SourceFile](

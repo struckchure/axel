@@ -7,6 +7,7 @@ type SchemaIR struct {
 	EnumTypes   map[string]*ResolvedEnum
 	ObjectTypes map[string]*ResolvedType
 	Functions   map[string]*ResolvedFunction
+	Extensions  []string // declared Postgres extensions, in declaration order (deduped)
 }
 
 // ResolvedScalar is a scalar type alias (e.g. EmailStr extending str).
@@ -47,15 +48,21 @@ type ResolvedTrigger struct {
 	Function string   // name of a declared function to execute; "" if inline
 }
 
-// ResolvedFunction is a resolved top-level Postgres function. Exactly one of
-// BodySQL / BodyAQL is set.
+// ResolvedFunction is a resolved top-level Postgres function.
 type ResolvedFunction struct {
-	Name     string
-	Params   []ResolvedFuncParam
-	Returns  string // SQL type, or "trigger"
-	Language string // "plpgsql" (default) | "sql"
-	BodySQL  string // raw SQL body (interior of $$…$$); "" if AQL-bodied
-	BodyAQL  string // raw AQL statement; "" if raw-SQL-bodied
+	Name      string
+	Params    []ResolvedFuncParam
+	Returns   string // SQL type, or "trigger"
+	Language  string // "plpgsql" (default) | "sql"
+	ReturnSQL string // raw SQL expression from `return <expr>;`; wrapped by the lowerer
+
+	// Attributes, from leading @-directives.
+	Volatility string // "immutable" | "stable" | "volatile" | ""
+	Strict     bool
+	Leakproof  bool
+	Parallel   string // "safe" | "unsafe" | "restricted" | ""
+	Security   string // "definer" | "invoker" | ""
+	Cost       string // numeric cost, e.g. "100"; "" if unset
 }
 
 // ResolvedFuncParam is one resolved function parameter.
