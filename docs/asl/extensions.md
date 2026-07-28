@@ -22,8 +22,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 Extensions are tracked in the migration snapshot: declaring one adds a
 `CREATE EXTENSION`, removing the declaration adds a `DROP EXTENSION` to the next
-migration, and an unchanged declaration produces no diff. (`pgcrypto` is always
-enabled automatically for `gen_uuid()` defaults — you don't declare it.)
+migration, and an unchanged declaration produces no diff.
+
+Nothing is enabled automatically. In particular, `gen_uuid()` defaults compile to
+`gen_random_uuid()`, which requires `pgcrypto` — so declare it explicitly:
+
+```asl
+use extension 'pgcrypto';
+```
 
 A common pairing is an extension plus a function that uses it:
 

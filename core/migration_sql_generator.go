@@ -13,11 +13,8 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 	var upStatements []string
 	var downStatements []string
 
-	// Add pgcrypto extension as the first statement (only if there are changes)
-	if len(changes) > 0 {
-		upStatements = append(upStatements, "CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";")
-		downStatements = append(downStatements, "DROP EXTENSION IF EXISTS \"pgcrypto\";")
-	}
+	// Extensions are no longer auto-injected. Declare them explicitly in the
+	// schema, e.g. `use extension 'pgcrypto';` (required for gen_random_uuid()).
 
 	// Build abstract model maps for lookups
 	oldAbstract := make(map[string]Model)

@@ -1,3 +1,4 @@
+use extension 'pgcrypto';
 use extension 'unaccent';
 
 @language plpgsql
