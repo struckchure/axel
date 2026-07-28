@@ -33,8 +33,6 @@
   "when"
   "do"
   "execute"
-  "language"
-  "body"
   "use"
   "extension"
   "return"
