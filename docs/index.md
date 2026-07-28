@@ -38,6 +38,16 @@ features:
     title: Migration lifecycle
     details: axel generate diffs your schema, axel up applies it, axel down rolls it back. Migration history is tracked in a _axel_migrations table.
 
+  - icon: 🔒
+    title: Row-level security
+    details: Declare a policy on a type and Axel emits CREATE POLICY and enables RLS — hide expired or unauthorized rows with .field predicates that lower to SQL.
+    link: /asl/policies
+    linkText: Policies reference
+
+  - icon: 🖥️
+    title: Axel Studio
+    details: Browse and edit your data in the browser with a Neon/Prisma-Studio-style viewer — typed data grid, schema explorer, and AQL/SQL consoles. Just run axel studio.
+
   - icon: 🧩
     title: Code generation
     details: Generate typed Go structs and functions, TypeScript interfaces and async functions, or plug in your own generator binary written in any language.
