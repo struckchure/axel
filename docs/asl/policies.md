@@ -49,24 +49,40 @@ At least one of `using` / `with check` is required.
 
 ## The predicate
 
-Predicates are raw Postgres, with one piece of sugar: a leading **`.field`**
-resolves to that field's column. Everything else — `now()`, `and`/`or`,
-`current_user`, casts, function calls — passes through verbatim.
+Predicates are **native [AQL](/aql/) expressions** — the same language used in
+query `filter` clauses — resolved and type-checked against the type. A `.field`
+reference resolves to that field's column; `and`/`or`, comparisons, `is null` /
+`is not null`, `??`, casts (`<uuid>`), and function calls (`now()`,
+`current_user`) all work as in any AQL filter.
 
 ```asl
+global current_user: uuid;
+
 type Doc {
-  required owner: str;
+  required owner: uuid;
   required title: str;
 
   policy owner_only for all to app_user
-    using ( .owner = current_user )
-    with check ( .owner = current_user );
+    using ( .owner = global current_user )
+    with check ( .owner = global current_user );
 }
 ```
 
-A `.` glued to an operand (`schema.func()`, `a.b`) is treated as ordinary member
-access and left untouched; only a leading `.field` is rewritten. Traversal across
-links (`.author.name`) isn't lowered — RLS predicates are single-table.
+lowers to (see [Globals](/asl/globals) for how `global current_user` becomes a
+session read):
+
+```sql
+CREATE POLICY "owner_only" ON "doc" FOR ALL TO app_user
+  USING (owner = current_setting('app.current_user', true)::UUID)
+  WITH CHECK (owner = current_setting('app.current_user', true)::UUID);
+```
+
+Two limits apply to policy predicates (they're single-table RLS conditions):
+
+- **No link traversal.** `.author.name` isn't supported yet — only fields of the
+  policy's own type.
+- **No bind parameters.** A policy can't take a `$param`; pull request-scoped
+  values in through a [`global`](/asl/globals) instead.
 
 Policies are inherited from abstract parents, so a soft-delete guard can live on a
 base type:

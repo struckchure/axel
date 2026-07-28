@@ -8,10 +8,16 @@ import type { LanguageRegistration } from "@shikijs/types";
 export const asl: LanguageRegistration = {
   name: "asl",
   scopeName: "source.asl",
+  // Policy `using (…)` / `with check (…)` predicates embed AQL, so the AQL
+  // grammar must be loaded alongside this one.
+  embeddedLangs: ["aql"],
   patterns: [
     { include: "#comment" },
     { include: "#string" },
     { include: "#number" },
+    // Policy predicates are AQL — must precede #keyword so `using (` opens the
+    // embedded region instead of just matching the `using` keyword.
+    { include: "#policy-predicate" },
     { include: "#keyword" },
     { include: "#builtin-type" },
     { include: "#constant" },
@@ -36,7 +42,7 @@ export const asl: LanguageRegistration = {
     },
     keyword: {
       match:
-        "\\b(scalar|type|model|enum|abstract|extends|extending|required|multi|single|property|link|constraint|index|on|computed|default|func)\\b",
+        "\\b(scalar|type|model|enum|abstract|extends|extending|required|multi|single|property|link|constraint|index|on|computed|default|func|rewrite|trigger|function|before|after|for|each|row|statement|when|do|execute|use|extension|return|policy|using|with|check|to|global)\\b",
       name: "keyword.declaration.asl",
     },
     "builtin-type": {
@@ -65,6 +71,27 @@ export const asl: LanguageRegistration = {
     operator: {
       match: ":=|\\?\\?|@",
       name: "keyword.operator.asl",
+    },
+    // Policy predicates (`using (…)` / `with check (…)`) are AQL — embed the AQL
+    // grammar inside them. `aql-parens` (first) swallows any nested parens (e.g.
+    // now()) so the region ends only at its own matching close paren.
+    "policy-predicate": {
+      begin: "\\b(using|with\\s+check)\\s*(\\()",
+      beginCaptures: {
+        "1": { name: "keyword.declaration.asl" },
+        "2": { name: "punctuation.section.parens.begin.asl" },
+      },
+      end: "\\)",
+      endCaptures: {
+        "0": { name: "punctuation.section.parens.end.asl" },
+      },
+      contentName: "meta.embedded.block.aql",
+      patterns: [{ include: "#aql-parens" }, { include: "source.aql" }],
+    },
+    "aql-parens": {
+      begin: "\\(",
+      end: "\\)",
+      patterns: [{ include: "#aql-parens" }, { include: "source.aql" }],
     },
   },
 };
@@ -119,11 +146,11 @@ export const aql: LanguageRegistration = {
     },
     keyword: {
       match:
-        "\\b(multi|select|insert|update|delete|filter|order|by|limit|offset|set)\\b",
+        "\\b(multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
       name: "keyword.control.aql",
     },
     "operator-word": {
-      match: "\\b(and|or|in|like|ilike|asc|desc)\\b",
+      match: "\\b(and|or|in|like|ilike|asc|desc|is|not)\\b",
       name: "keyword.operator.word.aql",
     },
     constant: {

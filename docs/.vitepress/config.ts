@@ -27,6 +27,19 @@ export default defineConfig({
         ],
       },
       {
+        text: "Examples",
+        items: [
+          { text: "Overview", link: "/examples/" },
+          { text: "Audit timestamps & UUID keys", link: "/examples/timestamps" },
+          { text: "Soft deletes", link: "/examples/soft-delete" },
+          { text: "Slugs from titles", link: "/examples/slugs" },
+          { text: "Multi-tenant row ownership", link: "/examples/multi-tenancy" },
+          { text: "Expiring rows + cleanup", link: "/examples/expiring-rows" },
+          { text: "Upserts", link: "/examples/upsert" },
+          { text: "Nested data in one query", link: "/examples/nested-data" },
+        ],
+      },
+      {
         text: "Languages",
         items: [
           { text: "Schema Language (ASL)", link: "/asl/" },
@@ -88,6 +101,7 @@ export default defineConfig({
           { text: "Functions", link: "/asl/functions" },
           { text: "Triggers", link: "/asl/triggers" },
           { text: "Policies", link: "/asl/policies" },
+          { text: "Globals", link: "/asl/globals" },
           { text: "Extensions", link: "/asl/extensions" },
         ],
       },
@@ -152,6 +166,20 @@ export default defineConfig({
           },
           { text: "Directives", link: "/aql/directives" },
           { text: "Grammar reference", link: "/aql/grammar" },
+        ],
+      },
+      {
+        text: "Examples",
+        collapsed: false,
+        items: [
+          { text: "Overview", link: "/examples/" },
+          { text: "Audit timestamps & UUID keys", link: "/examples/timestamps" },
+          { text: "Soft deletes", link: "/examples/soft-delete" },
+          { text: "Slugs from titles", link: "/examples/slugs" },
+          { text: "Multi-tenant row ownership", link: "/examples/multi-tenancy" },
+          { text: "Expiring rows + cleanup", link: "/examples/expiring-rows" },
+          { text: "Upserts", link: "/examples/upsert" },
+          { text: "Nested data in one query", link: "/examples/nested-data" },
         ],
       },
       {

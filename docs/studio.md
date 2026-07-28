@@ -8,7 +8,7 @@ description: Browse and edit your database in the browser with Axel Studio
 Axel Studio is a browser-based database viewer and editor in the style of Neon /
 Prisma Studio. It reads your schema as ASL types, browses table data through a
 typed grid, and edits rows — inserts, updates, deletes, and links — by applying
-[AQL](/aql) under the hood. It ships with the `axel` binary (assets are embedded,
+[AQL](/aql/) under the hood. It ships with the `axel` binary (assets are embedded,
 so it runs from any directory).
 
 ```sh

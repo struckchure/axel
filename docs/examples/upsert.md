@@ -1,0 +1,61 @@
+---
+title: Upserts — Examples
+description: Insert-or-update in a single statement with unless conflict
+---
+
+# Upserts
+
+Insert a row, or update it if it already exists — in one round trip. AQL's
+`unless conflict` clause lowers to PostgreSQL's `ON CONFLICT` ([Insert →
+Conflicts](/aql/insert/conflicts)).
+
+## Update on conflict
+
+```aql
+insert User { email := $email }
+unless conflict on .email
+else (update User set { email := $email });
+```
+
+compiles to:
+
+```sql
+INSERT INTO "user" ("email")
+VALUES ($1)
+ON CONFLICT ("email") DO UPDATE SET "email" = $1
+RETURNING "created_at", "email", "id", "role", "updated_at";
+```
+
+The conflict target `.email` must be a unique/exclusive column:
+
+```asl
+type User extending Base {
+  required email: str { constraint exclusive; };
+}
+```
+
+## Ignore on conflict
+
+Drop the `else` arm to make a conflicting insert a no-op (`DO NOTHING`) — handy for
+idempotent seeds:
+
+```aql
+insert User { email := $email } unless conflict;
+```
+
+## From generated code
+
+Save the upsert as `upsert_user.aql`; the returned row is the inserted-or-updated
+`User`:
+
+::: code-group
+
+```ts [TypeScript]
+const user = await runner.query.upsertUser({ email }); // UpsertUserRow | null
+```
+
+```go [Go]
+user, err := runner.Query.UpsertUser(ctx, gen.UpsertUserParams{Email: email}) // *UpsertUserRow
+```
+
+:::

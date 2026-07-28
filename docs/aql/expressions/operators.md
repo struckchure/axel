@@ -19,6 +19,21 @@ description: Comparison and logical operators, and combining conditions
 | `in`         | `IN`           |
 | `like`       | `LIKE`         |
 | `ilike`      | `ILIKE`        |
+| `is null`      | `IS NULL`      |
+| `is not null`  | `IS NOT NULL`  |
+
+## Null tests
+
+`is null` / `is not null` are postfix operators — they test the operand on their
+left and take no right-hand side:
+
+```aql
+multi select Doc { id } filter .deleted_at is null;
+multi select Doc { id } filter .published_at is not null;
+```
+
+This is distinct from `??` (coalesce), which substitutes a fallback value rather
+than testing for presence.
 
 ## Combining conditions
 

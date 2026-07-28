@@ -257,6 +257,28 @@ const user = await runner
 // user: User
 ```
 
+### Globals
+
+When the schema declares [globals](/asl/globals), the generator emits two ways to
+set them. Both run the wrapped queries in a transaction that first applies
+`set_config('app.<name>', …)`.
+
+The `Runner` gets a `with<Name>` method that scopes a block of queries:
+
+```ts
+await runner.withCurrentUser(userId, async (q) => {
+  return q.listDocs({ /* … */ });
+});
+```
+
+The standalone query functions take an optional trailing options object — useful
+when you're not going through the `Runner`:
+
+```ts
+import { createDoc } from "./gen/create_doc.ts";
+const doc = await createDoc(db, params, { currentUser: userId });
+```
+
 ---
 
 ## Go generator (`-g go`)
@@ -299,8 +321,9 @@ axel codegen -g go -o ./gen --option package=myapp
 
 ### Setup
 
-The generated Go uses [pgx](https://github.com/jackc/pgx). `NewRunner` and the typed query
-functions take a `*pgxpool.Pool`.
+The generated Go uses [pgx](https://github.com/jackc/pgx). `NewRunner` takes a
+`*pgxpool.Pool`; the typed query functions take a `DBTX` interface (satisfied by
+both `*pgxpool.Pool` and `pgx.Tx`), so a pool still works everywhere.
 
 ```go
 import (
@@ -355,6 +378,28 @@ rows, err := runner.Run(ctx,
     `select User { id, email } filter .email = $email`,
     map[string]any{"email": "alice@example.com"},
 )
+```
+
+### Globals
+
+When the schema declares [globals](/asl/globals), the generator emits two ways to
+set them; both run the wrapped queries in a transaction that first applies
+`set_config('app.<name>', …)`.
+
+A `Runner` method scopes a block of queries:
+
+```go
+err := runner.WithCurrentUser(ctx, userID, func(q *gen.Queries) error {
+    _, err := q.ListDocs(ctx, gen.ListDocsParams{ /* … */ })
+    return err
+})
+```
+
+The standalone query functions take functional options — for when you're not
+using the `Runner`:
+
+```go
+doc, err := gen.CreateDoc(ctx, db, params, gen.WithCurrentUser(userID))
 ```
 
 ---
