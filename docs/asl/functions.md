@@ -88,6 +88,7 @@ The value is omitted for flags and given for the rest:
 | `@parallel safe` / `unsafe` / `restricted` | `PARALLEL …` |
 | `@security definer` / `invoker` | `SECURITY …` |
 | `@cost <n>` | `COST <n>` |
+| `@for <Type>` | nothing directly — marks a **run-once** setup function, invoked once (`SELECT fn();`) in the migration that first creates it, and tags it to `<Type>`. See [Policies](/asl/policies#pairing-with-a-one-time-setup-for). |
 
 Attributes are emitted in a fixed order, so re-ordering directives never produces
 a spurious migration.

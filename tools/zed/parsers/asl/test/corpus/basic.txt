@@ -97,3 +97,33 @@ function slugify(value: text) -> text {
         (identifier)
         (sql_paren
           (identifier))))))
+
+==================
+rls policy
+==================
+
+type KV {
+  expires_at: datetime;
+  policy hide_expired for select using ( .expires_at >= now() );
+}
+
+---
+
+(source_file
+  (type_definition
+    name: (type_identifier
+      (identifier))
+    (field_declaration
+      name: (field_identifier
+        (identifier))
+      (type_annotation
+        type: (type_identifier
+          (identifier))))
+    (policy
+      name: (field_identifier
+        (identifier))
+      command: (identifier)
+      (sql_paren
+        (identifier)
+        (identifier)
+        (sql_paren)))))

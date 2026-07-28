@@ -52,6 +52,7 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 		return fmt.Errorf("failed to lower triggers/functions: %w", err)
 	}
 	currentExts := SchemaIRToExtensions(ir)
+	currentPols := SchemaIRToPolicies(ir)
 
 	// Get last snapshot (schema + functions + triggers + extensions).
 	lastSchema, err := g.manager.GetLastSchema()
@@ -66,6 +67,10 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get last extensions: %w", err)
 	}
+	lastPols, err := g.manager.GetLastPolicies()
+	if err != nil {
+		return fmt.Errorf("failed to get last policies: %w", err)
+	}
 
 	// Detect changes: extensions first, then tables, then functions, then
 	// triggers (ordering is enforced in GenerateMigrationSQL — extensions and
@@ -74,6 +79,7 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 	changes = append(changes, DiffSchemas(lastSchema, currentSchema)...)
 	changes = append(changes, DiffFunctions(lastFns, currentFns)...)
 	changes = append(changes, DiffTriggers(lastTrigs, currentTrigs)...)
+	changes = append(changes, DiffPolicies(lastPols, currentPols)...)
 	if len(changes) == 0 {
 		return fmt.Errorf("no schema changes detected")
 	}
@@ -88,7 +94,7 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 	}
 
 	// Write migration files.
-	if err := g.manager.CreateMigrationDir(version, name, currentSchema, currentFns, currentTrigs, currentExts, upSQL, downSQL); err != nil {
+	if err := g.manager.CreateMigrationDir(version, name, currentSchema, currentFns, currentTrigs, currentExts, currentPols, upSQL, downSQL); err != nil {
 		return fmt.Errorf("failed to create migration: %w", err)
 	}
 

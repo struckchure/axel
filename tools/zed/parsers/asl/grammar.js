@@ -78,6 +78,7 @@ module.exports = grammar({
         $.index,
         $.constraint,
         $.trigger,
+        $.policy,
         $.field_declaration,
       ),
 
@@ -215,6 +216,23 @@ module.exports = grammar({
           seq("do", $.aql_block),
           seq("execute", field("function", $.identifier), "(", ")"),
         ),
+        ";",
+      ),
+
+    // policy hide_expired for select using ( .expires_at >= now() );
+    // policy owner_all for all to app_user using ( … ) with check ( … );
+    // The predicate is a balanced parenthesized SQL span (reuses sql_paren).
+    policy: ($) =>
+      seq(
+        "policy",
+        field("name", $.field_identifier),
+        "for",
+        field("command", $.identifier),
+        optional(
+          seq("to", field("role", $.identifier), repeat(seq(",", field("role", $.identifier)))),
+        ),
+        optional(seq("using", $.sql_paren)),
+        optional(seq("with", "check", $.sql_paren)),
         ";",
       ),
 

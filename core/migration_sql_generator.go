@@ -206,7 +206,12 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 
 		case AddFunction:
 			fn := change.NewValue.(Function)
-			upStatements = append(upStatements, fn.CreateSQL)
+			create := fn.CreateSQL
+			// @for setup functions run once when first created.
+			if fn.RunOnce {
+				create += fmt.Sprintf("\nSELECT %q();", fn.Name)
+			}
+			upStatements = append(upStatements, create)
 			downStatements = append(downStatements, fn.DropSQL)
 
 		case DropFunction:
@@ -237,6 +242,23 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 			newTrg := change.NewValue.(Trigger)
 			upStatements = append(upStatements, oldTrg.DropSQL+"\n"+newTrg.CreateSQL)
 			downStatements = append(downStatements, newTrg.DropSQL+"\n"+oldTrg.CreateSQL)
+
+		case AddPolicy:
+			pol := change.NewValue.(Policy)
+			upStatements = append(upStatements, pol.CreateSQL)
+			downStatements = append(downStatements, pol.DropSQL)
+
+		case DropPolicy:
+			pol := change.OldValue.(Policy)
+			upStatements = append(upStatements, pol.DropSQL)
+			downStatements = append(downStatements, pol.CreateSQL)
+
+		case ModifyPolicy:
+			// Policies can't be altered in place → drop + create.
+			oldPol := change.OldValue.(Policy)
+			newPol := change.NewValue.(Policy)
+			upStatements = append(upStatements, oldPol.DropSQL+"\n"+newPol.CreateSQL)
+			downStatements = append(downStatements, newPol.DropSQL+"\n"+oldPol.CreateSQL)
 		}
 	}
 

@@ -36,6 +36,11 @@
   "use"
   "extension"
   "return"
+  "policy"
+  "using"
+  "with"
+  "check"
+  "to"
 ] @keyword
 
 ; Function attribute directives (@immutable, @language, @parallel, …)

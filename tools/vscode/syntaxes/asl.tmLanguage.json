@@ -3,21 +3,51 @@
   "name": "Axel Schema",
   "scopeName": "source.asl",
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#dollar-sql" },
-    { "include": "#strings" },
-    { "include": "#enum-block" },
-    { "include": "#constraint-name" },
-    { "include": "#keywords" },
-    { "include": "#builtins" },
-    { "include": "#default-functions" },
-    { "include": "#booleans" },
-    { "include": "#types" },
-    { "include": "#properties" },
-    { "include": "#field-ref" },
-    { "include": "#numbers" },
-    { "include": "#operators" },
-    { "include": "#punctuation" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#dollar-sql"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#enum-block"
+    },
+    {
+      "include": "#constraint-name"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#default-functions"
+    },
+    {
+      "include": "#booleans"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#properties"
+    },
+    {
+      "include": "#field-ref"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
   ],
   "repository": {
     "comments": {
@@ -31,31 +61,65 @@
     "enum-block": {
       "begin": "\\b(enum)\\s+([A-Z]\\w*)\\s*(\\{)",
       "beginCaptures": {
-        "1": { "name": "storage.type.asl" },
-        "2": { "name": "entity.name.type.asl" },
-        "3": { "name": "punctuation.bracket.asl" }
+        "1": {
+          "name": "storage.type.asl"
+        },
+        "2": {
+          "name": "entity.name.type.asl"
+        },
+        "3": {
+          "name": "punctuation.bracket.asl"
+        }
       },
       "end": "\\}",
-      "endCaptures": { "0": { "name": "punctuation.bracket.asl" } },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.bracket.asl"
+        }
+      },
       "patterns": [
-        { "include": "#comments" },
-        { "match": "\\b[A-Za-z_]\\w*\\b", "name": "constant.other.enum.asl" },
-        { "match": ",", "name": "punctuation.delimiter.asl" }
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "\\b[A-Za-z_]\\w*\\b",
+          "name": "constant.other.enum.asl"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.delimiter.asl"
+        }
       ]
     },
     "constraint-name": {
       "match": "\\b(constraint)\\s+([A-Za-z_]\\w*)",
       "captures": {
-        "1": { "name": "keyword.control.asl" },
-        "2": { "name": "entity.name.function.asl" }
+        "1": {
+          "name": "keyword.control.asl"
+        },
+        "2": {
+          "name": "entity.name.function.asl"
+        }
       }
     },
     "keywords": {
       "patterns": [
-        { "match": "\\b(scalar|type|model|enum|abstract|function|use|extension)\\b", "name": "storage.type.asl" },
-        { "match": "\\b(required|multi|single|property|link)\\b", "name": "storage.modifier.asl" },
-        { "match": "@(language|immutable|stable|volatile|strict|leakproof|parallel|security|cost)\\b", "name": "keyword.control.directive.asl" },
-        { "match": "\\b(extends|extending|constraint|index|on|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body|return|safe|unsafe|restricted|definer|invoker)\\b", "name": "keyword.control.asl" }
+        {
+          "match": "\\b(scalar|type|model|enum|abstract|function|use|extension)\\b",
+          "name": "storage.type.asl"
+        },
+        {
+          "match": "\\b(required|multi|single|property|link)\\b",
+          "name": "storage.modifier.asl"
+        },
+        {
+          "match": "@(for|language|immutable|stable|volatile|strict|leakproof|parallel|security|cost)\\b",
+          "name": "keyword.control.directive.asl"
+        },
+        {
+          "match": "\\b(extends|extending|constraint|index|on|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body|return|safe|unsafe|restricted|definer|invoker|policy|using|with|check|to)\\b",
+          "name": "keyword.control.asl"
+        }
       ]
     },
     "dollar-sql": {
@@ -87,8 +151,12 @@
     "field-ref": {
       "match": "(\\.)([A-Za-z_]\\w*)",
       "captures": {
-        "1": { "name": "punctuation.delimiter.asl" },
-        "2": { "name": "variable.other.property.asl" }
+        "1": {
+          "name": "punctuation.delimiter.asl"
+        },
+        "2": {
+          "name": "variable.other.property.asl"
+        }
       }
     },
     "numbers": {
@@ -101,8 +169,14 @@
     },
     "punctuation": {
       "patterns": [
-        { "match": "[{}()]", "name": "punctuation.bracket.asl" },
-        { "match": "[;,:.]", "name": "punctuation.delimiter.asl" }
+        {
+          "match": "[{}()]",
+          "name": "punctuation.bracket.asl"
+        },
+        {
+          "match": "[;,:.]",
+          "name": "punctuation.delimiter.asl"
+        }
       ]
     }
   }

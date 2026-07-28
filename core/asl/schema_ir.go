@@ -34,6 +34,18 @@ type ResolvedType struct {
 	Indexes     []*ResolvedIndex
 	Constraints []*ResolvedTypeConstraint
 	Triggers    []*ResolvedTrigger
+	Policies    []*ResolvedPolicy
+}
+
+// ResolvedPolicy is a resolved row-level-security policy on a type. Using/Check
+// are the rendered SQL predicates (with `.field` lowered to columns); "" means
+// the clause was omitted.
+type ResolvedPolicy struct {
+	Name    string
+	Command string   // "select" | "insert" | "update" | "delete" | "all"
+	Roles   []string // target roles; empty → PUBLIC
+	Using   string   // rendered USING predicate; "" if none
+	Check   string   // rendered WITH CHECK predicate; "" if none
 }
 
 // ResolvedTrigger is a resolved row/statement trigger on a type. Exactly one of
@@ -63,6 +75,11 @@ type ResolvedFunction struct {
 	Parallel   string // "safe" | "unsafe" | "restricted" | ""
 	Security   string // "definer" | "invoker" | ""
 	Cost       string // numeric cost, e.g. "100"; "" if unset
+
+	// RunOnceFor names the type an @for function is a one-time setup for. When
+	// set, the migration that first creates the function also invokes it once
+	// (e.g. to register a pg_cron job). "" for ordinary functions.
+	RunOnceFor string
 }
 
 // ResolvedFuncParam is one resolved function parameter.

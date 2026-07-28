@@ -296,6 +296,30 @@ func (m *MigrationManager) GetLastExtensions() ([]Extension, error) {
 	return metadata.Extensions, nil
 }
 
+// GetLastPolicies returns the RLS policies recorded in the latest migration's
+// metadata (nil when there are no migrations yet).
+func (m *MigrationManager) GetLastPolicies() ([]Policy, error) {
+	migrations, err := m.GetAvailableMigrations()
+	if err != nil {
+		return nil, err
+	}
+	if len(migrations) == 0 {
+		return nil, nil
+	}
+
+	lastMigration := migrations[len(migrations)-1]
+	metadataPath := filepath.Join(m.config.MigrationsDir, lastMigration.Version, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return nil, err
+	}
+	var metadata MigrationMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return nil, err
+	}
+	return metadata.Policies, nil
+}
+
 // CalculateChecksum computes SHA256 hash of content
 func CalculateChecksum(content string) string {
 	hash := sha256.Sum256([]byte(content))
@@ -303,7 +327,7 @@ func CalculateChecksum(content string) string {
 }
 
 // CreateMigrationDir creates a new migration directory with metadata
-func (m *MigrationManager) CreateMigrationDir(version, name string, schema []Model, functions []Function, triggers []Trigger, extensions []Extension, upSQL, downSQL string) error {
+func (m *MigrationManager) CreateMigrationDir(version, name string, schema []Model, functions []Function, triggers []Trigger, extensions []Extension, policies []Policy, upSQL, downSQL string) error {
 	migrationDir := filepath.Join(m.config.MigrationsDir, version)
 	if err := os.MkdirAll(migrationDir, 0755); err != nil {
 		return err
@@ -339,6 +363,7 @@ func (m *MigrationManager) CreateMigrationDir(version, name string, schema []Mod
 		Functions:       functions,
 		Triggers:        triggers,
 		Extensions:      extensions,
+		Policies:        policies,
 		PreviousVersion: previousVersion,
 	}
 

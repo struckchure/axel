@@ -21,6 +21,7 @@ type MigrationMetadata struct {
 	Functions       []Function  `json:"functions,omitempty"`
 	Triggers        []Trigger   `json:"triggers,omitempty"`
 	Extensions      []Extension `json:"extensions,omitempty"`
+	Policies        []Policy    `json:"policies,omitempty"`
 	PreviousVersion string      `json:"previous_version"` // Previous migration version
 }
 
@@ -69,6 +70,11 @@ const (
 	// Extension changes
 	AddExtension
 	DropExtension
+
+	// Policy (RLS) changes
+	AddPolicy
+	DropPolicy
+	ModifyPolicy
 )
 
 // MigrationPlan contains the changes and SQL to execute

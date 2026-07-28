@@ -86,6 +86,7 @@ export default defineConfig({
           },
           { text: "Functions", link: "/asl/functions" },
           { text: "Triggers", link: "/asl/triggers" },
+          { text: "Policies", link: "/asl/policies" },
           { text: "Extensions", link: "/asl/extensions" },
         ],
       },

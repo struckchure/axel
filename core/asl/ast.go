@@ -66,7 +66,25 @@ type Member struct {
 	Index      *IndexDecl      `parser:"| @@"`
 	Constraint *ConstraintDecl `parser:"| @@"`
 	Trigger    *TriggerDecl    `parser:"| @@"`
+	Policy     *PolicyDecl     `parser:"| @@"`
 	Field      *FieldDecl      `parser:"| @@"`
+}
+
+// PolicyDecl declares a row-level-security policy on the enclosing type. It maps
+// to a Postgres `CREATE POLICY` (and enables RLS on the table). The predicate is
+// raw SQL with `.field` sugar for the type's own columns.
+//
+//	policy hide_expired for select using ( .expires_at is null or .expires_at >= now() );
+//	policy owner_only for all to app_user using ( .owner = current_user ) with check ( .owner = current_user );
+type PolicyDecl struct {
+	Pos     lexer.Position
+	Name    string      `parser:"'policy' @Ident"`
+	Command string      `parser:"'for' @Ident"`
+	Roles   []string    `parser:"( 'to' @Ident ( ',' @Ident )* )?"`
+	Using   *PolicyExpr `parser:"( 'using' '(' @@ ')' )?"`
+	Check   *PolicyExpr `parser:"( 'with' 'check' '(' @@ ')' )?"`
+	End     string      `parser:"';'"`
+	EndPos  lexer.Position
 }
 
 // FieldDecl covers both property and link declarations.

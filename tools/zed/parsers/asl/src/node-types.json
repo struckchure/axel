@@ -441,6 +441,52 @@
     }
   },
   {
+    "type": "policy",
+    "named": true,
+    "fields": {
+      "command": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          }
+        ]
+      },
+      "role": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "sql_paren",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "return_expression",
     "named": true,
     "fields": {},
@@ -730,6 +776,10 @@
           "named": true
         },
         {
+          "type": "policy",
+          "named": true
+        },
+        {
           "type": "trigger",
           "named": true
         }
@@ -876,6 +926,10 @@
     "named": false
   },
   {
+    "type": "check",
+    "named": false
+  },
+  {
     "type": "comment",
     "named": true,
     "extra": true
@@ -965,6 +1019,10 @@
     "named": false
   },
   {
+    "type": "policy",
+    "named": false
+  },
+  {
     "type": "property",
     "named": false
   },
@@ -1001,6 +1059,10 @@
     "named": true
   },
   {
+    "type": "to",
+    "named": false
+  },
+  {
     "type": "trigger",
     "named": false
   },
@@ -1013,7 +1075,15 @@
     "named": false
   },
   {
+    "type": "using",
+    "named": false
+  },
+  {
     "type": "when",
+    "named": false
+  },
+  {
+    "type": "with",
     "named": false
   },
   {

@@ -134,6 +134,7 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			rt.Indexes = append(rt.Indexes, parent.Indexes...)
 			rt.Constraints = append(rt.Constraints, parent.Constraints...)
 			rt.Triggers = append(rt.Triggers, parent.Triggers...)
+			rt.Policies = append(rt.Policies, parent.Policies...)
 		}
 
 		// Resolve own members.
@@ -141,6 +142,18 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			if err := r.resolveMember(m, rt, ir); err != nil {
 				return nil, fmt.Errorf("type %q: %w", t.Name, err)
 			}
+		}
+
+		// Policies resolve after all members so `.field` refs see every column.
+		for _, m := range t.Members {
+			if m.Policy == nil {
+				continue
+			}
+			pol, err := r.resolvePolicy(m.Policy, rt)
+			if err != nil {
+				return nil, fmt.Errorf("type %q: %w", t.Name, err)
+			}
+			rt.Policies = append(rt.Policies, pol)
 		}
 	}
 
@@ -202,6 +215,47 @@ func (r *Resolver) resolveMember(m *Member, rt *ResolvedType, ir *SchemaIR) erro
 		}
 	}
 	return nil
+}
+
+// resolvePolicy resolves a PolicyDecl to a ResolvedPolicy, rendering its
+// predicates (with `.field` → column) against the fully-resolved type.
+func (r *Resolver) resolvePolicy(pd *PolicyDecl, rt *ResolvedType) (*ResolvedPolicy, error) {
+	cmd := strings.ToLower(pd.Command)
+	switch cmd {
+	case "select", "insert", "update", "delete", "all":
+	default:
+		return nil, fmt.Errorf("policy %q: invalid command %q (want select|insert|update|delete|all)", pd.Name, pd.Command)
+	}
+
+	colOf := func(field string) (string, bool) {
+		if p, ok := rt.Properties[field]; ok {
+			return p.Column, true
+		}
+		if l, ok := rt.Links[field]; ok {
+			return l.JoinColumn, true
+		}
+		return "", false
+	}
+
+	pol := &ResolvedPolicy{Name: pd.Name, Command: cmd, Roles: pd.Roles}
+	if pd.Using != nil {
+		sql, err := pd.Using.SQL(colOf)
+		if err != nil {
+			return nil, fmt.Errorf("policy %q using: %w", pd.Name, err)
+		}
+		pol.Using = sql
+	}
+	if pd.Check != nil {
+		sql, err := pd.Check.SQL(colOf)
+		if err != nil {
+			return nil, fmt.Errorf("policy %q with check: %w", pd.Name, err)
+		}
+		pol.Check = sql
+	}
+	if pol.Using == "" && pol.Check == "" {
+		return nil, fmt.Errorf("policy %q: needs a using ( … ) or with check ( … ) clause", pd.Name)
+	}
+	return pol, nil
 }
 
 // resolveTrigger resolves a TriggerDecl to a ResolvedTrigger (the execute-target
@@ -303,6 +357,11 @@ func applyFuncDirectives(fn *ResolvedFunction, dirs []*FuncDirective) error {
 				return fmt.Errorf("@cost requires a value")
 			}
 			fn.Cost = val
+		case "for":
+			if val == "" {
+				return fmt.Errorf("@for requires a type name (e.g. @for KV)")
+			}
+			fn.RunOnceFor = val
 		default:
 			return fmt.Errorf("unknown function directive @%s", d.Name)
 		}

@@ -19,6 +19,8 @@ var aslKeywords = []string{
 	"on", "computed", "default",
 	"rewrite", "trigger", "function", "before", "after", "do", "execute",
 	"when", "for", "each", "row", "statement", "language", "body",
+	// Row-level security policies
+	"policy", "using", "with", "check", "select", "insert", "update", "delete", "all", "to",
 	// Functions & extensions
 	"use", "extension", "return",
 	// Function attribute directives (used as @name)

@@ -18,6 +18,57 @@ type Function struct {
 	Name      string // diff key
 	CreateSQL string // full "CREATE OR REPLACE FUNCTION … ;"
 	DropSQL   string // full "DROP FUNCTION IF EXISTS …(argtypes);"
+	RunOnce   bool   // @for setup function: invoked once (SELECT fn()) when first added
+}
+
+// Policy is a resolved-to-SQL row-level-security policy. Keyed by Table+Name.
+// CreateSQL enables RLS on the table (idempotent) and creates the policy.
+type Policy struct {
+	Name      string // diff key: "<table>.<name>"
+	CreateSQL string // "ALTER TABLE … ENABLE ROW LEVEL SECURITY;\nCREATE POLICY … ;"
+	DropSQL   string // "DROP POLICY IF EXISTS … ON …;"
+}
+
+// SchemaIRToPolicies lowers each concrete type's policies into flat SQL Policy
+// values (sorted for deterministic diffs).
+func SchemaIRToPolicies(ir *asl.SchemaIR) []Policy {
+	typeNames := make([]string, 0, len(ir.ObjectTypes))
+	for name, rt := range ir.ObjectTypes {
+		if rt.IsAbstract || rt.Table == "" {
+			continue
+		}
+		typeNames = append(typeNames, name)
+	}
+	sort.Strings(typeNames)
+
+	var pols []Policy
+	for _, name := range typeNames {
+		rt := ir.ObjectTypes[name]
+		// Use the same table-name derivation as CREATE TABLE (lo.SnakeCase on the
+		// type name) so the policy targets the actual table.
+		table := lo.SnakeCase(name)
+		for _, pol := range rt.Policies {
+			var b strings.Builder
+			fmt.Fprintf(&b, "ALTER TABLE %q ENABLE ROW LEVEL SECURITY;\n", table)
+			fmt.Fprintf(&b, "CREATE POLICY %q ON %q FOR %s", pol.Name, table, strings.ToUpper(pol.Command))
+			if len(pol.Roles) > 0 {
+				fmt.Fprintf(&b, " TO %s", strings.Join(pol.Roles, ", "))
+			}
+			if pol.Using != "" {
+				fmt.Fprintf(&b, " USING (%s)", pol.Using)
+			}
+			if pol.Check != "" {
+				fmt.Fprintf(&b, " WITH CHECK (%s)", pol.Check)
+			}
+			b.WriteString(";")
+			pols = append(pols, Policy{
+				Name:      table + "." + pol.Name,
+				CreateSQL: b.String(),
+				DropSQL:   fmt.Sprintf("DROP POLICY IF EXISTS %q ON %q;", pol.Name, table),
+			})
+		}
+	}
+	return pols
 }
 
 // Trigger is a resolved-to-SQL trigger. Keyed by Table+Name.
@@ -236,7 +287,7 @@ func declaredFunctionSQL(fn *asl.ResolvedFunction) Function {
 		fn.Name, strings.Join(argDecls, ", "), fn.Returns, body, lang, funcAttrSuffix(fn),
 	)
 	drop := fmt.Sprintf("DROP FUNCTION IF EXISTS %q(%s);", fn.Name, strings.Join(argTypes, ", "))
-	return Function{Name: fn.Name, CreateSQL: create, DropSQL: drop}
+	return Function{Name: fn.Name, CreateSQL: create, DropSQL: drop, RunOnce: fn.RunOnceFor != ""}
 }
 
 // funcAttrSuffix renders a function's attributes as a SQL suffix (leading space

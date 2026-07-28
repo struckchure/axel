@@ -178,6 +178,45 @@ func DiffTriggers(oldTrigs, newTrigs []Trigger) []SchemaChange {
 	return changes
 }
 
+// DiffPolicies compares two RLS policy sets (keyed by "<table>.<name>"),
+// comparing the full CREATE SQL. A changed definition is a Modify (drop + create).
+func DiffPolicies(oldPols, newPols []Policy) []SchemaChange {
+	oldMap := make(map[string]Policy, len(oldPols))
+	for _, p := range oldPols {
+		oldMap[p.Name] = p
+	}
+	newMap := make(map[string]Policy, len(newPols))
+	for _, p := range newPols {
+		newMap[p.Name] = p
+	}
+
+	var changes []SchemaChange
+	for _, np := range newPols {
+		if op, ok := oldMap[np.Name]; ok {
+			if op.CreateSQL != np.CreateSQL {
+				changes = append(changes, SchemaChange{
+					Type: ModifyPolicy, OldValue: op, NewValue: np,
+					Description: fmt.Sprintf("Modify policy '%s'", np.Name),
+				})
+			}
+		} else {
+			changes = append(changes, SchemaChange{
+				Type: AddPolicy, NewValue: np,
+				Description: fmt.Sprintf("Add policy '%s'", np.Name),
+			})
+		}
+	}
+	for _, op := range oldPols {
+		if _, ok := newMap[op.Name]; !ok {
+			changes = append(changes, SchemaChange{
+				Type: DropPolicy, OldValue: op,
+				Description: fmt.Sprintf("Drop policy '%s'", op.Name),
+			})
+		}
+	}
+	return changes
+}
+
 // diffFields compares fields between two versions of a model
 func diffFields(oldModel, newModel Model) []SchemaChange {
 	var changes []SchemaChange
