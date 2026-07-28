@@ -18,9 +18,9 @@ languages = ["Axel Schema", "Axel Query"]
 [grammars.asl]
 repository = "https://github.com/struckchure/axel"
 path = "tools/zed/parsers/asl"
-rev = "e636e1cef3801ba81572a850ea8f68fc19affd0e"
+rev = "c864e1737433496c85187c4c0e9361b96e1b56c6"
 
 [grammars.aql]
 repository = "https://github.com/struckchure/axel"
 path = "tools/zed/parsers/aql"
-rev = "e636e1cef3801ba81572a850ea8f68fc19affd0e"
+rev = "c864e1737433496c85187c4c0e9361b96e1b56c6"
