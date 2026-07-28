@@ -101,6 +101,22 @@ type compiler struct {
 	// — instead of matching all rows and returning an arbitrary one. See
 	// compileValueFilter / compileCmp.
 	valueFilter bool
+	// policyMode is true while lowering an RLS policy predicate: columns are
+	// emitted unqualified, bind params are rejected, and multi-step link paths are
+	// rejected. See CompilePolicyPredicate.
+	policyMode bool
+}
+
+// CompilePolicyPredicate lowers an AQL boolean expression to a Postgres RLS policy
+// predicate (the interior of USING / WITH CHECK). Unlike query compilation it runs
+// in "policy mode": columns are emitted unqualified (RLS predicates run with the
+// target row's own columns in scope), bind params ($x) are rejected (a policy can't
+// take parameters — reference a `global` instead), and multi-step link traversal is
+// rejected (single-table predicates only, for now). `global <name>` and
+// `is [not] null` are supported.
+func CompilePolicyPredicate(expr *aql.Expr, rt *asl.ResolvedType, schema *asl.SchemaIR) (string, error) {
+	c := &compiler{schema: schema, params: newParamCollector(), policyMode: true}
+	return c.compileExpr(expr, "", rt)
 }
 
 // triggerContext carries the state that changes AQL compilation inside a trigger
@@ -985,6 +1001,14 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		return "", err
 	}
 
+	// Postfix null-test: `.x is null` / `.x is not null`.
+	if cmp.Is {
+		if cmp.IsNot {
+			return left + " IS NOT NULL", nil
+		}
+		return left + " IS NULL", nil
+	}
+
 	if cmp.Op == "" {
 		return left, nil
 	}
@@ -1092,6 +1116,9 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		return c.compilePath(p.Path, alias, rt)
 
 	case p.Param != nil:
+		if c.policyMode {
+			return "", fmt.Errorf("policy predicates can't use bind parameters ($%s); reference a `global` instead", p.Param.Name)
+		}
 		// In a function body, $name is a declared plpgsql argument, emitted by name.
 		if c.trig != nil {
 			if c.trig.params[p.Param.Name] {
@@ -1127,6 +1154,8 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		return *p.Int, nil
 	case p.Float != nil:
 		return *p.Float, nil
+	case p.GlobalRef != nil:
+		return c.compileGlobalRef(*p.GlobalRef)
 	case p.QualifiedIdent != nil:
 		qi := p.QualifiedIdent
 		// Trigger magic: __new__.field / __old__.field / __subject__.field →
@@ -1165,6 +1194,23 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 	}
 
 	return "", fmt.Errorf("empty primary expression")
+}
+
+// compileGlobalRef lowers `global <name>` to a read of its backing Postgres
+// session setting: current_setting('app.<name>', <missing_ok>)::<sqltype>. A
+// required global uses missing_ok=false (error when the GUC is unset — fail
+// closed); an optional global uses true (NULL when unset).
+func (c *compiler) compileGlobalRef(name string) (string, error) {
+	for _, g := range c.schema.Globals {
+		if g.Name == name {
+			missingOK := "true"
+			if g.Required {
+				missingOK = "false"
+			}
+			return fmt.Sprintf("current_setting('app.%s', %s)::%s", g.Name, missingOK, g.SQLType), nil
+		}
+	}
+	return "", fmt.Errorf("unknown global %q", name)
 }
 
 // triggerRowRef reports whether name is a trigger row alias and which SQL row it
@@ -1224,6 +1270,10 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 		}
 
 		return "", fmt.Errorf("type %q has no field %q", rt.Name, name)
+	}
+
+	if c.policyMode {
+		return "", fmt.Errorf("policy predicates can't traverse links (.%s); single-table fields only for now", strings.Join(path.Steps, "."))
 	}
 
 	// Multi-step: .author.email → requires resolving link then property.

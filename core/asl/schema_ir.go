@@ -7,7 +7,20 @@ type SchemaIR struct {
 	EnumTypes   map[string]*ResolvedEnum
 	ObjectTypes map[string]*ResolvedType
 	Functions   map[string]*ResolvedFunction
-	Extensions  []string // declared Postgres extensions, in declaration order (deduped)
+	Extensions  []string          // declared Postgres extensions, in declaration order (deduped)
+	Globals     []*ResolvedGlobal // declared global variables, in declaration order
+}
+
+// ResolvedGlobal is a resolved global variable. It carries no DDL — a global is a
+// Postgres session setting (custom GUC `app.<Name>`), read via current_setting.
+// AQLType keeps the declared ASL scalar name (for codegen typing); SQLType is the
+// Postgres type its value casts to; Required controls current_setting's missing_ok
+// (required → error when unset, optional → NULL when unset).
+type ResolvedGlobal struct {
+	Name     string
+	AQLType  string // declared ASL scalar name, e.g. "uuid"
+	SQLType  string // resolved SQL type, e.g. "UUID"
+	Required bool
 }
 
 // ResolvedScalar is a scalar type alias (e.g. EmailStr extending str).
@@ -37,15 +50,17 @@ type ResolvedType struct {
 	Policies    []*ResolvedPolicy
 }
 
-// ResolvedPolicy is a resolved row-level-security policy on a type. Using/Check
-// are the rendered SQL predicates (with `.field` lowered to columns); "" means
-// the clause was omitted.
+// ResolvedPolicy is a resolved row-level-security policy on a type. UsingAQL /
+// CheckAQL are the raw AQL predicate source (native AQL, not yet lowered to SQL);
+// "" means the clause was omitted. Lowering to SQL is deferred to the migration
+// bridge (SchemaIRToPolicies), which parses the AQL and compiles it — this keeps
+// the asl package free of any AQL/compiler dependency.
 type ResolvedPolicy struct {
-	Name    string
-	Command string   // "select" | "insert" | "update" | "delete" | "all"
-	Roles   []string // target roles; empty → PUBLIC
-	Using   string   // rendered USING predicate; "" if none
-	Check   string   // rendered WITH CHECK predicate; "" if none
+	Name     string
+	Command  string   // "select" | "insert" | "update" | "delete" | "all"
+	Roles    []string // target roles; empty → PUBLIC
+	UsingAQL string   // raw AQL USING predicate; "" if none
+	CheckAQL string   // raw AQL WITH CHECK predicate; "" if none
 }
 
 // ResolvedTrigger is a resolved row/statement trigger on a type. Exactly one of

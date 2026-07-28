@@ -45,62 +45,23 @@ func (p *PolicyExpr) Parse(lex *lexer.PeekingLexer) error {
 	}
 }
 
-// SQL renders the predicate, rewriting leading `.field` path references to their
-// quoted column via colOf. A `.` that follows an identifier / ')' / ']' / string
-// is treated as member access (e.g. schema.func()) and left untouched.
-func (p *PolicyExpr) SQL(colOf func(field string) (string, bool)) (string, error) {
+// AQL reconstructs the raw predicate source from the captured tokens, inserting a
+// space wherever two adjacent tokens weren't glued in the original. The result is
+// native AQL, fed to aql.ParseExpr + the compiler for lowering — deferred to the
+// migration bridge so this package stays free of any AQL/compiler dependency
+// (mirroring how inline trigger AQL bodies are stored raw and compiled later).
+func (p *PolicyExpr) AQL() string {
 	var sb strings.Builder
 	for i := 0; i < len(p.toks); i++ {
 		t := p.toks[i]
-		space := sb.Len() > 0 && i > 0 && !adjacent(p.toks[i-1], t)
-
-		if t.Value == "." && i+1 < len(p.toks) && startsIdent(p.toks[i+1].Value) && !memberAccess(p.toks, i) {
-			field := p.toks[i+1].Value
-			col, ok := colOf(field)
-			if !ok {
-				return "", fmt.Errorf("policy references unknown field .%s", field)
-			}
-			if space {
-				sb.WriteByte(' ')
-			}
-			sb.WriteString(`"` + col + `"`)
-			i++ // consume the ident
-			continue
-		}
-		if space {
+		if sb.Len() > 0 && i > 0 && !adjacent(p.toks[i-1], t) {
 			sb.WriteByte(' ')
 		}
 		sb.WriteString(t.Value)
 	}
-	return strings.TrimSpace(sb.String()), nil
+	return strings.TrimSpace(sb.String())
 }
 
 func adjacent(a, b lexer.Token) bool {
 	return b.Pos.Offset == a.Pos.Offset+len(a.Value)
-}
-
-func startsIdent(s string) bool {
-	if s == "" {
-		return false
-	}
-	c := s[0]
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-// memberAccess reports whether the '.' at index i is member access on a preceding
-// operand (e.g. schema.func, a.b) rather than a leading axel path reference. It
-// is member access only when the '.' is glued (no whitespace) to a preceding
-// operand — an identifier/call-result/subscript/string. A '.' with space before
-// it (`or .field`, `( .field`) is always a leading path reference.
-func memberAccess(toks []lexer.Token, i int) bool {
-	if i == 0 || !adjacent(toks[i-1], toks[i]) {
-		return false
-	}
-	prev := toks[i-1].Value
-	if prev == ")" || prev == "]" {
-		return true
-	}
-	last := prev[len(prev)-1]
-	return last == '_' || last == '\'' || (last >= 'a' && last <= 'z') ||
-		(last >= 'A' && last <= 'Z') || (last >= '0' && last <= '9')
 }

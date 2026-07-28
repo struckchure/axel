@@ -52,7 +52,10 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 		return fmt.Errorf("failed to lower triggers/functions: %w", err)
 	}
 	currentExts := SchemaIRToExtensions(ir)
-	currentPols := SchemaIRToPolicies(ir)
+	currentPols, err := SchemaIRToPolicies(ir)
+	if err != nil {
+		return fmt.Errorf("failed to lower policies: %w", err)
+	}
 
 	// Get last snapshot (schema + functions + triggers + extensions).
 	lastSchema, err := g.manager.GetLastSchema()

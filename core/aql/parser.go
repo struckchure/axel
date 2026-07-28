@@ -34,6 +34,15 @@ var aqlParser = participle.MustBuild[Statement](
 	participle.UseLookahead(4),
 )
 
+// exprParser parses a bare boolean expression (no surrounding statement). Used for
+// contexts that embed an AQL predicate directly — e.g. RLS policy `using ( … )` /
+// `with check ( … )` clauses.
+var exprParser = participle.MustBuild[Expr](
+	participle.Lexer(aqlLexer),
+	participle.Elide("Whitespace", "Comment"),
+	participle.UseLookahead(4),
+)
+
 // Parse parses a single AQL statement from src.
 func Parse(src []byte) (*Statement, error) {
 	return aqlParser.ParseBytes("", src)
@@ -42,4 +51,10 @@ func Parse(src []byte) (*Statement, error) {
 // ParseString parses a single AQL statement from a string.
 func ParseString(src string) (*Statement, error) {
 	return aqlParser.ParseString("", src)
+}
+
+// ParseExpr parses a bare AQL boolean expression (the interior of a policy
+// predicate). It has no trailing `;` and is not wrapped in a statement.
+func ParseExpr(src string) (*Expr, error) {
+	return exprParser.ParseString("", src)
 }

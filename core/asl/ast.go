@@ -12,8 +12,25 @@ type Definition struct {
 	ScalarType *ScalarTypeDef `parser:"  @@"`
 	EnumType   *EnumTypeDef   `parser:"| @@"`
 	Extension  *ExtensionDecl `parser:"| @@"`
+	Global     *GlobalDecl    `parser:"| @@"`
 	Function   *FunctionDecl  `parser:"| @@"`
 	TypeDef    *TypeDef       `parser:"| @@"`
+}
+
+// GlobalDecl declares a Gel/EdgeDB-style global variable, backed at runtime by a
+// Postgres session setting (custom GUC `app.<name>`). Reading it in an AQL
+// expression lowers to current_setting('app.<name>', <missing_ok>)::<type>. The
+// leading `global` keyword is followed by an optional `required` modifier; an
+// absent modifier makes the global optional (NULL when unset).
+//
+//	global current_user: uuid;
+//	global required tz: str;
+type GlobalDecl struct {
+	Pos      lexer.Position
+	Required bool   `parser:"'global' @'required'?"`
+	Name     string `parser:"@Ident ':'"`
+	Type     string `parser:"@Ident ';'"`
+	EndPos   lexer.Position
 }
 
 // ExtensionDecl enables a Postgres extension, lowered to

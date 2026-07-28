@@ -56,7 +56,7 @@ type SelectStmt struct {
 // regardless of which alternative wins inside SelectBody.
 type SelectBody struct {
 	// Aggregate: count(TypeName filter expr)
-	AggFunc  *AggExpr `parser:"  @@"`
+	AggFunc *AggExpr `parser:"  @@"`
 	// Object: TypeName { shape } filter ... order by ... limit ... offset ...
 	TypeName string   `parser:"| @Ident"`
 	Shape    *Shape   `parser:"@@?"`
@@ -144,10 +144,10 @@ type Shape struct {
 
 // ShapeField is one entry in a shape.
 //
-//	*                → splat: all scalar props + single-link FK columns
-//	id               → leaf field
-//	posts: { title } → nested link with sub-shape
-//	posts := (...)   → inline computed field
+//   - → splat: all scalar props + single-link FK columns
+//     id               → leaf field
+//     posts: { title } → nested link with sub-shape
+//     posts := (...)   → inline computed field
 type ShapeField struct {
 	Pos      lexer.Position
 	Star     bool   `parser:"(   @'*'"`
@@ -201,10 +201,15 @@ type AndExpr struct {
 	Rest []*Cmp `parser:"( 'and' @@ )*"`
 }
 
-// Cmp is a single comparison, or a bare operand when Op is empty.
+// Cmp is a single comparison, a postfix null-test (`.x is null` /
+// `.x is not null`), or a bare operand when nothing follows Left. The null-test
+// and the binary comparison are mutually-exclusive tails: `Is` marks the former
+// (with `IsNot` for the negated form), `Op`/`Right` the latter.
 type Cmp struct {
 	Left  *Primary `parser:"@@"`
-	Op    string   `parser:"( @( '!=' | '<=' | '>=' | '=' | '<' | '>' | '??' | 'in' | 'like' | 'ilike' )"`
+	Is    bool     `parser:"( @'is'"`
+	IsNot bool     `parser:"@'not'? 'null'"`
+	Op    string   `parser:"| @( '!=' | '<=' | '>=' | '=' | '<' | '>' | '??' | 'in' | 'like' | 'ilike' )"`
 	Right *Primary `parser:"@@ )?"`
 }
 
@@ -221,7 +226,7 @@ func (e *Expr) SingleCmp() *Cmp {
 // with no operator (e.g. a bare `(select ...)` or `$param`), else nil.
 func (e *Expr) SoloPrimary() *Primary {
 	c := e.SingleCmp()
-	if c == nil || c.Op != "" {
+	if c == nil || c.Op != "" || c.Is {
 		return nil
 	}
 	return c.Left
@@ -264,6 +269,10 @@ type Primary struct {
 	Int *string `parser:"| @Int"`
 	// Float literal
 	Float *string `parser:"| @Float"`
+	// Global variable reference: `global current_user`. Lowers to
+	// current_setting('app.<name>', …). Must come before Ident so `global` isn't
+	// swallowed as a bare identifier.
+	GlobalRef *string `parser:"| 'global' @Ident"`
 	// Qualified identifier: TypeName.field (e.g. User.id in a subquery filter).
 	// Must come before Ident so the parser greedily consumes TypeName.field as one node.
 	QualifiedIdent *QualifiedIdent `parser:"| @@"`

@@ -43,9 +43,27 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 		Functions:   make(map[string]*ResolvedFunction),
 	}
 
-	// Pass 1: register scalar types, enum types, functions, and extensions.
+	// Pass 1: register scalar types, enum types, functions, extensions, globals.
 	seenExt := map[string]bool{}
+	seenGlobal := map[string]bool{}
 	for _, def := range src.Definitions {
+		if def.Global != nil {
+			g := def.Global
+			if seenGlobal[g.Name] {
+				return nil, fmt.Errorf("global %q declared more than once", g.Name)
+			}
+			sqlType, err := r.resolveBaseType(g.Type, ir)
+			if err != nil {
+				return nil, fmt.Errorf("global %q: %w (globals must be a scalar type)", g.Name, err)
+			}
+			seenGlobal[g.Name] = true
+			ir.Globals = append(ir.Globals, &ResolvedGlobal{
+				Name:     g.Name,
+				AQLType:  g.Type,
+				SQLType:  sqlType,
+				Required: g.Required,
+			})
+		}
 		if def.Extension != nil {
 			name := stripSingleQuotes(def.Extension.Name)
 			if name == "" {
@@ -217,9 +235,12 @@ func (r *Resolver) resolveMember(m *Member, rt *ResolvedType, ir *SchemaIR) erro
 	return nil
 }
 
-// resolvePolicy resolves a PolicyDecl to a ResolvedPolicy, rendering its
-// predicates (with `.field` → column) against the fully-resolved type.
-func (r *Resolver) resolvePolicy(pd *PolicyDecl, rt *ResolvedType) (*ResolvedPolicy, error) {
+// resolvePolicy resolves a PolicyDecl to a ResolvedPolicy. The predicates are
+// captured as raw native AQL; they are parsed and lowered to SQL later, in the
+// migration bridge (SchemaIRToPolicies), so field-reference errors surface there —
+// the same way inline trigger AQL bodies are handled. rt is unused here for that
+// reason.
+func (r *Resolver) resolvePolicy(pd *PolicyDecl, _ *ResolvedType) (*ResolvedPolicy, error) {
 	cmd := strings.ToLower(pd.Command)
 	switch cmd {
 	case "select", "insert", "update", "delete", "all":
@@ -227,32 +248,14 @@ func (r *Resolver) resolvePolicy(pd *PolicyDecl, rt *ResolvedType) (*ResolvedPol
 		return nil, fmt.Errorf("policy %q: invalid command %q (want select|insert|update|delete|all)", pd.Name, pd.Command)
 	}
 
-	colOf := func(field string) (string, bool) {
-		if p, ok := rt.Properties[field]; ok {
-			return p.Column, true
-		}
-		if l, ok := rt.Links[field]; ok {
-			return l.JoinColumn, true
-		}
-		return "", false
-	}
-
 	pol := &ResolvedPolicy{Name: pd.Name, Command: cmd, Roles: pd.Roles}
 	if pd.Using != nil {
-		sql, err := pd.Using.SQL(colOf)
-		if err != nil {
-			return nil, fmt.Errorf("policy %q using: %w", pd.Name, err)
-		}
-		pol.Using = sql
+		pol.UsingAQL = pd.Using.AQL()
 	}
 	if pd.Check != nil {
-		sql, err := pd.Check.SQL(colOf)
-		if err != nil {
-			return nil, fmt.Errorf("policy %q with check: %w", pd.Name, err)
-		}
-		pol.Check = sql
+		pol.CheckAQL = pd.Check.AQL()
 	}
-	if pol.Using == "" && pol.Check == "" {
+	if pol.UsingAQL == "" && pol.CheckAQL == "" {
 		return nil, fmt.Errorf("policy %q: needs a using ( … ) or with check ( … ) clause", pd.Name)
 	}
 	return pol, nil

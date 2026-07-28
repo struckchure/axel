@@ -30,8 +30,11 @@ type Policy struct {
 }
 
 // SchemaIRToPolicies lowers each concrete type's policies into flat SQL Policy
-// values (sorted for deterministic diffs).
-func SchemaIRToPolicies(ir *asl.SchemaIR) []Policy {
+// values (sorted for deterministic diffs). Each policy's raw AQL predicate is
+// parsed and compiled to SQL here (not in the resolver) so this package can reach
+// the AQL compiler without an import cycle — the same pattern used for inline
+// trigger bodies.
+func SchemaIRToPolicies(ir *asl.SchemaIR) ([]Policy, error) {
 	typeNames := make([]string, 0, len(ir.ObjectTypes))
 	for name, rt := range ir.ObjectTypes {
 		if rt.IsAbstract || rt.Table == "" {
@@ -48,17 +51,26 @@ func SchemaIRToPolicies(ir *asl.SchemaIR) []Policy {
 		// type name) so the policy targets the actual table.
 		table := lo.SnakeCase(name)
 		for _, pol := range rt.Policies {
+			usingSQL, err := compilePolicyPredicate(pol.UsingAQL, rt, ir)
+			if err != nil {
+				return nil, fmt.Errorf("policy %q on %q using: %w", pol.Name, name, err)
+			}
+			checkSQL, err := compilePolicyPredicate(pol.CheckAQL, rt, ir)
+			if err != nil {
+				return nil, fmt.Errorf("policy %q on %q with check: %w", pol.Name, name, err)
+			}
+
 			var b strings.Builder
 			fmt.Fprintf(&b, "ALTER TABLE %q ENABLE ROW LEVEL SECURITY;\n", table)
 			fmt.Fprintf(&b, "CREATE POLICY %q ON %q FOR %s", pol.Name, table, strings.ToUpper(pol.Command))
 			if len(pol.Roles) > 0 {
 				fmt.Fprintf(&b, " TO %s", strings.Join(pol.Roles, ", "))
 			}
-			if pol.Using != "" {
-				fmt.Fprintf(&b, " USING (%s)", pol.Using)
+			if usingSQL != "" {
+				fmt.Fprintf(&b, " USING (%s)", usingSQL)
 			}
-			if pol.Check != "" {
-				fmt.Fprintf(&b, " WITH CHECK (%s)", pol.Check)
+			if checkSQL != "" {
+				fmt.Fprintf(&b, " WITH CHECK (%s)", checkSQL)
 			}
 			b.WriteString(";")
 			pols = append(pols, Policy{
@@ -68,7 +80,20 @@ func SchemaIRToPolicies(ir *asl.SchemaIR) []Policy {
 			})
 		}
 	}
-	return pols
+	return pols, nil
+}
+
+// compilePolicyPredicate parses a raw AQL policy predicate and lowers it to a SQL
+// RLS predicate. An empty source (omitted clause) yields "".
+func compilePolicyPredicate(src string, rt *asl.ResolvedType, ir *asl.SchemaIR) (string, error) {
+	if src == "" {
+		return "", nil
+	}
+	expr, err := aql.ParseExpr(src)
+	if err != nil {
+		return "", err
+	}
+	return compiler.CompilePolicyPredicate(expr, rt, ir)
 }
 
 // Trigger is a resolved-to-SQL trigger. Keyed by Table+Name.

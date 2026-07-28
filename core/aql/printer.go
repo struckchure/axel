@@ -214,6 +214,14 @@ func printCmp(b *strings.Builder, c *Cmp) {
 		return
 	}
 	printPrimary(b, c.Left)
+	if c.Is {
+		if c.IsNot {
+			b.WriteString(" is not null")
+		} else {
+			b.WriteString(" is null")
+		}
+		return
+	}
 	if c.Op != "" {
 		fmt.Fprintf(b, " %s ", c.Op)
 		printPrimary(b, c.Right)
@@ -271,6 +279,8 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString(*p.Int)
 	case p.Float != nil:
 		b.WriteString(*p.Float)
+	case p.GlobalRef != nil:
+		b.WriteString("global " + *p.GlobalRef)
 	case p.Ident != nil:
 		b.WriteString(*p.Ident)
 	}
