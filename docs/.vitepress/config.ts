@@ -44,6 +44,7 @@ export default defineConfig({
           { text: "Installation", link: "/installation" },
           { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
+          { text: "Studio", link: "/studio" },
         ],
       },
       {

@@ -47,6 +47,8 @@ features:
   - icon: 🖥️
     title: Axel Studio
     details: Browse and edit your data in the browser with a Neon/Prisma-Studio-style viewer — typed data grid, schema explorer, and AQL/SQL consoles. Just run axel studio.
+    link: /studio
+    linkText: Studio guide
 
   - icon: 🧩
     title: Code generation
