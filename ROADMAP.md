@@ -69,7 +69,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [ ] `axel init` - Initialize new project
 - [x] `axel generate` - Generate migrations and types
 - [x] `axel up` - Run pending migrations
-- [ ] `axel studio` - Visual database explorer
+- [x] `axel studio` - Visual database explorer
 - [ ] `axel seed` - Run seed files
 - [x] `axel validate` - Validate schema
 
