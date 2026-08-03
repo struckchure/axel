@@ -134,27 +134,39 @@ func (g *TsGenerator) OnProperty(_ *codegen.Context, p codegen.PropertyDescripto
 	if g.currentAbstract {
 		return nil
 	}
-	tsType := aqlToTsType(p.AQLType, !p.IsRequired)
+	optional := !p.IsRequired
+	tsType := aqlToTsType(p.AQLType, optional)
 	if p.EnumType != "" {
 		// Enum-backed column → use the generated enum union type.
 		tsType = p.EnumType
-		if !p.IsRequired {
+		if optional {
 			tsType += " | null"
 		}
 	}
-	fmt.Fprintf(&g.models, "  %s: %s;\n", toTsCamelCase(p.Name), tsType)
+	// Non-required fields become optional (`?:`) so the model reflects the ASL
+	// schema's required/optional distinction.
+	fmt.Fprintf(&g.models, "  %s%s: %s;\n", toTsCamelCase(p.Name), optionalMark(optional), tsType)
 	return nil
+}
+
+// optionalMark returns "?" for optional fields, "" otherwise.
+func optionalMark(optional bool) string {
+	if optional {
+		return "?"
+	}
+	return ""
 }
 
 func (g *TsGenerator) OnLink(_ *codegen.Context, l codegen.LinkDescriptor) error {
 	if g.currentAbstract || l.IsMulti {
 		return nil
 	}
+	optional := !l.IsRequired
 	tsType := "string"
-	if !l.IsRequired {
+	if optional {
 		tsType = "string | null"
 	}
-	fmt.Fprintf(&g.models, "  %sId: %s;\n", toTsCamelCase(l.Name), tsType)
+	fmt.Fprintf(&g.models, "  %sId%s: %s;\n", toTsCamelCase(l.Name), optionalMark(optional), tsType)
 	return nil
 }
 
@@ -529,19 +541,107 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("  one(): Promise<ShapeResult<T, S> | null> { return this.builder.one(); }\n")
 	buf.WriteString("}\n\n")
 
-	// InsertBuilder
-	buf.WriteString("type Insertable<T> = Partial<Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">>;\n\n")
+	// Insertable/Updatable input types. Insertable preserves the model's
+	// required/optional fields (only server-managed columns are dropped), so a
+	// required column can't be omitted on insert. Updatable makes everything
+	// optional — an update sets whichever fields it's given.
+	buf.WriteString("type Insertable<T> = Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">;\n")
+	buf.WriteString("type Updatable<T> = Partial<Insertable<T>>;\n\n")
+
+	// UpdateBuilder — `db.update(\"User\", { name }).where(...).one()`. It also doubles
+	// as the `else` arm of an insert's unlessConflict(), where its SET values become
+	// `ON CONFLICT ... DO UPDATE SET ...` (the where() filter is ignored there, since
+	// Postgres targets the conflicting row automatically).
+	buf.WriteString("class UpdateBuilder<T> {\n")
+	buf.WriteString("  _filterSpecs: FilterSpec[] = [];\n")
+	buf.WriteString("  constructor(\n")
+	fmt.Fprintf(&buf, "    readonly db: %s,\n", g.client.dbType())
+	buf.WriteString("    readonly _schema: Record<string, unknown>,\n")
+	buf.WriteString("    readonly _typeName: string,\n")
+	buf.WriteString("    readonly _values: Updatable<T>,\n")
+	buf.WriteString("  ) {}\n\n")
+	buf.WriteString("  _addFilter(field: string, op: string, value: unknown, connector: \"and\" | \"or\"): void {\n")
+	buf.WriteString("    const isRef = typeof value === \"string\" && value.startsWith(\"`\") && value.endsWith(\"`\");\n")
+	buf.WriteString("    this._filterSpecs.push({ field, op, value: isRef ? (value as string).slice(1, -1) : value, isRef, connector });\n")
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  where(field: keyof T & string, op: \"=\" | \"!=\" | \"<\" | \">\" | \"<=\" | \">=\", value: unknown): UpdateFilterChain<T> {\n")
+	buf.WriteString("    this._addFilter(field, op, value, \"and\");\n")
+	buf.WriteString("    return new UpdateFilterChain(this);\n")
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  /** Internal: the SET values, reused as an ON CONFLICT DO UPDATE arm. */\n")
+	buf.WriteString("  _setValues(): Record<string, unknown> { return this._values as Record<string, unknown>; }\n\n")
+	buf.WriteString("  async all(): Promise<T[]> {\n")
+	buf.WriteString("    const { sql, params } = _buildUpdateSQL(this._schema, this._typeName, this._values as Record<string, unknown>, this._filterSpecs);\n")
+	fmt.Fprintf(&buf, "    return %s;\n", g.client.rowsExpr("this.db", "sql, params", "T"))
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  async one(): Promise<T | null> {\n")
+	buf.WriteString("    const rows = await this.all();\n")
+	buf.WriteString("    return rows[0] ?? null;\n")
+	buf.WriteString("  }\n")
+	buf.WriteString("}\n\n")
+
+	// UpdateFilterChain — returned by UpdateBuilder.where(), exposes .and()/.or().
+	buf.WriteString("class UpdateFilterChain<T> {\n")
+	buf.WriteString("  constructor(private builder: UpdateBuilder<T>) {}\n\n")
+	buf.WriteString("  and(field: keyof T & string, op: \"=\" | \"!=\" | \"<\" | \">\" | \"<=\" | \">=\", value: unknown): this {\n")
+	buf.WriteString("    this.builder._addFilter(field, op, value, \"and\");\n")
+	buf.WriteString("    return this;\n")
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  or(field: keyof T & string, op: \"=\" | \"!=\" | \"<\" | \">\" | \"<=\" | \">=\", value: unknown): this {\n")
+	buf.WriteString("    this.builder._addFilter(field, op, value, \"or\");\n")
+	buf.WriteString("    return this;\n")
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  _setValues(): Record<string, unknown> { return this.builder._setValues(); }\n\n")
+	buf.WriteString("  all(): Promise<T[]> { return this.builder.all(); }\n")
+	buf.WriteString("  one(): Promise<T | null> { return this.builder.one(); }\n")
+	buf.WriteString("}\n\n")
+
+	// Conflict (upsert) types. `unlessConflict((t) => ({ on: t.email, else: ... }))`
+	// lowers to `ON CONFLICT (cols) DO NOTHING` (else null/omitted) or, when else is
+	// an `db.update(...)` builder, `ON CONFLICT (cols) DO UPDATE SET ...`.
+	buf.WriteString("type ConflictColumn = { readonly __col: string };\n")
+	buf.WriteString("type ConflictColumns<T> = { readonly [K in keyof Insertable<T>]-?: ConflictColumn };\n")
+	buf.WriteString("type ConflictElse<T> = UpdateBuilder<T> | UpdateFilterChain<T>;\n")
+	buf.WriteString("interface ConflictSpec<T> {\n")
+	buf.WriteString("  on: ConflictColumn | ConflictColumn[];\n")
+	buf.WriteString("  else?: ConflictElse<T> | null;\n")
+	buf.WriteString("}\n")
+	buf.WriteString("interface _ConflictSpec { on: string[]; update?: Record<string, unknown>; }\n")
+	buf.WriteString("const _conflictColumns = new Proxy(\n")
+	buf.WriteString("  {},\n")
+	buf.WriteString("  { get: (_t, prop) => ({ __col: String(prop) }) },\n")
+	buf.WriteString("  // eslint-disable-next-line @typescript-eslint/no-explicit-any\n")
+	buf.WriteString(") as any;\n\n")
+
 	buf.WriteString("class InsertBuilder<T> {\n")
+	buf.WriteString("  private conflict?: _ConflictSpec;\n")
 	buf.WriteString("  constructor(\n")
 	fmt.Fprintf(&buf, "    private db: %s,\n", g.client.dbType())
 	buf.WriteString("    private schema: Record<string, unknown>,\n")
 	buf.WriteString("    private typeName: string,\n")
 	buf.WriteString("    private values: Insertable<T>,\n")
 	buf.WriteString("  ) {}\n\n")
-	buf.WriteString("  async one(): Promise<T> {\n")
-	buf.WriteString("    const { sql, params } = _buildInsertSQL(this.schema, this.typeName, this.values as Record<string, unknown>);\n")
-	fmt.Fprintf(&buf, "    const rows = await %s;\n", g.client.rowsExpr("this.db", "sql, params", "T"))
-	buf.WriteString("    return rows[0]!;\n")
+	buf.WriteString("  // unlessConflict makes the insert an upsert. With no argument (or an\n")
+	buf.WriteString("  // `else: null`) it does nothing on conflict; pass `else: db.update(...)`\n")
+	buf.WriteString("  // to update the conflicting row with that builder's SET values instead.\n")
+	buf.WriteString("  unlessConflict(fn?: (t: ConflictColumns<T>) => ConflictSpec<T>): this {\n")
+	buf.WriteString("    if (!fn) {\n")
+	buf.WriteString("      this.conflict = { on: [] };\n")
+	buf.WriteString("      return this;\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("    const spec = fn(_conflictColumns as ConflictColumns<T>);\n")
+	buf.WriteString("    const on = (Array.isArray(spec.on) ? spec.on : [spec.on]).map((c) => c.__col);\n")
+	buf.WriteString("    this.conflict = { on, update: spec.else ? spec.else._setValues() : undefined };\n")
+	buf.WriteString("    return this;\n")
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  async all(): Promise<T[]> {\n")
+	buf.WriteString("    const { sql, params } = _buildInsertSQL(this.schema, this.typeName, this.values as Record<string, unknown>, this.conflict);\n")
+	fmt.Fprintf(&buf, "    return %s;\n", g.client.rowsExpr("this.db", "sql, params", "T"))
+	buf.WriteString("  }\n\n")
+	buf.WriteString("  // Returns null when nothing was inserted (e.g. unlessConflict DO NOTHING).\n")
+	buf.WriteString("  async one(): Promise<T | null> {\n")
+	buf.WriteString("    const rows = await this.all();\n")
+	buf.WriteString("    return rows[0] ?? null;\n")
 	buf.WriteString("  }\n")
 	buf.WriteString("}\n\n")
 
@@ -655,6 +755,7 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("  schema: Record<string, unknown>,\n")
 	buf.WriteString("  typeName: string,\n")
 	buf.WriteString("  values: Record<string, unknown>,\n")
+	buf.WriteString("  conflict?: _ConflictSpec,\n")
 	buf.WriteString("): { sql: string; params: unknown[] } {\n")
 	buf.WriteString("  // eslint-disable-next-line @typescript-eslint/no-explicit-any\n")
 	buf.WriteString("  const types = (schema as any).types as Array<{\n")
@@ -664,6 +765,11 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("  }>;\n")
 	buf.WriteString("  const type = types.find((t) => t.name === typeName);\n")
 	buf.WriteString("  if (!type) throw new Error(`axel: unknown type \"${typeName}\"`);\n\n")
+	buf.WriteString("  const resolveColumn = (field: string): string => {\n")
+	buf.WriteString("    const col = _toSnakeCase(field);\n")
+	buf.WriteString("    const prop = type.properties?.find((p) => p.name === col || p.column === col);\n")
+	buf.WriteString("    return prop ? prop.column : col;\n")
+	buf.WriteString("  };\n\n")
 	buf.WriteString("  const cols: string[] = [];\n")
 	buf.WriteString("  const params: unknown[] = [];\n")
 	buf.WriteString("  for (const [key, val] of Object.entries(values)) {\n")
@@ -675,11 +781,84 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("    }\n")
 	buf.WriteString("  }\n\n")
 	buf.WriteString("  const placeholders = params.map((_, i) => `$${i + 1}`);\n")
-	buf.WriteString("  const sql =\n")
-	buf.WriteString("    \"BEGIN;\\n\" +\n")
-	buf.WriteString("    `INSERT INTO \"${type.table}\" (${cols.join(\", \")}) VALUES (${placeholders.join(\", \")}) RETURNING *;` +\n")
-	buf.WriteString("    \"\\nCOMMIT;\";\n")
+	buf.WriteString("  let insert = `INSERT INTO \"${type.table}\" (${cols.join(\", \")}) VALUES (${placeholders.join(\", \")})`;\n\n")
+	buf.WriteString("  if (conflict) {\n")
+	buf.WriteString("    const targetCols = conflict.on.map((f) => `\"${resolveColumn(f)}\"`);\n")
+	buf.WriteString("    const target = targetCols.length > 0 ? ` (${targetCols.join(\", \")})` : \"\";\n")
+	buf.WriteString("    const update = conflict.update ?? {};\n")
+	buf.WriteString("    const setCols = Object.keys(update);\n")
+	buf.WriteString("    if (setCols.length > 0) {\n")
+	buf.WriteString("      const sets: string[] = [];\n")
+	buf.WriteString("      for (const [key, val] of Object.entries(update)) {\n")
+	buf.WriteString("        const prop = type.properties?.find((p) => p.name === _toSnakeCase(key) || p.column === _toSnakeCase(key));\n")
+	buf.WriteString("        if (!prop) continue;\n")
+	buf.WriteString("        params.push(val);\n")
+	buf.WriteString("        sets.push(`\"${prop.column}\" = $${params.length}`);\n")
+	buf.WriteString("      }\n")
+	buf.WriteString("      insert += ` ON CONFLICT${target} DO UPDATE SET ${sets.join(\", \")}`;\n")
+	buf.WriteString("    } else {\n")
+	buf.WriteString("      insert += ` ON CONFLICT${target} DO NOTHING`;\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("  }\n\n")
+	// A lone INSERT ... [ON CONFLICT ...] RETURNING * is atomic — no BEGIN/COMMIT.
+	// Manual transaction control would break Bun's pooled SQL (max > 1), which
+	// requires sql.begin/sql.reserved for multi-statement transactions.
+	buf.WriteString("  const sql = insert + \" RETURNING *\";\n")
 	buf.WriteString("  return { sql, params };\n")
+	buf.WriteString("}\n\n")
+
+	// _buildUpdateSQL — UPDATE ... SET ... [WHERE ...] RETURNING *.
+	buf.WriteString("function _buildUpdateSQL(\n")
+	buf.WriteString("  schema: Record<string, unknown>,\n")
+	buf.WriteString("  typeName: string,\n")
+	buf.WriteString("  values: Record<string, unknown>,\n")
+	buf.WriteString("  filterSpecs: FilterSpec[],\n")
+	buf.WriteString("): { sql: string; params: unknown[] } {\n")
+	buf.WriteString("  // eslint-disable-next-line @typescript-eslint/no-explicit-any\n")
+	buf.WriteString("  const types = (schema as any).types as Array<{\n")
+	buf.WriteString("    name: string;\n")
+	buf.WriteString("    table: string;\n")
+	buf.WriteString("    properties: Array<{ name: string; column: string }>;\n")
+	buf.WriteString("  }>;\n")
+	buf.WriteString("  const type = types.find((t) => t.name === typeName);\n")
+	buf.WriteString("  if (!type) throw new Error(`axel: unknown type \"${typeName}\"`);\n\n")
+	buf.WriteString("  const sets: string[] = [];\n")
+	buf.WriteString("  const params: unknown[] = [];\n")
+	buf.WriteString("  for (const [key, val] of Object.entries(values)) {\n")
+	buf.WriteString("    const col = _toSnakeCase(key);\n")
+	buf.WriteString("    const prop = type.properties?.find((p) => p.name === col || p.column === col);\n")
+	buf.WriteString("    if (prop) {\n")
+	buf.WriteString("      params.push(val);\n")
+	buf.WriteString("      sets.push(`\"${prop.column}\" = $${params.length}`);\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("  }\n")
+	buf.WriteString("  if (sets.length === 0) throw new Error(`axel: update on \"${typeName}\" has no assignable columns`);\n\n")
+	buf.WriteString("  let sql = `UPDATE \"${type.table}\" SET ${sets.join(\", \")}`;\n")
+	buf.WriteString("  if (filterSpecs.length > 0) {\n")
+	buf.WriteString("    const conds: Array<{ expr: string; connector: \"and\" | \"or\" }> = [];\n")
+	buf.WriteString("    for (const spec of filterSpecs) {\n")
+	buf.WriteString("      const col = _toSnakeCase(spec.field);\n")
+	buf.WriteString("      const prop = type.properties?.find((p) => p.name === col || p.column === col);\n")
+	buf.WriteString("      const column = prop ? prop.column : col;\n")
+	buf.WriteString("      let expr: string;\n")
+	buf.WriteString("      if (spec.isRef) {\n")
+	buf.WriteString("        expr = `\"${column}\" ${spec.op} ${_resolveOuterRef(schema, spec.value as string)}`;\n")
+	buf.WriteString("      } else {\n")
+	buf.WriteString("        params.push(spec.value);\n")
+	buf.WriteString("        expr = `\"${column}\" ${spec.op} $${params.length}`;\n")
+	buf.WriteString("      }\n")
+	buf.WriteString("      conds.push({ expr, connector: spec.connector });\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("    let where = conds[0]!.expr;\n")
+	buf.WriteString("    for (let i = 1; i < conds.length; i++) {\n")
+	buf.WriteString("      where += ` ${conds[i]!.connector.toUpperCase()} ${conds[i]!.expr}`;\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("    sql += ` WHERE ${where}`;\n")
+	buf.WriteString("  }\n\n")
+	// Single-statement UPDATE ... RETURNING * is atomic — no BEGIN/COMMIT (see
+	// _buildInsertSQL for why manual transactions break Bun's pooled SQL).
+	buf.WriteString("  const out = sql + \" RETURNING *\";\n")
+	buf.WriteString("  return { sql: out, params };\n")
 	buf.WriteString("}\n\n")
 
 	// ─── AQL runtime: types ──────────────────────────────────────────────────────
@@ -1131,6 +1310,13 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("    values: Insertable<AxelSchema[K]>,\n")
 	buf.WriteString("  ): InsertBuilder<AxelSchema[K]> {\n")
 	buf.WriteString("    return new InsertBuilder(this.db, _schema, type as string, values);\n")
+	buf.WriteString("  }\n\n")
+
+	buf.WriteString("  update<K extends keyof AxelSchema>(\n")
+	buf.WriteString("    type: K,\n")
+	buf.WriteString("    values: Updatable<AxelSchema[K]>,\n")
+	buf.WriteString("  ): UpdateBuilder<AxelSchema[K]> {\n")
+	buf.WriteString("    return new UpdateBuilder(this.db, _schema, type as string, values);\n")
 	buf.WriteString("  }\n\n")
 
 	buf.WriteString("  async run<T = Record<string, unknown>>(\n")
