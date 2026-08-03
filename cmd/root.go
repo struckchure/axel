@@ -3,12 +3,44 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 
+	"github.com/joho/godotenv"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	axel "github.com/struckchure/axel/core"
 	"gopkg.in/yaml.v3"
 )
+
+// envRefPattern matches environment-variable references in config values:
+// `$env.NAME` or `${env.NAME}`. NAME is a standard shell-style identifier.
+var envRefPattern = regexp.MustCompile(`\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}|\$env\.([A-Za-z_][A-Za-z0-9_]*)`)
+
+// expandEnvRefs replaces `$env.NAME` / `${env.NAME}` references in s with the
+// value of the corresponding environment variable. Unset variables expand to
+// the empty string.
+func expandEnvRefs(s string) string {
+	return envRefPattern.ReplaceAllStringFunc(s, func(match string) string {
+		m := envRefPattern.FindStringSubmatch(match)
+		name := m[1]
+		if name == "" {
+			name = m[2]
+		}
+		return os.Getenv(name)
+	})
+}
+
+// expandConfigEnv expands env references in the string fields of a config.
+func expandConfigEnv(c *axel.MigrationConfig) {
+	if c == nil {
+		return
+	}
+	c.DatabaseURL = expandEnvRefs(c.DatabaseURL)
+	c.SchemaPath = expandEnvRefs(c.SchemaPath)
+	c.MigrationsDir = expandEnvRefs(c.MigrationsDir)
+	c.ClientDir = expandEnvRefs(c.ClientDir)
+	c.PackageName = expandEnvRefs(c.PackageName)
+}
 
 var (
 	config  *axel.MigrationConfig
@@ -50,6 +82,10 @@ var RootCmd = &cobra.Command{
 // Called by both migration commands (full PersistentPreRun) and query commands
 // (lightweight override that skips the DB connection).
 func loadConfig() {
+	// Load .env files first so `$env.NAME` references and env fallbacks below
+	// see any variables the user keeps in a .env file.
+	loadDotEnv()
+
 	// Resolve an explicit --config path.
 	resolved := configPath
 
@@ -71,8 +107,12 @@ func loadConfig() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		expandConfigEnv(config)
 		if !lo.IsEmpty(databaseURL) {
 			config.DatabaseURL = databaseURL
+		}
+		if lo.IsEmpty(config.DatabaseURL) {
+			config.DatabaseURL = databaseURLFromEnv()
 		}
 		return
 	}
@@ -94,15 +134,48 @@ func loadConfig() {
 		}
 	}
 
+	dbURL := databaseURL
+	if lo.IsEmpty(dbURL) {
+		dbURL = databaseURLFromEnv()
+	}
+
 	config = &axel.MigrationConfig{
-		DatabaseURL:   databaseURL,
+		DatabaseURL:   dbURL,
 		MigrationsDir: md,
 		SchemaPath:    sp,
 	}
 }
 
+// loadDotEnv loads variables from .env files into the process environment
+// without overriding variables that are already set. It checks the project
+// directory (--dir) first, then the current working directory.
+func loadDotEnv() {
+	var candidates []string
+	if !lo.IsEmpty(projectDir) {
+		candidates = append(candidates, projectDir+"/.env")
+	}
+	candidates = append(candidates, ".env")
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			// godotenv.Load does not override existing environment variables,
+			// so real env vars always win over .env entries.
+			_ = godotenv.Load(path)
+		}
+	}
+}
+
+// databaseURLFromEnv resolves a database URL from the environment, preferring
+// the Axel-specific variable. Returns "" when neither is set.
+func databaseURLFromEnv() string {
+	if v := os.Getenv("AXEL_DATABASE_URL"); v != "" {
+		return v
+	}
+	return os.Getenv("DATABASE_URL")
+}
+
 func init() {
-	RootCmd.PersistentFlags().StringVarP(&projectDir, "dir", "d", "", "Project directory (auto-discovers axel.yaml, schema.asl, or default.asl)")
+	RootCmd.PersistentFlags().StringVarP(&projectDir, "dir", "d", ".", "Project directory (auto-discovers axel.yaml, schema.asl, or default.asl)")
 	RootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Config file path (overrides --dir)")
 
 	RootCmd.PersistentFlags().StringVarP(&databaseURL, "url", "u", "", "Database URL")

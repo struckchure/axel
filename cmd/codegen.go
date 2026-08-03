@@ -88,8 +88,8 @@ External generators (any language):
 		// Positional args — shell glob expansion delivers extra files here
 		queryPaths = append(queryPaths, args...)
 
-		// Auto-discover when nothing was provided and --dir is set
-		if len(queryPaths) == 0 && projectDir != "" {
+		// Auto-discover when nothing was provided and --dir is explicitly set
+		if len(queryPaths) == 0 && cmd.Flags().Changed("dir") {
 			discovered, err := findAQLFiles(projectDir)
 			if err != nil {
 				return fmt.Errorf("discovering .aql files in %q: %w", projectDir, err)

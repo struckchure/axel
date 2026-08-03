@@ -36,8 +36,8 @@ var compileCmd = &cobra.Command{
 			return err
 		}
 
-		// Batch mode: project dir supplied → glob all *.aql files.
-		if projectDir != "" && aqlStr == "" && aqlFile == "" {
+		// Batch mode: project dir explicitly supplied → glob all *.aql files.
+		if cmd.Flags().Changed("dir") && aqlStr == "" && aqlFile == "" {
 			files, err := findAQLFiles(projectDir)
 			if err != nil {
 				return fmt.Errorf("discovering .aql files in %q: %w", projectDir, err)
