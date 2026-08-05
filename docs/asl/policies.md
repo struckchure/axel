@@ -77,10 +77,61 @@ CREATE POLICY "owner_only" ON "doc" FOR ALL TO app_user
   WITH CHECK (owner = current_setting('app.current_user', true)::UUID);
 ```
 
-Two limits apply to policy predicates (they're single-table RLS conditions):
+## Traversing links
 
-- **No link traversal.** `.author.name` isn't supported yet — only fields of the
-  policy's own type.
+A predicate can follow links, not just read the policy's own columns.
+
+**To-one chains** — `.organization.owner`, `.organization.owner.email` — lower to a
+correlated subquery over the linked table:
+
+```asl
+type User { required email: str; }
+type Organization { link owner: User; }
+
+type Workflow {
+  required name: str;
+  link organization: Organization;
+
+  policy owner_only for all to app_user
+    using ( .organization.owner = global current_user );
+}
+```
+
+lowers the `USING` clause to:
+
+```sql
+(SELECT o.owner FROM "organization" o WHERE o.id = "workflow".organization LIMIT 1)
+  = current_setting('app.current_user', true)::UUID
+```
+
+**Membership** — `<value> in .<multi-link>` — tests whether a value is among the rows
+reached through a multi-link, lowered to an `IN (SELECT …)` over the junction table:
+
+```asl
+type User { required email: str; }
+type Organization {
+  required name: str;
+  multi members: User;
+
+  policy member_can_read for select to app_user
+    using ( global current_user in .members );
+}
+```
+
+lowers the `USING` clause to:
+
+```sql
+current_setting('app.current_user', true)::UUID IN (
+  SELECT u.id FROM "organization_members" jt JOIN "user" u ON u.id = jt.user
+  WHERE jt.organization = "organization".id
+)
+```
+
+A multi-link can only appear as the right side of `in` (it's a set, not a value);
+using one in a scalar path — `.members.email = …` — is an error.
+
+One limit remains:
+
 - **No bind parameters.** A policy can't take a `$param`; pull request-scoped
   values in through a [`global`](/asl/globals) instead.
 

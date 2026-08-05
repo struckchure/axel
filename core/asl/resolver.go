@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/samber/lo"
 )
 
 // builtinTypes maps ASL scalar type names to their SQL equivalents.
@@ -714,18 +716,13 @@ func mapLitDefault(lit, sqlType string) string {
 	return lit
 }
 
-// toSnakeCase converts CamelCase or mixed identifiers to snake_case.
+// toSnakeCase converts CamelCase or mixed identifiers to snake_case. It MUST
+// match the DDL layer's identifier derivation (lo.SnakeCase, used by
+// sql_generator.go / migration_sql_generator.go to name the physical tables and
+// columns), so that every table/column/junction name the compiler emits resolves
+// to the object CREATE TABLE actually made. lo.SnakeCase handles acronyms and
+// digit boundaries (APIKey→api_key, Org2→org_2) where a naive split would drift
+// from the physical schema. This is the single canonical snake_case chokepoint.
 func toSnakeCase(s string) string {
-	var result []rune
-	for i, r := range s {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 {
-				result = append(result, '_')
-			}
-			result = append(result, r+32)
-		} else {
-			result = append(result, r)
-		}
-	}
-	return string(result)
+	return lo.SnakeCase(s)
 }

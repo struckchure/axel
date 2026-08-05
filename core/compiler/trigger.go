@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/samber/lo"
 	"github.com/struckchure/axel/core/aql"
 	"github.com/struckchure/axel/core/asl"
 )
@@ -58,18 +59,9 @@ func stripReturning(sql string) string {
 	return strings.TrimRight(sql, "; \n")
 }
 
-// snakeCase mirrors asl.toSnakeCase for the standalone-function field passthrough.
+// snakeCase mirrors asl.toSnakeCase (both delegate to lo.SnakeCase) for the
+// standalone-function field passthrough, so a field reference resolves to the same
+// column the DDL layer created.
 func snakeCase(s string) string {
-	var b strings.Builder
-	for i, r := range s {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 {
-				b.WriteByte('_')
-			}
-			b.WriteRune(r + 32)
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
+	return lo.SnakeCase(s)
 }

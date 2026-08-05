@@ -82,14 +82,93 @@ type Row {
 	}
 }
 
+func TestPolicyLowersToOneLink(t *testing.T) {
+	pols, err := lowerPolicies(t, `
+global current_user: uuid;
+
+type User { required email: str; }
+type Organization { link owner: User; }
+type Workflow {
+  required name: str;
+  link organization: Organization;
+
+  policy owner_only for all to app_user
+    using ( .organization.owner = global current_user );
+}`)
+	if err != nil {
+		t.Fatalf("lower: %v", err)
+	}
+
+	var using string
+	for _, p := range pols {
+		if p.Name == "workflow.owner_only" {
+			using = p.CreateSQL
+		}
+	}
+	if using == "" {
+		t.Fatalf("owner_only policy not found; got %d policies", len(pols))
+	}
+
+	// The to-one chain lowers to a correlated subquery over the organization table,
+	// correlated to the workflow row's FK by table name.
+	for _, want := range []string{
+		`SELECT o.owner FROM "organization" o`,
+		`WHERE o.id = "workflow".organization`,
+		`= current_setting('app.current_user', true)::UUID`,
+	} {
+		if !strings.Contains(using, want) {
+			t.Errorf("owner_only USING missing %q:\n%s", want, using)
+		}
+	}
+}
+
+func TestPolicyLowersMembership(t *testing.T) {
+	pols, err := lowerPolicies(t, `
+global current_user: uuid;
+
+type User { required email: str; }
+type Organization {
+  required name: str;
+  multi members: User;
+
+  policy member_can_read for select to app_user
+    using ( global current_user in .members );
+}`)
+	if err != nil {
+		t.Fatalf("lower: %v", err)
+	}
+
+	var using string
+	for _, p := range pols {
+		if p.Name == "organization.member_can_read" {
+			using = p.CreateSQL
+		}
+	}
+	if using == "" {
+		t.Fatalf("member_can_read policy not found; got %d policies", len(pols))
+	}
+
+	// `global current_user in .members` lowers to an IN-subquery over the junction
+	// (organization_members), correlated to the organization row by table name.
+	for _, want := range []string{
+		`current_setting('app.current_user', true)::UUID IN (`,
+		`FROM "organization_members" jt JOIN "user" u`,
+		`WHERE jt.organization = "organization".id`,
+	} {
+		if !strings.Contains(using, want) {
+			t.Errorf("member_can_read USING missing %q:\n%s", want, using)
+		}
+	}
+}
+
 func TestPolicyBridgeErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown field":  `type T { required a: str; policy p for select using ( .missing = 1 ); }`,
 		"unknown global": `type T { required a: str; policy p for select using ( .a = global nope ); }`,
 		"bind param":     `type T { required a: str; policy p for select using ( .a = $x ); }`,
-		"link traversal": `
+		"multi-link scalar traversal": `
 type U { required name: str; }
-type T { required a: str; link owner: U; policy p for select using ( .owner.name = 'x' ); }`,
+type T { required a: str; multi members: U; policy p for select using ( .members.name = 'x' ); }`,
 	}
 	for name, src := range cases {
 		if _, err := lowerPolicies(t, src); err == nil {
