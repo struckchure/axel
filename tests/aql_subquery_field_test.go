@@ -96,7 +96,9 @@ func TestSubQueryProjectionCastUnknownTypeErrors(t *testing.T) {
 func TestSubQueryProjectsLinkColumn(t *testing.T) {
 	c := compileAQL(t, subqSchema,
 		`multi select Repo { id, o := (select Repo filter .id = $rid<uuid>).owner };`)
-	if !strings.Contains(c.SQL, `SELECT r.owner FROM "repo" r WHERE r.id = $1 LIMIT 1`) {
+	// The inner Repo subquery gets a distinct alias (r1) from the outer Repo (r)
+	// so the two table instances never share an alias.
+	if !strings.Contains(c.SQL, `SELECT r1.owner FROM "repo" r1 WHERE r1.id = $1 LIMIT 1`) {
 		t.Errorf("subquery should project the owner FK column:\n%s", c.SQL)
 	}
 }

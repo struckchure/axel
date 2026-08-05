@@ -92,6 +92,15 @@ func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 type compiler struct {
 	schema *asl.SchemaIR
 	params *paramCollector
+	// aliasCounts tracks how many times each base alias letter has been handed
+	// out within this compile so every table instance gets a distinct alias: the
+	// first use of a letter keeps the bare form ("w"), later uses are suffixed
+	// ("w1", "w2", …). Correlated subqueries thread their owner's alias down as
+	// the `alias` parameter, so guaranteeing uniqueness here is enough to stop an
+	// inner table from shadowing an outer one — the classic FILTER-traversal
+	// collision where WorkflowTrigger and Workflow both derived alias "w". See
+	// newAlias and compilePath.
+	aliasCounts map[string]int
 	// trig is non-nil when compiling a trigger / function body, enabling the
 	// magic identifiers __new__ / __old__ / __subject__ / event.
 	trig *triggerContext
@@ -101,19 +110,21 @@ type compiler struct {
 	// — instead of matching all rows and returning an arbitrary one. See
 	// compileValueFilter / compileCmp.
 	valueFilter bool
-	// policyMode is true while lowering an RLS policy predicate: columns are
-	// emitted unqualified, bind params are rejected, and multi-step link paths are
-	// rejected. See CompilePolicyPredicate.
+	// policyMode is true while lowering an RLS policy predicate: the target row's
+	// columns are emitted unqualified and bind params are rejected. Link traversal
+	// is allowed and correlates back to the base row by table name (see outerRef).
+	// See CompilePolicyPredicate.
 	policyMode bool
 }
 
 // CompilePolicyPredicate lowers an AQL boolean expression to a Postgres RLS policy
 // predicate (the interior of USING / WITH CHECK). Unlike query compilation it runs
-// in "policy mode": columns are emitted unqualified (RLS predicates run with the
-// target row's own columns in scope), bind params ($x) are rejected (a policy can't
-// take parameters — reference a `global` instead), and multi-step link traversal is
-// rejected (single-table predicates only, for now). `global <name>` and
-// `is [not] null` are supported.
+// in "policy mode": the target row's own columns are emitted unqualified (RLS
+// predicates run with those columns in scope) and bind params ($x) are rejected (a
+// policy can't take parameters — reference a `global` instead). Link traversal is
+// supported: to-one chains (.organization.owner) lower to a correlated subquery,
+// and `<value> in .<multi-link>` lowers to a membership subquery over the junction.
+// `global <name>` and `is [not] null` are also supported.
 func CompilePolicyPredicate(expr *aql.Expr, rt *asl.ResolvedType, schema *asl.SchemaIR) (string, error) {
 	c := &compiler{schema: schema, params: newParamCollector(), policyMode: true}
 	return c.compileExpr(expr, "", rt)
@@ -144,7 +155,7 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 		return "", err
 	}
 
-	alias := tableAlias(typeName)
+	alias := c.newAlias(typeName)
 	table := rt.Table
 
 	// Build SELECT columns from shape (or "*" if no shape).
@@ -250,7 +261,7 @@ func (c *compiler) compileAggSQL(agg *aql.AggExpr) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	alias := tableAlias(agg.TypeName)
+	alias := c.newAlias(agg.TypeName)
 
 	inner := fmt.Sprintf("SELECT 1 FROM \"%s\" %s", rt.Table, alias)
 	if agg.Filter != nil {
@@ -426,7 +437,7 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 		if err != nil {
 			return "", "", err
 		}
-		sqAlias := tableAlias(sq.TypeName)
+		sqAlias := c.newAlias(sq.TypeName)
 
 		// Build inner SELECT columns.
 		var innerCols []string
@@ -739,7 +750,7 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 		if err != nil {
 			return "", "", "", err
 		}
-		alias := tableAlias(link.TargetType)
+		alias := c.newAlias(link.TargetType)
 
 		var whereClause string
 		if sub.Filter != nil {
@@ -774,12 +785,18 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 	return col, val, "", nil
 }
 
-// compileSubQuery compiles a (select ...) subquery used as a scalar expression.
-// compileSubQuery compiles a scalar subquery. By default it projects the row's
-// id; a non-empty projectField selects that property (or link FK) instead —
-// e.g. (select Org filter .id = $id).slug. A trailing `<Type>` cast, if any, is
-// applied by the caller to the whole subquery.
-func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (string, error) {
+// compileSubQuery compiles a (select ...) subquery used as an expression. By
+// default it projects the row's id; a non-empty projectField selects that
+// property (or link FK) instead — e.g. (select Org filter .id = $id).slug. A
+// trailing `<Type>` cast, if any, is applied by the caller to the whole
+// subquery.
+//
+// multi reports whether this is a `multi select`, which yields a set rather than
+// a single row — the shape used on the right of `in` (`x in (multi select Y
+// filter …)`). A set subquery must NOT be capped at LIMIT 1: doing so turns the
+// membership into "member of one arbitrary row". A plain (single) select stays
+// scalar and keeps the implicit LIMIT 1.
+func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string, multi bool) (string, error) {
 	// Aggregate subquery: (select count(TypeName filter ...)) used as a scalar.
 	if body.AggFunc != nil {
 		if projectField != "" {
@@ -796,7 +813,7 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (s
 	if err != nil {
 		return "", err
 	}
-	alias := tableAlias(body.TypeName)
+	alias := c.newAlias(body.TypeName)
 
 	column := "id"
 	if projectField != "" {
@@ -817,7 +834,27 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string) (s
 		}
 		fmt.Fprintf(&sb, " WHERE %s", where)
 	}
-	sb.WriteString(" LIMIT 1")
+
+	if multi {
+		// A `multi select` subquery is a set (used on the right of `in`); honour an
+		// explicit limit/offset but never impose the scalar LIMIT 1.
+		if body.Limit != nil {
+			limit, err := c.compileExpr(body.Limit, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&sb, " LIMIT %s", limit)
+		}
+		if body.Offset != nil {
+			offset, err := c.compileExpr(body.Offset, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&sb, " OFFSET %s", offset)
+		}
+	} else {
+		sb.WriteString(" LIMIT 1")
+	}
 	return "(" + sb.String() + ")", nil
 }
 
@@ -842,7 +879,7 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	alias := tableAlias(stmt.TypeName)
+	alias := c.newAlias(stmt.TypeName)
 
 	var sets []string
 	for _, a := range stmt.Assignments {
@@ -901,7 +938,7 @@ func (c *compiler) compileDelete(stmt *aql.DeleteStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	alias := tableAlias(stmt.TypeName)
+	alias := c.newAlias(stmt.TypeName)
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "DELETE FROM \"%s\" %s", rt.Table, alias)
@@ -1013,6 +1050,19 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		return left, nil
 	}
 
+	// Membership: `<value> in .<path>` where the path ends in a multi-link is a
+	// set test, lowered to `<value> IN (SELECT … FROM junction …)` rather than a
+	// scalar comparison. Intercept before compilePrimary tries (and fails) to
+	// lower the multi-link path as a scalar. A non-multi RHS falls through to the
+	// ordinary infix `in`.
+	if cmp.Op == "in" && cmp.Right != nil && cmp.Right.Path != nil {
+		if membership, ok, err := c.compileMembership(left, cmp.Right.Path, alias, rt); err != nil {
+			return "", err
+		} else if ok {
+			return membership, nil
+		}
+	}
+
 	right, err := c.compilePrimary(cmp.Right, alias, rt)
 	if err != nil {
 		return "", err
@@ -1092,7 +1142,7 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		if p.SubQueryMulti && p.SubQueryField != "" {
 			return "", fmt.Errorf("cannot project field %q from a `multi select` (it yields a set, not a row)", p.SubQueryField)
 		}
-		return c.compileSubQuery(p.SubQuery, p.SubQueryField)
+		return c.compileSubQuery(p.SubQuery, p.SubQueryField, p.SubQueryMulti)
 
 	case p.SubInsert != nil:
 		// (insert TypeName { ... }) used as a scalar — compile as a subquery returning id.
@@ -1272,16 +1322,20 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 		return "", fmt.Errorf("type %q has no field %q", rt.Name, name)
 	}
 
-	if c.policyMode {
-		return "", fmt.Errorf("policy predicates can't traverse links (.%s); single-table fields only for now", strings.Join(path.Steps, "."))
-	}
-
-	// Multi-step: .author.email → requires resolving link then property.
-	// For now, emit a simple subquery.
+	// Multi-step: .author.email / .organization.owner → resolve the link then the
+	// remaining path against the target, emitting a correlated scalar subquery.
+	// This runs in both query mode (non-empty alias) and policy mode (alias ==
+	// ""); see outerRef for how the base row is referenced in each.
 	linkName := path.Steps[0]
 	link, ok := rt.Links[linkName]
 	if !ok {
 		return "", fmt.Errorf("type %q has no link %q", rt.Name, linkName)
+	}
+
+	// A multi-link can't appear in a scalar path — it yields a set, not a value.
+	// Membership tests go through `<value> in .<path>` (see compileMembership).
+	if link.IsMulti {
+		return "", fmt.Errorf("can't traverse the multi-link %q in a scalar path (.%s); use `<value> in .<path>` for a membership test", linkName, strings.Join(path.Steps, "."))
 	}
 
 	targetType, err := c.resolveType(link.TargetType)
@@ -1289,13 +1343,18 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 		return "", err
 	}
 
-	tAlias := tableAlias(link.TargetType)
+	tAlias := c.newAlias(link.TargetType)
 	remaining := path.Steps[1:]
+
+	joinCond := link.JoinColumn
+	if joinCond == "" {
+		joinCond = strings.ToLower(linkName) + "_id"
+	}
 
 	// Optimization: .link.id → FK column directly, avoiding a correlated subquery
 	// and alias conflicts when the outer query already uses the same alias.
 	if len(remaining) == 1 && remaining[0] == "id" {
-		return fmt.Sprintf("%s.%s", alias, link.JoinColumn), nil
+		return outerRef(alias, rt, joinCond), nil
 	}
 
 	subPath := &aql.PathExpr{Steps: remaining}
@@ -1304,15 +1363,106 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 		return "", err
 	}
 
-	joinCond := link.JoinColumn
-	if joinCond == "" {
-		joinCond = strings.ToLower(linkName) + "_id"
+	return fmt.Sprintf(
+		"(SELECT %s FROM \"%s\" %s WHERE %s.id = %s LIMIT 1)",
+		subExpr, targetType.Table, tAlias, tAlias, outerRef(alias, rt, joinCond),
+	), nil
+}
+
+// outerRef qualifies a column on the row compilePath is resolving against. With a
+// normal query alias it is `alias.col`. In policy mode the base row has no alias
+// (RLS predicates run with the target row's columns unqualified in scope), so it
+// is referenced by table name — `"table".col` — which also disambiguates a
+// correlated subquery from a self-referential link's own columns.
+func outerRef(alias string, rt *asl.ResolvedType, col string) string {
+	if alias != "" {
+		return fmt.Sprintf("%s.%s", alias, col)
+	}
+	return fmt.Sprintf("%q.%s", rt.Table, col)
+}
+
+// compileMembership lowers `<left> in .<path>` when the path ends in a multi-link
+// — a membership test over the link's junction (or target FK). It returns
+// (sql, true, nil) when the path terminates in a multi-link, and ("", false, nil)
+// when it does not, so compileCmp falls back to the ordinary infix `in`. Any
+// leading steps must be single links (they locate the row that owns the
+// multi-link); the emitted subquery correlates back to that owner row.
+func (c *compiler) compileMembership(left string, path *aql.PathExpr, alias string, rt *asl.ResolvedType) (string, bool, error) {
+	if path == nil || len(path.Steps) == 0 {
+		return "", false, nil
 	}
 
-	return fmt.Sprintf(
-		"(SELECT %s FROM \"%s\" %s WHERE %s.id = %s.%s LIMIT 1)",
-		subExpr, targetType.Table, tAlias, tAlias, alias, joinCond,
-	), nil
+	// Walk the single-link prefix to the type that owns the multi-link.
+	ownerType := rt
+	for _, step := range path.Steps[:len(path.Steps)-1] {
+		l, ok := ownerType.Links[step]
+		if !ok || l.IsMulti {
+			return "", false, nil // not a clean single-link prefix → not a membership test
+		}
+		t, err := c.resolveType(l.TargetType)
+		if err != nil {
+			return "", false, err
+		}
+		ownerType = t
+	}
+
+	last := path.Steps[len(path.Steps)-1]
+	link, ok := ownerType.Links[last]
+	if !ok || !link.IsMulti {
+		return "", false, nil // terminal isn't a multi-link → let the ordinary `in` handle it
+	}
+
+	targetType, err := c.resolveType(link.TargetType)
+	if err != nil {
+		return "", false, err
+	}
+
+	// ownerRef: SQL scalar for the id of the row that owns the multi-link. With no
+	// prefix that's the base row's id; otherwise reuse compilePath to resolve
+	// `.<prefix>.id` (the FK column directly, or a correlated subquery for deeper
+	// chains).
+	var ownerRef string
+	if len(path.Steps) == 1 {
+		ownerRef = outerRef(alias, rt, "id")
+	} else {
+		idSteps := append(append([]string{}, path.Steps[:len(path.Steps)-1]...), "id")
+		ownerRef, err = c.compilePath(&aql.PathExpr{Steps: idSteps}, alias, rt)
+		if err != nil {
+			return "", false, err
+		}
+	}
+
+	joinField := link.JoinField
+	if joinField == "" {
+		joinField = "id"
+	}
+	tAlias := c.newAlias(link.TargetType)
+
+	var inner string
+	if link.JunctionTable != "" {
+		// Junction table with one FK column per side, named after the referenced
+		// table (see generateJunctionTable / compileLinkField): ownerType.Table on
+		// the owner side, targetType.Table on the target side.
+		jAlias := "jt"
+		inner = fmt.Sprintf(
+			"SELECT %s.%s FROM %q %s JOIN %q %s ON %s.%s = %s.%s WHERE %s.%s = %s",
+			tAlias, joinField,
+			link.JunctionTable, jAlias,
+			targetType.Table, tAlias,
+			tAlias, joinField, jAlias, targetType.Table,
+			jAlias, ownerType.Table, ownerRef,
+		)
+	} else {
+		// Direct FK on the target side (rare for multi).
+		inner = fmt.Sprintf(
+			"SELECT %s.%s FROM %q %s WHERE %s.%s = %s",
+			tAlias, joinField,
+			targetType.Table, tAlias,
+			tAlias, link.JoinColumn, ownerRef,
+		)
+	}
+
+	return fmt.Sprintf("%s IN (%s)", left, inner), true, nil
 }
 
 func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.ResolvedType) (string, error) {
@@ -1339,12 +1489,35 @@ func (c *compiler) resolveType(name string) (*asl.ResolvedType, error) {
 	return rt, nil
 }
 
-// tableAlias returns a short lowercase alias for a type name.
+// tableAlias returns a short lowercase alias for a type name. It is the base
+// (un-numbered) form; use c.newAlias for a fresh table instance in a query so
+// two tables sharing a first letter can't collide.
 func tableAlias(typeName string) string {
 	if len(typeName) == 0 {
 		return "t"
 	}
 	return strings.ToLower(string(typeName[0]))
+}
+
+// newAlias returns a unique alias for a new table instance within this compile.
+// The first table to claim a given base letter keeps the bare alias (so the
+// common single-table and non-colliding cases emit unchanged SQL); each later
+// table sharing that letter is numbered ("w", then "w1", "w2", …). Because every
+// table occurrence gets a distinct alias, a nested/correlated subquery can no
+// longer shadow an outer table that happens to derive the same letter, while
+// correlated column references keep binding to the outer scope's alias (threaded
+// through compilePath's `alias` parameter).
+func (c *compiler) newAlias(typeName string) string {
+	base := tableAlias(typeName)
+	if c.aliasCounts == nil {
+		c.aliasCounts = map[string]int{}
+	}
+	n := c.aliasCounts[base]
+	c.aliasCounts[base]++
+	if n == 0 {
+		return base
+	}
+	return fmt.Sprintf("%s%d", base, n)
 }
 
 // resolveParamType classifies an inline param annotation ($name<type>) against
