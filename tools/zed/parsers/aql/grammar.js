@@ -156,6 +156,8 @@ module.exports = grammar({
       ),
 
     // "*" splat expands to all scalar props + single-link FK columns.
+    // A computed value may carry a trailing per-field `filter` — an aggregate
+    // field in an aggregation select, e.g. `total := sum(.amount) filter .x = 1`.
     shape_field: ($) =>
       choice(
         "*",
@@ -164,7 +166,11 @@ module.exports = grammar({
           optional(
             choice(
               seq(":", field("shape", $.shape)),
-              seq(":=", field("value", $.expression)),
+              seq(
+                ":=",
+                field("value", $.expression),
+                optional(field("agg_filter", $.filter)),
+              ),
             ),
           ),
         ),

@@ -60,3 +60,52 @@ the count is evaluated per user. The same form works as an assignment value —
 > **Note:** an aggregate subquery is only valid as an expression operand. It is
 > not accepted as a [computed shape field](/aql/select/computed) value
 > (`{ n := (select count(...)) }`).
+
+## Aggregate shape — many aggregates in one scan
+
+A **select whose shape fields are aggregates** computes several aggregates over the
+same set in a single pass. Each field is `name := <agg>(.column)` with an optional
+per-field `filter`, and the select's own `filter` (after the shape, as usual) is the
+shared condition applied to every field:
+
+```aql
+select Transaction {
+  success_debit  := sum(.amount) filter .type = TransactionType.Debit  and .status = TransactionStatus.Successful,
+  pending_debit  := sum(.amount) filter .type = TransactionType.Debit  and .status = TransactionStatus.Pending,
+  success_credit := sum(.amount) filter .type = TransactionType.Credit and .status = TransactionStatus.Successful,
+  pending_credit := sum(.amount) filter .type = TransactionType.Credit and .status = TransactionStatus.Pending,
+}
+filter (.sender_id = $api_key_id and .sender_entity = TransactionActorEntity.ApiKey)
+    or (.reciever_id = $api_key_id and .reciever_entity = TransactionActorEntity.ApiKey);
+```
+
+Each field lowers to a Postgres [`FILTER (WHERE …)`](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)
+aggregate, so the whole query is **one scan** — no correlated subqueries:
+
+```sql
+SELECT
+  SUM(t.amount) FILTER (WHERE t.type = 'Debit'  AND t.status = 'Successful') AS success_debit,
+  SUM(t.amount) FILTER (WHERE t.type = 'Debit'  AND t.status = 'Pending')    AS pending_debit,
+  SUM(t.amount) FILTER (WHERE t.type = 'Credit' AND t.status = 'Successful') AS success_credit,
+  SUM(t.amount) FILTER (WHERE t.type = 'Credit' AND t.status = 'Pending')    AS pending_credit
+FROM "transaction" t
+WHERE (t.sender_id = $1 AND t.sender_entity = 'ApiKey')
+   OR (t.reciever_id = $1 AND t.reciever_entity = 'ApiKey');
+```
+
+The result is a **single row** (one `*Row` in generated code); `multi`, `order by`,
+`limit`, and `offset` are not allowed.
+
+### Rules
+
+- Aggregate functions: `sum`, `avg`, `min`, `max`, `count`. `count()` (no argument)
+  is `COUNT(*)`; the others take one `.column` argument. The per-field `filter` is
+  optional.
+- A shape is an **aggregate shape** as soon as one field is an aggregate; **every**
+  field must then be an aggregate — mixing aggregates with plain row fields is an
+  error (SQL would require a `GROUP BY`).
+- **Result types.** Aggregate fields are nullable (an aggregate over zero rows is
+  `NULL`). `count` is `int64`; `min`/`max` keep the column's type. `sum` and `avg`
+  change type in Postgres (e.g. `sum` of a `bigint` column is `numeric`), so add a
+  cast to pin the generated type — `sum(.amount)<int64>` — otherwise the field is
+  typed as `any` and code generation warns.

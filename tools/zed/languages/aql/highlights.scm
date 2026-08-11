@@ -57,6 +57,11 @@
 ((aggregate function: (identifier) @function.builtin)
   (#eq? @function.builtin "count"))
 
+; Built-in aggregate functions used as aggregate-shape values
+; (total := sum(.amount), n := count(), ...).
+((function_call name: (identifier) @function.builtin)
+  (#any-of? @function.builtin "count" "sum" "avg" "min" "max"))
+
 ; Query parameters ($name, $name<type>). The <type> annotation's name is a
 ; type_identifier (highlighted as @type above); its "<" ">" fall through to the
 ; operator rule below.

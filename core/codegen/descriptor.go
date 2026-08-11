@@ -362,6 +362,33 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 			fields = append(fields, scalarAndLinkFields(rt, explicit)...)
 			continue
 		}
+		// Aggregate field in an aggregation select: name := sum(.col) filter …
+		// Aggregates are nullable (sum/avg/min/max over zero rows are SQL NULL).
+		// Typing: an explicit cast wins; count is always int64; min/max preserve
+		// the aggregated column's type; sum/avg change type in Postgres (e.g.
+		// sum(bigint) → numeric), so they need a cast — otherwise warn and fall
+		// back to `any`, matching un-inferable computed fields.
+		if fc, cast, ok := sf.AggCall(); ok {
+			rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
+			fn := strings.ToLower(fc.Name)
+			switch {
+			case cast != "":
+				if sqlType, aqlType, enumType, ok := castResultType(ir, cast); ok {
+					rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+				}
+			case fn == "count":
+				rf.AQLType, rf.SQLType = "int64", "BIGINT"
+			case (fn == "min" || fn == "max") && aggArgPathType(ir, rt, fc, &rf):
+				// rf populated from the column type by aggArgPathType.
+			default:
+				*warnings = append(*warnings, fmt.Sprintf(
+					"aggregate field %q: could not infer a type for %s(...); add a cast, e.g. %s(.column)<int64> — typed as `any` for now",
+					sf.Name, fn, fn))
+			}
+			fields = append(fields, rf)
+			continue
+		}
+
 		// Inline computed field: name := expr
 		if sf.Computed != nil {
 			p := sf.Computed.SoloPrimary()
@@ -677,6 +704,27 @@ func inferPathType(ir *asl.SchemaIR, rt *asl.ResolvedType, steps []string) (aqlT
 		return "", "", "", false // unknown, or a computed field we can't type
 	}
 	return "", "", "", false
+}
+
+// aggArgPathType types an aggregate whose type follows its argument column
+// (min/max, which Postgres returns as the same type as the input). When the sole
+// argument is a simple path resolvable against rt, it fills rf's type fields and
+// returns true; otherwise it leaves rf untouched and returns false so the caller
+// warns and falls back to `any`.
+func aggArgPathType(ir *asl.SchemaIR, rt *asl.ResolvedType, fc *aql.FuncCall, rf *ResultField) bool {
+	if len(fc.Args) != 1 {
+		return false
+	}
+	p := fc.Args[0].SoloPrimary()
+	if p == nil || p.Path == nil {
+		return false
+	}
+	aqlType, sqlType, enumType, ok := inferPathType(ir, rt, p.Path.Steps)
+	if !ok {
+		return false
+	}
+	rf.AQLType, rf.SQLType, rf.EnumType = aqlType, sqlType, enumType
+	return true
 }
 
 func sqlTypeToAQLType(sqlType string) string {

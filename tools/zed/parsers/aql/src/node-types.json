@@ -630,6 +630,16 @@
     "type": "shape_field",
     "named": true,
     "fields": {
+      "agg_filter": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "filter",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": false,

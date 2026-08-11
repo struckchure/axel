@@ -1,6 +1,10 @@
 package aql
 
-import "github.com/alecthomas/participle/v2/lexer"
+import (
+	"strings"
+
+	"github.com/alecthomas/participle/v2/lexer"
+)
 
 // Statement is the top-level AQL query node.
 // Optional directives may precede the statement; exactly one of the statement
@@ -148,12 +152,48 @@ type Shape struct {
 //     id               → leaf field
 //     posts: { title } → nested link with sub-shape
 //     posts := (...)   → inline computed field
+//     total := sum(.amount) filter .status = X → aggregate field (see AggFilter)
 type ShapeField struct {
 	Pos      lexer.Position
 	Star     bool   `parser:"(   @'*'"`
 	Name     string `parser:"  | @Ident )"`
 	SubShape *Shape `parser:"( ':' @@ )?"`
 	Computed *Expr  `parser:"( ':=' @@ )?"`
+	// AggFilter is a per-field `filter <cond>` tail, valid only on an aggregate
+	// field in an aggregation select. It lowers to SQL `FILTER (WHERE <cond>)` on
+	// the aggregate. Because `Filter` begins with the `filter` keyword, the tail
+	// parses unambiguously after `Computed` — an inner subquery's own filter stays
+	// inside its parens, so `name := (select … filter …)` is unaffected.
+	AggFilter *Filter `parser:"@@?"`
+}
+
+// AggFuncs is the set of aggregate functions valid as an aggregation-select
+// shape value. Names are matched case-insensitively.
+var AggFuncs = map[string]bool{
+	"count": true,
+	"sum":   true,
+	"avg":   true,
+	"min":   true,
+	"max":   true,
+}
+
+// AggCall returns the aggregate FuncCall and its trailing `<Type>` cast when this
+// shape field is an aggregate value — a top-level call to an AggFuncs function
+// (e.g. `sum(.amount)` or `sum(.amount)<int64>`), optionally with an AggFilter.
+// It returns (nil, "", false) for any non-aggregate field. This is the single
+// predicate the compiler and codegen use to recognise an aggregate field.
+func (f *ShapeField) AggCall() (fc *FuncCall, cast string, ok bool) {
+	if f == nil || f.Computed == nil {
+		return nil, "", false
+	}
+	p := f.Computed.SoloPrimary()
+	if p == nil || p.FuncCall == nil {
+		return nil, "", false
+	}
+	if !AggFuncs[strings.ToLower(p.FuncCall.Name)] {
+		return nil, "", false
+	}
+	return p.FuncCall, p.Cast, true
 }
 
 // QualifiedIdent is a TypeName.field reference used in expressions (e.g. User.id).

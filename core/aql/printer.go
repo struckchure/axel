@@ -174,6 +174,10 @@ func printShape(b *strings.Builder, s *Shape) {
 			b.WriteString(" := ")
 			printExpr(b, f.Computed)
 		}
+		if f.AggFilter != nil {
+			b.WriteString(" ")
+			printFilter(b, f.AggFilter)
+		}
 		if i < len(s.Fields)-1 {
 			b.WriteString(",")
 		}
@@ -257,6 +261,8 @@ func printPrimary(b *strings.Builder, p *Primary) {
 			printExpr(b, a)
 		}
 		b.WriteString(")")
+	case p.QualifiedIdent != nil:
+		fmt.Fprintf(b, "%s.%s", p.QualifiedIdent.TypeName, p.QualifiedIdent.Field)
 	case p.Path != nil:
 		b.WriteString("." + strings.Join(p.Path.Steps, "."))
 	case p.Param != nil:

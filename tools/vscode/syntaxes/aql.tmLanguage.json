@@ -113,7 +113,7 @@
     "functions": {
       "patterns": [
         {
-          "match": "\\b(count)\\b(?=\\s*\\()",
+          "match": "\\b(count|sum|avg|min|max)\\b(?=\\s*\\()",
           "name": "support.function.builtin.aql"
         },
         {

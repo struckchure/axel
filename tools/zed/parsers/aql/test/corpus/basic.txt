@@ -338,3 +338,61 @@ multi select Doc { id } filter .a is null or .owner = global current_user;
             (identifier)))
         (global
           name: (identifier))))))
+
+==================
+aggregate shape with per-field filter
+==================
+
+select Transaction {
+  total := sum(.amount)<int64> filter .type = TransactionType.Debit,
+  n := count() filter .status = TransactionStatus.Pending,
+} filter .sender_id = $k;
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (function_call
+            name: (identifier)
+            (expression
+              (path
+                step: (field_identifier
+                  (identifier)))))
+          cast: (type_identifier
+            (identifier)))
+        agg_filter: (filter
+          (expression
+            (path
+              step: (field_identifier
+                (identifier)))
+            (qualified_identifier
+              scope: (identifier)
+              field: (identifier)))))
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (function_call
+            name: (identifier)))
+        agg_filter: (filter
+          (expression
+            (path
+              step: (field_identifier
+                (identifier)))
+            (qualified_identifier
+              scope: (identifier)
+              field: (identifier))))))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (parameter
+          name: (identifier))))))

@@ -740,6 +740,22 @@
                             "type": "SYMBOL",
                             "name": "expression"
                           }
+                        },
+                        {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "FIELD",
+                              "name": "agg_filter",
+                              "content": {
+                                "type": "SYMBOL",
+                                "name": "filter"
+                              }
+                            },
+                            {
+                              "type": "BLANK"
+                            }
+                          ]
                         }
                       ]
                     }

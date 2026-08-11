@@ -158,6 +158,14 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 	alias := c.newAlias(typeName)
 	table := rt.Table
 
+	// Aggregation select: a shape whose fields are aggregates over the scanned
+	// set (each with an optional per-field `filter`). Lowers to a single scan with
+	// `FUNC(arg) FILTER (WHERE ...)` columns and the shared filter as the outer
+	// WHERE — one row out, no LIMIT.
+	if body.Shape != nil && shapeIsAggregation(body.Shape) {
+		return c.compileAggregationSelect(stmt, rt, alias)
+	}
+
 	// Build SELECT columns from shape (or "*" if no shape).
 	var cols []string
 	var laterals []string
@@ -276,8 +284,115 @@ func (c *compiler) compileAggSQL(agg *aql.AggExpr) (string, error) {
 	case "count":
 		return fmt.Sprintf("SELECT COUNT(*) FROM (\n  %s\n) _agg", inner), nil
 	default:
-		return fmt.Sprintf("SELECT %s(*) FROM (\n  %s\n) _agg", agg.Func, inner), nil
+		// The top-level `select func(Type filter ...)` form aggregates over `*`,
+		// which is only meaningful for count. sum/avg/min/max need a column — that
+		// is the aggregation-select shape form, `select Type { t := sum(.col) }`.
+		return "", fmt.Errorf("aggregate %q is not valid in `select %s(%s ...)`; only count aggregates over a whole type. For sum/avg/min/max, use an aggregate shape: select %s { name := %s(.column) filter ... }",
+			agg.Func, agg.Func, agg.TypeName, agg.TypeName, strings.ToLower(agg.Func))
 	}
+}
+
+// shapeIsAggregation reports whether a shape is an aggregation shape — at least
+// one field is an aggregate value (sum/avg/min/max/count) or carries a per-field
+// `filter` tail. Such a shape makes the enclosing select an aggregation select,
+// where every field must be an aggregate (enforced in compileAggField).
+func shapeIsAggregation(shape *aql.Shape) bool {
+	for _, f := range shape.Fields {
+		if _, _, ok := f.AggCall(); ok {
+			return true
+		}
+		if f.AggFilter != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// compileAggregationSelect lowers an aggregation select to a single-scan SQL
+// statement: one `FUNC(arg) [FILTER (WHERE ...)] AS name` column per shape field,
+// the shared `filter` as the outer WHERE, and no LIMIT (an ungrouped aggregate
+// always yields exactly one row).
+func (c *compiler) compileAggregationSelect(stmt *aql.SelectStmt, rt *asl.ResolvedType, alias string) (string, error) {
+	body := stmt.Body
+	if stmt.Multi {
+		return "", fmt.Errorf("an aggregate select returns a single row; drop `multi`")
+	}
+	if len(body.OrderBy) > 0 || body.Limit != nil || body.Offset != nil {
+		return "", fmt.Errorf("order by / limit / offset are not allowed on an aggregate select (it returns a single row)")
+	}
+
+	cols := make([]string, 0, len(body.Shape.Fields))
+	for _, f := range body.Shape.Fields {
+		col, err := c.compileAggField(f, rt, alias)
+		if err != nil {
+			return "", err
+		}
+		cols = append(cols, col)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("SELECT\n  ")
+	sb.WriteString(strings.Join(cols, ",\n  "))
+	fmt.Fprintf(&sb, "\nFROM \"%s\" %s", rt.Table, alias)
+
+	if body.Filter != nil {
+		where, err := c.compileExpr(body.Filter.Expr, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&sb, "\nWHERE %s", where)
+	}
+
+	sb.WriteString(";")
+	return sb.String(), nil
+}
+
+// compileAggField compiles one aggregate shape field to a
+// `FUNC(arg) [FILTER (WHERE cond)] [::cast] AS name` column. It enforces the
+// all-aggregate rule: a non-aggregate field in an aggregation shape is an error.
+func (c *compiler) compileAggField(f *aql.ShapeField, rt *asl.ResolvedType, alias string) (string, error) {
+	fc, cast, ok := f.AggCall()
+	if !ok {
+		return "", fmt.Errorf("field %q: an aggregate select may only contain aggregate fields (sum/avg/min/max/count over .column); mix with row fields is not allowed", f.Name)
+	}
+
+	fn := strings.ToUpper(fc.Name)
+	var argSQL string
+	switch len(fc.Args) {
+	case 0:
+		if fn != "COUNT" {
+			return "", fmt.Errorf("field %q: %s requires one argument, e.g. %s(.column)", f.Name, strings.ToLower(fn), strings.ToLower(fn))
+		}
+		argSQL = "*" // count() → COUNT(*)
+	case 1:
+		s, err := c.compileExpr(fc.Args[0], alias, rt)
+		if err != nil {
+			return "", err
+		}
+		argSQL = s
+	default:
+		return "", fmt.Errorf("field %q: aggregate %s takes a single argument", f.Name, strings.ToLower(fn))
+	}
+
+	aggSQL := fmt.Sprintf("%s(%s)", fn, argSQL)
+
+	if f.AggFilter != nil {
+		where, err := c.compileExpr(f.AggFilter.Expr, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		aggSQL += fmt.Sprintf(" FILTER (WHERE %s)", where)
+	}
+
+	if cast != "" {
+		sqlType, err := c.annotSQLType(cast)
+		if err != nil {
+			return "", err
+		}
+		aggSQL = fmt.Sprintf("(%s)::%s", aggSQL, sqlType)
+	}
+
+	return fmt.Sprintf("%s AS %s", aggSQL, f.Name), nil
 }
 
 // compileShapeCols compiles every field of a shape against a type/alias into a
