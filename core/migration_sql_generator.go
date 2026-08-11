@@ -286,8 +286,10 @@ func topologicalSort(models []Model) []Model {
 		deps[model.Name] = []string{}
 
 		for _, field := range model.Fields {
-			// Only consider non-multi foreign keys as dependencies
-			if !isBuiltinType(field.Type) && !field.IsMulti {
+			// Only consider non-multi foreign keys as dependencies. Skip
+			// self-references: a table can always reference itself once created,
+			// and treating it as a dependency would drop it from the sort below.
+			if !isBuiltinType(field.Type) && !field.IsMulti && field.Type != model.Name {
 				deps[model.Name] = append(deps[model.Name], field.Type)
 			}
 		}
@@ -331,6 +333,17 @@ func topologicalSort(models []Model) []Model {
 	for _, model := range models {
 		if !visited[model.Name] {
 			visit(model.Name)
+		}
+	}
+
+	// A genuine dependency cycle aborts a DFS branch early (visit returns false),
+	// leaving some models unvisited. Append them in their original order so no
+	// table is dropped from the migration — foreign keys are emitted as separate
+	// ALTER TABLE statements, so they still resolve once every table exists.
+	for _, model := range models {
+		if !visited[model.Name] {
+			visited[model.Name] = true
+			sorted = append(sorted, model)
 		}
 	}
 

@@ -3,45 +3,13 @@ package asl
 import "fmt"
 
 // Validate performs semantic validation on a resolved SchemaIR.
-// It checks for inheritance cycles and unresolved type references.
+// It checks that link targets resolve and that properties have SQL types.
+// Note: the link (foreign-key reference) graph is allowed to contain cycles —
+// self-referential and mutually-referential links are valid relational shapes.
+// Inheritance cycles are detected earlier, at resolve time (see Resolver.Resolve),
+// where the `extends` edges are still available.
 func Validate(ir *SchemaIR) []error {
 	var errs []error
-
-	// Check for inheritance cycles via DFS.
-	visited := make(map[string]bool)
-	visiting := make(map[string]bool)
-
-	var checkCycles func(name string) error
-	checkCycles = func(name string) error {
-		if visited[name] {
-			return nil
-		}
-		if visiting[name] {
-			return fmt.Errorf("inheritance cycle detected involving type %q", name)
-		}
-		visiting[name] = true
-
-		t, ok := ir.ObjectTypes[name]
-		if !ok {
-			return nil
-		}
-
-		for _, link := range t.Links {
-			if err := checkCycles(link.TargetType); err != nil {
-				return err
-			}
-		}
-
-		visiting[name] = false
-		visited[name] = true
-		return nil
-	}
-
-	for name := range ir.ObjectTypes {
-		if err := checkCycles(name); err != nil {
-			errs = append(errs, err)
-		}
-	}
 
 	// Validate that all link target types exist.
 	for typeName, t := range ir.ObjectTypes {

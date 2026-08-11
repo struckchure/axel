@@ -128,6 +128,51 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 		ir.ObjectTypes[t.Name] = rt
 	}
 
+	// Pass 2b: detect inheritance (extends) cycles before flattening. Flattening
+	// copies each parent's already-resolved members into the child, so a cycle
+	// would otherwise produce silently incomplete types. The link/foreign-key
+	// graph is intentionally not checked here — self- and mutual references are
+	// valid (see Validate).
+	parents := make(map[string][]string)
+	for _, def := range src.Definitions {
+		if def.TypeDef != nil {
+			parents[def.TypeDef.Name] = def.TypeDef.Extending
+		}
+	}
+	{
+		visited := make(map[string]bool)
+		visiting := make(map[string]bool)
+		var checkExtends func(name string) error
+		checkExtends = func(name string) error {
+			if visited[name] {
+				return nil
+			}
+			if visiting[name] {
+				return fmt.Errorf("inheritance cycle detected involving type %q", name)
+			}
+			visiting[name] = true
+			for _, parent := range parents[name] {
+				if _, known := parents[parent]; !known {
+					continue // unknown parent is reported during flattening below
+				}
+				if err := checkExtends(parent); err != nil {
+					return err
+				}
+			}
+			visiting[name] = false
+			visited[name] = true
+			return nil
+		}
+		for _, def := range src.Definitions {
+			if def.TypeDef == nil {
+				continue
+			}
+			if err := checkExtends(def.TypeDef.Name); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	// Pass 3: resolve members for each type (with inheritance).
 	for _, def := range src.Definitions {
 		if def.TypeDef == nil {
