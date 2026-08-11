@@ -66,6 +66,33 @@ func TestQueryDiagnostics(t *testing.T) {
 	}
 }
 
+// A qualified enum member (EnumName.Value) must resolve to the value inside the
+// enum declaration — even when a top-level type shares the value's name.
+func TestQueryDefinitionEnumMember(t *testing.T) {
+	// Line 0: a type whose name collides with an enum value. Line 1: the enum.
+	schemaText := "type ApiKey { required id: uuid; }\n" +
+		"enum TransactionActorEntity { ApiKey, User }\n" +
+		"type Transaction { required id: uuid; required sender_entity: TransactionActorEntity; }\n"
+	schema := parseSchema(t, schemaText)
+	q := "select Transaction { id } filter .sender_entity = TransactionActorEntity.ApiKey;"
+
+	// Cursor on the ApiKey after the dot → the enum value on line 1, not the
+	// `type ApiKey` on line 0.
+	loc := lsp.QueryDefinition(q, offsetOf(t, q, "ApiKey"), schema, "file:///schema.asl", schemaText)
+	if loc == nil {
+		t.Fatal("expected a definition location for the enum member")
+	}
+	if loc.Range.Start.Line != 1 {
+		t.Errorf("enum member should resolve to the enum declaration (line 1), got line %d", loc.Range.Start.Line)
+	}
+
+	// Cursor on the qualifier itself → the enum declaration (also line 1).
+	qloc := lsp.QueryDefinition(q, offsetOf(t, q, "TransactionActorEntity."), schema, "file:///schema.asl", schemaText)
+	if qloc == nil || qloc.Range.Start.Line != 1 {
+		t.Errorf("qualifier should resolve to the enum declaration on line 1, got %+v", qloc)
+	}
+}
+
 func TestSymbols(t *testing.T) {
 	syms := lsp.SchemaSymbols(lspSchema)
 	names := map[string]int{}

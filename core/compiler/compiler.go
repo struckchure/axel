@@ -1215,6 +1215,16 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 				return c.compileTriggerField(row, qi.Field)
 			}
 		}
+		// Enum member reference: EnumName.Value → SQL string literal. Enums are
+		// stored as TEXT, so `.status = MyEnum.Value` lowers the RHS to 'Value'.
+		if enum, ok := c.schema.EnumTypes[qi.TypeName]; ok {
+			for _, v := range enum.Values {
+				if v == qi.Field {
+					return "'" + qi.Field + "'", nil
+				}
+			}
+			return "", fmt.Errorf("enum %q has no value %q", qi.TypeName, qi.Field)
+		}
 		qrt := c.schema.ObjectTypes[qi.TypeName]
 		if qrt == nil {
 			return "", fmt.Errorf("unknown type %q in qualified reference", qi.TypeName)
