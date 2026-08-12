@@ -18,6 +18,7 @@
   "constraint"
   "index"
   "on"
+  "filter"
   "computed"
   "default"
   "func"

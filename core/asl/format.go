@@ -278,7 +278,11 @@ func (f *aslFmt) member(m *Member, next int) {
 		if len(c.Args) > 0 {
 			f.wf("(%s)", strings.Join(c.Args, ", "))
 		}
-		f.wf(" on (%s);", dottedFields(c.Fields))
+		f.wf(" on (%s)", dottedFields(c.Fields))
+		if c.Filter != nil {
+			f.wf(" filter %s", c.Filter.AQL())
+		}
+		f.w(";")
 		f.commit(next)
 	case m.Trigger != nil:
 		f.trigger(m.Trigger, next)
@@ -372,7 +376,7 @@ func (f *aslFmt) trigger(t *TriggerDecl, next int) {
 }
 
 func (f *aslFmt) policy(p *PolicyDecl, next int) {
-	f.wf("policy %s for %s", p.Name, p.Command)
+	f.wf("policy %s for %s", p.Name, strings.Join(p.Commands, ", "))
 	if len(p.Roles) > 0 {
 		f.wf(" to %s", strings.Join(p.Roles, ", "))
 	}

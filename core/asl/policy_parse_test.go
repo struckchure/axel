@@ -34,7 +34,7 @@ type KV {
 	}
 
 	p := kv.Policies[0]
-	if p.Name != "hide_expired" || p.Command != "select" {
+	if p.Name != "hide_expired" || len(p.Commands) != 1 || p.Commands[0] != "select" {
 		t.Errorf("policy 0 = %+v", p)
 	}
 	// Predicates are now captured as raw native AQL; lowering to SQL is deferred to
@@ -44,11 +44,33 @@ type KV {
 	}
 
 	p2 := kv.Policies[1]
-	if p2.Command != "all" || len(p2.Roles) != 1 || p2.Roles[0] != "app_user" {
+	if len(p2.Commands) != 1 || p2.Commands[0] != "all" || len(p2.Roles) != 1 || p2.Roles[0] != "app_user" {
 		t.Errorf("policy 1 = %+v", p2)
 	}
 	if p2.CheckAQL != `.key = current_user` {
 		t.Errorf("checkAQL = %q", p2.CheckAQL)
+	}
+}
+
+func TestPolicyMultipleCommands(t *testing.T) {
+	ir := resolveSrc(t, `
+type Event {
+  required topic: str;
+  policy enforce_append_only for update, delete using ( false );
+}`)
+	ev := ir.ObjectTypes["Event"]
+	if ev == nil || len(ev.Policies) != 1 {
+		t.Fatalf("want 1 policy, got %+v", ev)
+	}
+	p := ev.Policies[0]
+	if p.Name != "enforce_append_only" {
+		t.Fatalf("policy = %+v", p)
+	}
+	if len(p.Commands) != 2 || p.Commands[0] != "update" || p.Commands[1] != "delete" {
+		t.Errorf("commands = %v, want [update delete]", p.Commands)
+	}
+	if p.UsingAQL != "false" {
+		t.Errorf("usingAQL = %q", p.UsingAQL)
 	}
 }
 
@@ -69,8 +91,12 @@ func TestPolicyErrors(t *testing.T) {
 	// Field-existence is validated at bridge/compile time, not here, so an unknown
 	// field does NOT error at resolve time (see the bridge policy tests).
 	cases := map[string]string{
-		"bad command": `type T { required a: str; policy p for frobnicate using ( .a = 1 ); }`,
-		"no clause":   `type T { required a: str; policy p for select; }`,
+		"bad command":         `type T { required a: str; policy p for frobnicate using ( .a = 1 ); }`,
+		"bad command in list": `type T { required a: str; policy p for update, frobnicate using ( .a = 1 ); }`,
+		"no clause":           `type T { required a: str; policy p for select; }`,
+		"check on delete":     `type T { required a: str; policy p for update, delete with check ( false ); }`,
+		"check on select":     `type T { required a: str; policy p for select with check ( false ); }`,
+		"using on insert":     `type T { required a: str; policy p for insert using ( .a = 1 ); }`,
 	}
 	for name, src := range cases {
 		sf, err := Parse([]byte(src))

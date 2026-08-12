@@ -65,6 +65,47 @@ type Doc {
 	}
 }
 
+func TestPolicyMultipleCommandsLowerToSeparateStatements(t *testing.T) {
+	pols, err := lowerPolicies(t, `
+type Event {
+  required topic: str;
+  policy enforce_append_only for update, delete using ( false );
+}`)
+	if err != nil {
+		t.Fatalf("lower: %v", err)
+	}
+	if len(pols) != 2 {
+		t.Fatalf("want 2 policies (one per command), got %d", len(pols))
+	}
+
+	byName := map[string]string{}
+	for _, p := range pols {
+		byName[p.Name] = p.CreateSQL
+	}
+
+	up, ok := byName["event.enforce_append_only_update"]
+	if !ok {
+		t.Fatalf("missing update policy; got %v", byName)
+	}
+	if !strings.Contains(up, `CREATE POLICY "enforce_append_only_update" ON "event" FOR UPDATE`) {
+		t.Errorf("update policy wrong:\n%s", up)
+	}
+	if !strings.Contains(up, `USING (false)`) {
+		t.Errorf("update policy missing using:\n%s", up)
+	}
+
+	del, ok := byName["event.enforce_append_only_delete"]
+	if !ok {
+		t.Fatalf("missing delete policy; got %v", byName)
+	}
+	if !strings.Contains(del, `CREATE POLICY "enforce_append_only_delete" ON "event" FOR DELETE`) {
+		t.Errorf("delete policy wrong:\n%s", del)
+	}
+	if !strings.Contains(del, `USING (false)`) {
+		t.Errorf("delete policy missing using:\n%s", del)
+	}
+}
+
 func TestPolicyRequiredGlobalFailsClosed(t *testing.T) {
 	pols, err := lowerPolicies(t, `
 global required tenant: uuid;

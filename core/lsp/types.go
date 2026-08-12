@@ -73,12 +73,13 @@ type Hover struct {
 type CompletionKind int
 
 const (
-	CompletionKindFunction CompletionKind = 3
-	CompletionKindField    CompletionKind = 5
-	CompletionKindVariable CompletionKind = 6
-	CompletionKindClass    CompletionKind = 7
-	CompletionKindEnum     CompletionKind = 13
-	CompletionKindKeyword  CompletionKind = 14
+	CompletionKindFunction   CompletionKind = 3
+	CompletionKindField      CompletionKind = 5
+	CompletionKindVariable   CompletionKind = 6
+	CompletionKindClass      CompletionKind = 7
+	CompletionKindEnum       CompletionKind = 13
+	CompletionKindKeyword    CompletionKind = 14
+	CompletionKindEnumMember CompletionKind = 20
 )
 
 // CompletionItem is one suggestion.

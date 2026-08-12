@@ -94,14 +94,14 @@ type Member struct {
 //	policy hide_expired for select using ( .expires_at is null or .expires_at >= now() );
 //	policy owner_only for all to app_user using ( .owner = current_user ) with check ( .owner = current_user );
 type PolicyDecl struct {
-	Pos     lexer.Position
-	Name    string      `parser:"'policy' @Ident"`
-	Command string      `parser:"'for' @Ident"`
-	Roles   []string    `parser:"( 'to' @Ident ( ',' @Ident )* )?"`
-	Using   *PolicyExpr `parser:"( 'using' '(' @@ ')' )?"`
-	Check   *PolicyExpr `parser:"( 'with' 'check' '(' @@ ')' )?"`
-	End     string      `parser:"';'"`
-	EndPos  lexer.Position
+	Pos      lexer.Position
+	Name     string      `parser:"'policy' @Ident"`
+	Commands []string    `parser:"'for' @Ident ( ',' @Ident )*"`
+	Roles    []string    `parser:"( 'to' @Ident ( ',' @Ident )* )?"`
+	Using    *PolicyExpr `parser:"( 'using' '(' @@ ')' )?"`
+	Check    *PolicyExpr `parser:"( 'with' 'check' '(' @@ ')' )?"`
+	End      string      `parser:"';'"`
+	EndPos   lexer.Position
 }
 
 // FieldDecl covers both property and link declarations.
@@ -225,15 +225,19 @@ type ComputedDecl struct {
 	Parts []string `parser:"@( Ident | '.' | '??' | String | Int )+ ';'"`
 }
 
-// ConstraintDecl declares an constraint on one or more properties.
+// ConstraintDecl declares an constraint on one or more properties. An optional
+// `filter` predicate makes an exclusive constraint partial, lowering to a
+// `CREATE UNIQUE INDEX … WHERE <predicate>`.
 //
 //	constraint <expression> on (.email);
 //	constraint <expression> on (.active, .age);
+//	constraint exclusive on (.name, .actor) filter .status = QueueStatus.Pending;
 type ConstraintDecl struct {
 	Pos        lexer.Position
-	Expression string   `parser:"'constraint' @Ident"`
-	Args       []string `parser:"( '(' @( Ident | Int | String ) ( ',' @( Ident | Int | String ) )* ')' )?"`
-	Fields     []string `parser:"'on' '(' '.' @Ident ( ',' '.' @Ident )* ')' ';'"`
+	Expression string                `parser:"'constraint' @Ident"`
+	Args       []string              `parser:"( '(' @( Ident | Int | String ) ( ',' @( Ident | Int | String ) )* ')' )?"`
+	Fields     []string              `parser:"'on' '(' '.' @Ident ( ',' '.' @Ident )* ')'"`
+	Filter     *ConstraintFilterExpr `parser:"( 'filter' @@ )? ';'"`
 }
 
 // IndexDecl declares an index on one or more properties.

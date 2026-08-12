@@ -18,8 +18,11 @@ func genMigrationFull(t *testing.T, oldSchema, newSchema string) (up, down strin
 	var oldExts []axel.Extension
 	if strings.TrimSpace(oldSchema) != "" {
 		ir := parseSchema(t, oldSchema)
-		oldModels = axel.SchemaIRToModels(ir)
 		var err error
+		oldModels, err = axel.SchemaIRToModels(ir)
+		if err != nil {
+			t.Fatalf("lower old models: %v", err)
+		}
 		oldFns, oldTrigs, err = axel.SchemaIRToFunctionsAndTriggers(ir)
 		if err != nil {
 			t.Fatalf("lower old: %v", err)
@@ -27,7 +30,10 @@ func genMigrationFull(t *testing.T, oldSchema, newSchema string) (up, down strin
 		oldExts = axel.SchemaIRToExtensions(ir)
 	}
 	newIR := parseSchema(t, newSchema)
-	newModels := axel.SchemaIRToModels(newIR)
+	newModels, err := axel.SchemaIRToModels(newIR)
+	if err != nil {
+		t.Fatalf("lower new models: %v", err)
+	}
 	newFns, newTrigs, err := axel.SchemaIRToFunctionsAndTriggers(newIR)
 	if err != nil {
 		t.Fatalf("lower new: %v", err)

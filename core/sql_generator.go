@@ -203,24 +203,48 @@ func lengthCheckClauses(tableName string, field Field) []string {
 	return clauses
 }
 
-// indexName builds a deterministic index name from a table and its columns.
-func indexName(tableName string, columns []string) string {
-	parts := append([]string{"idx", lo.SnakeCase(tableName)}, columns...)
+// indexName builds a deterministic index name from a table and its columns. A
+// unique index uses a `uq_` prefix so a partial unique index and a plain index
+// on the same columns don't collide.
+func indexName(tableName string, idx Index) string {
+	prefix := "idx"
+	if idx.Unique {
+		prefix = "uq"
+	}
+	parts := append([]string{prefix, lo.SnakeCase(tableName)}, idx.Columns...)
 	return strings.Join(parts, "_")
 }
 
-// createIndexSQL builds a CREATE INDEX statement for the given table and columns.
-func createIndexSQL(tableName string, columns []string) string {
-	cols := make([]string, len(columns))
-	for i, c := range columns {
+// indexKey is the diff identity of an index: its name plus the properties that,
+// if changed, require dropping and recreating it (uniqueness and any partial
+// predicate). Two indexes with the same name but a different filter are distinct
+// objects, so a filter change surfaces as a drop-old + add-new.
+func indexKey(tableName string, idx Index) string {
+	return fmt.Sprintf("%s|unique=%t|where=%s", indexName(tableName, idx), idx.Unique, idx.WhereSQL)
+}
+
+// createIndexSQL builds a CREATE [UNIQUE] INDEX statement for the given table
+// and index, appending a WHERE clause when the index is partial.
+func createIndexSQL(tableName string, idx Index) string {
+	cols := make([]string, len(idx.Columns))
+	for i, c := range idx.Columns {
 		cols[i] = formatIdentifier(c)
 	}
-	return fmt.Sprintf(
-		"CREATE INDEX IF NOT EXISTS %s ON %s (%s);",
-		formatIdentifier(indexName(tableName, columns)),
+	unique := ""
+	if idx.Unique {
+		unique = "UNIQUE "
+	}
+	sql := fmt.Sprintf(
+		"CREATE %sINDEX IF NOT EXISTS %s ON %s (%s)",
+		unique,
+		formatIdentifier(indexName(tableName, idx)),
 		formatIdentifier(tableName),
 		strings.Join(cols, ", "),
 	)
+	if idx.WhereSQL != "" {
+		sql += fmt.Sprintf(" WHERE (%s)", idx.WhereSQL)
+	}
+	return sql + ";"
 }
 
 // namedConstraint renders `CONSTRAINT "<name>" <body>`, quoting the name. Used so
@@ -318,7 +342,7 @@ func generateIndexes(model Model) []string {
 		if len(idx.Columns) == 0 {
 			continue
 		}
-		statements = append(statements, createIndexSQL(model.Name, idx.Columns))
+		statements = append(statements, createIndexSQL(model.Name, idx))
 	}
 	return statements
 }

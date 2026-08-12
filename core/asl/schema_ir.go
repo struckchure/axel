@@ -57,7 +57,7 @@ type ResolvedType struct {
 // the asl package free of any AQL/compiler dependency.
 type ResolvedPolicy struct {
 	Name     string
-	Command  string   // "select" | "insert" | "update" | "delete" | "all"
+	Commands []string // each one of "select" | "insert" | "update" | "delete" | "all"
 	Roles    []string // target roles; empty → PUBLIC
 	UsingAQL string   // raw AQL USING predicate; "" if none
 	CheckAQL string   // raw AQL WITH CHECK predicate; "" if none
@@ -159,4 +159,6 @@ type ResolvedTypeConstraint struct {
 	Expression string   // "exclusive", "pk", "min_length", "max_length"
 	Args       []string // e.g. ["6"] for length constraints
 	Columns    []string // snake_case column names the constraint applies to
+	FilterAQL  string   // raw AQL partial predicate; "" if not partial. Lowered
+	// to a `CREATE UNIQUE INDEX … WHERE` in the migration bridge.
 }

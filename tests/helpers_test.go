@@ -38,7 +38,11 @@ func resolveErr(t *testing.T, schema string) error {
 // parseToModels resolves a schema into the legacy []Model form.
 func parseToModels(t *testing.T, schema string) []axel.Model {
 	t.Helper()
-	return axel.SchemaIRToModels(parseSchema(t, schema))
+	models, err := axel.SchemaIRToModels(parseSchema(t, schema))
+	if err != nil {
+		t.Fatalf("SchemaIRToModels: %v", err)
+	}
+	return models
 }
 
 // genUp returns the up-migration SQL for a schema built from an empty baseline.

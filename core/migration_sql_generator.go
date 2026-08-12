@@ -164,16 +164,16 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 
 		case AddIndex:
 			index := change.NewValue.(Index)
-			up := createIndexSQL(change.ModelName, index.Columns)
-			down := fmt.Sprintf("DROP INDEX IF EXISTS %s;", formatIdentifier(indexName(change.ModelName, index.Columns)))
+			up := createIndexSQL(change.ModelName, index)
+			down := fmt.Sprintf("DROP INDEX IF EXISTS %s;", formatIdentifier(indexName(change.ModelName, index)))
 
 			upStatements = append(upStatements, up)
 			downStatements = append(downStatements, down)
 
 		case DropIndex:
 			index := change.OldValue.(Index)
-			up := fmt.Sprintf("DROP INDEX IF EXISTS %s;", formatIdentifier(indexName(change.ModelName, index.Columns)))
-			down := createIndexSQL(change.ModelName, index.Columns)
+			up := fmt.Sprintf("DROP INDEX IF EXISTS %s;", formatIdentifier(indexName(change.ModelName, index)))
+			down := createIndexSQL(change.ModelName, index)
 
 			upStatements = append(upStatements, up)
 			downStatements = append(downStatements, down)

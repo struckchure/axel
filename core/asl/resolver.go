@@ -262,6 +262,9 @@ func (r *Resolver) resolveMember(m *Member, rt *ResolvedType, ir *SchemaIR) erro
 			Expression: m.Constraint.Expression,
 			Args:       m.Constraint.Args,
 		}
+		if m.Constraint.Filter != nil {
+			tc.FilterAQL = m.Constraint.Filter.AQL()
+		}
 		for _, f := range m.Constraint.Fields {
 			tc.Columns = append(tc.Columns, toSnakeCase(f))
 		}
@@ -288,14 +291,18 @@ func (r *Resolver) resolveMember(m *Member, rt *ResolvedType, ir *SchemaIR) erro
 // the same way inline trigger AQL bodies are handled. rt is unused here for that
 // reason.
 func (r *Resolver) resolvePolicy(pd *PolicyDecl, _ *ResolvedType) (*ResolvedPolicy, error) {
-	cmd := strings.ToLower(pd.Command)
-	switch cmd {
-	case "select", "insert", "update", "delete", "all":
-	default:
-		return nil, fmt.Errorf("policy %q: invalid command %q (want select|insert|update|delete|all)", pd.Name, pd.Command)
+	commands := make([]string, 0, len(pd.Commands))
+	for _, raw := range pd.Commands {
+		cmd := strings.ToLower(raw)
+		switch cmd {
+		case "select", "insert", "update", "delete", "all":
+		default:
+			return nil, fmt.Errorf("policy %q: invalid command %q (want select|insert|update|delete|all)", pd.Name, raw)
+		}
+		commands = append(commands, cmd)
 	}
 
-	pol := &ResolvedPolicy{Name: pd.Name, Command: cmd, Roles: pd.Roles}
+	pol := &ResolvedPolicy{Name: pd.Name, Commands: commands, Roles: pd.Roles}
 	if pd.Using != nil {
 		pol.UsingAQL = pd.Using.AQL()
 	}
@@ -304,6 +311,20 @@ func (r *Resolver) resolvePolicy(pd *PolicyDecl, _ *ResolvedType) (*ResolvedPoli
 	}
 	if pol.UsingAQL == "" && pol.CheckAQL == "" {
 		return nil, fmt.Errorf("policy %q: needs a using ( … ) or with check ( … ) clause", pd.Name)
+	}
+
+	// Postgres restricts which clauses each command accepts. `using` reads existing
+	// rows (select/update/delete); `with check` validates new rows (insert/update).
+	// Reject invalid combinations here so a multi-command policy that expands to an
+	// illegal CREATE POLICY (e.g. `for delete with check`) fails at validate time
+	// rather than at apply time.
+	for _, cmd := range commands {
+		if pol.CheckAQL != "" && cmd != "insert" && cmd != "update" && cmd != "all" {
+			return nil, fmt.Errorf("policy %q: `with check` is not allowed for %s (Postgres allows it only on insert, update, all)", pd.Name, cmd)
+		}
+		if pol.UsingAQL != "" && cmd != "select" && cmd != "update" && cmd != "delete" && cmd != "all" {
+			return nil, fmt.Errorf("policy %q: `using` is not allowed for %s (Postgres allows it only on select, update, delete, all)", pd.Name, cmd)
+		}
 	}
 	return pol, nil
 }

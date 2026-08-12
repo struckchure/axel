@@ -44,7 +44,10 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 
 	// Convert to legacy []Model for the existing migration SQL generator.
 	// OnTarget.Type is already resolved inside SchemaIRToModels.
-	currentSchema := SchemaIRToModels(ir)
+	currentSchema, err := SchemaIRToModels(ir)
+	if err != nil {
+		return fmt.Errorf("failed to lower schema: %w", err)
+	}
 
 	// Lower rewrites/triggers/functions to flat SQL.
 	currentFns, currentTrigs, err := SchemaIRToFunctionsAndTriggers(ir)

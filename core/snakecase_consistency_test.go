@@ -48,7 +48,10 @@ type Org2 {
 	}
 
 	// 2. The physical CREATE TABLE (DDL layer, via SchemaIRToModels + generateTable).
-	models := SchemaIRToModels(ir)
+	models, err := SchemaIRToModels(ir)
+	if err != nil {
+		t.Fatalf("SchemaIRToModels: %v", err)
+	}
 	abstract := map[string]Model{}
 	var org2 *Model
 	for i := range models {

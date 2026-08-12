@@ -5,3 +5,7 @@
 ; expression.
 ((aql_block) @injection.content
   (#set! injection.language "aql"))
+
+; A constraint's `filter <predicate>` is an unparenthesized AQL predicate.
+((filter_predicate) @injection.content
+  (#set! injection.language "aql"))

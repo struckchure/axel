@@ -20,6 +20,28 @@ type Account {
 	}
 }
 
+func TestPartialUniqueConstraint(t *testing.T) {
+	up := genUp(t, `
+enum QueueStatus { Pending, Done }
+type Job {
+  required id: uuid { constraint pk; };
+  required name: str;
+  required actor: str;
+  required status: QueueStatus;
+  constraint exclusive on (.name, .actor) filter .status = QueueStatus.Pending;
+}
+`)
+	// A filtered exclusive lowers to a partial UNIQUE INDEX (Postgres cannot put a
+	// WHERE on a table constraint), not an inline CONSTRAINT ... UNIQUE.
+	want := `CREATE UNIQUE INDEX IF NOT EXISTS "uq_job_name_actor" ON "job" ("name", "actor") WHERE (status = 'Pending');`
+	if !strings.Contains(up, want) {
+		t.Errorf("up SQL missing partial unique index:\n%s", up)
+	}
+	if strings.Contains(up, `CONSTRAINT "uq_job_name_actor"`) {
+		t.Errorf("filtered exclusive should not emit a table constraint:\n%s", up)
+	}
+}
+
 func TestCompositePrimaryKeyConstraint(t *testing.T) {
 	up := genUp(t, `
 type Thing {

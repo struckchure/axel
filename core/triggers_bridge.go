@@ -60,24 +60,35 @@ func SchemaIRToPolicies(ir *asl.SchemaIR) ([]Policy, error) {
 				return nil, fmt.Errorf("policy %q on %q with check: %w", pol.Name, name, err)
 			}
 
-			var b strings.Builder
-			fmt.Fprintf(&b, "ALTER TABLE %q ENABLE ROW LEVEL SECURITY;\n", table)
-			fmt.Fprintf(&b, "CREATE POLICY %q ON %q FOR %s", pol.Name, table, strings.ToUpper(pol.Command))
-			if len(pol.Roles) > 0 {
-				fmt.Fprintf(&b, " TO %s", strings.Join(pol.Roles, ", "))
+			// Postgres CREATE POLICY takes a single command, so a policy that
+			// targets several (for update, delete) lowers to one statement per
+			// command. Suffix the name per command only when there is more than
+			// one, so single-command policies keep their declared name.
+			for _, cmd := range pol.Commands {
+				name := pol.Name
+				if len(pol.Commands) > 1 {
+					name = pol.Name + "_" + cmd
+				}
+
+				var b strings.Builder
+				fmt.Fprintf(&b, "ALTER TABLE %q ENABLE ROW LEVEL SECURITY;\n", table)
+				fmt.Fprintf(&b, "CREATE POLICY %q ON %q FOR %s", name, table, strings.ToUpper(cmd))
+				if len(pol.Roles) > 0 {
+					fmt.Fprintf(&b, " TO %s", strings.Join(pol.Roles, ", "))
+				}
+				if usingSQL != "" {
+					fmt.Fprintf(&b, " USING (%s)", usingSQL)
+				}
+				if checkSQL != "" {
+					fmt.Fprintf(&b, " WITH CHECK (%s)", checkSQL)
+				}
+				b.WriteString(";")
+				pols = append(pols, Policy{
+					Name:      table + "." + name,
+					CreateSQL: b.String(),
+					DropSQL:   fmt.Sprintf("DROP POLICY IF EXISTS %q ON %q;", name, table),
+				})
 			}
-			if usingSQL != "" {
-				fmt.Fprintf(&b, " USING (%s)", usingSQL)
-			}
-			if checkSQL != "" {
-				fmt.Fprintf(&b, " WITH CHECK (%s)", checkSQL)
-			}
-			b.WriteString(";")
-			pols = append(pols, Policy{
-				Name:      table + "." + pol.Name,
-				CreateSQL: b.String(),
-				DropSQL:   fmt.Sprintf("DROP POLICY IF EXISTS %q ON %q;", pol.Name, table),
-			})
 		}
 	}
 	return pols, nil

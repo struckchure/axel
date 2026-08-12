@@ -288,10 +288,10 @@ func diffIndexes(oldModel, newModel Model) []SchemaChange {
 	newIndexes := make(map[string]Index)
 
 	for _, idx := range oldModel.Indexes {
-		oldIndexes[indexName(oldModel.Name, idx.Columns)] = idx
+		oldIndexes[indexKey(oldModel.Name, idx)] = idx
 	}
 	for _, idx := range newModel.Indexes {
-		newIndexes[indexName(newModel.Name, idx.Columns)] = idx
+		newIndexes[indexKey(newModel.Name, idx)] = idx
 	}
 
 	// Added indexes.

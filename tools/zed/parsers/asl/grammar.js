@@ -186,6 +186,7 @@ module.exports = grammar({
       ),
 
     // constraint exclusive on (.email, .tenant_id);
+    // constraint exclusive on (.name, .actor) filter .status = Status.Pending;
     constraint: ($) =>
       seq(
         "constraint",
@@ -196,7 +197,39 @@ module.exports = grammar({
         $._field_ref,
         repeat(seq(",", $._field_ref)),
         ")",
+        optional(seq("filter", field("filter", $.filter_predicate))),
         ";",
+      ),
+
+    // An unparenthesized predicate that runs to the statement's `;`. Not parsed
+    // structurally — this just brackets the span; the compiler parses the AQL.
+    filter_predicate: ($) => repeat1($._filter_token),
+
+    _filter_token: ($) =>
+      choice(
+        $.aql_block,
+        $.dollar_string,
+        $.identifier,
+        $.string,
+        $.integer,
+        ".",
+        ",",
+        ":=",
+        "??",
+        "{",
+        "}",
+        ":",
+        "$",
+        "*",
+        "=",
+        "!=",
+        "<",
+        ">",
+        "<=",
+        ">=",
+        "@",
+        "?",
+        "|",
       ),
 
     // index on (.email, .age);
@@ -240,6 +273,7 @@ module.exports = grammar({
         field("name", $.field_identifier),
         "for",
         field("command", $.identifier),
+        repeat(seq(",", field("command", $.identifier))),
         optional(
           seq("to", field("role", $.identifier), repeat(seq(",", field("role", $.identifier)))),
         ),

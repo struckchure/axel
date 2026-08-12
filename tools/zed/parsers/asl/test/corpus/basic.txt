@@ -148,3 +148,36 @@ global required tz: str;
       (identifier))
     type: (type_identifier
       (identifier))))
+
+==================
+multi-command policy and partial constraint
+==================
+
+type Event {
+  policy append_only for update, delete with check ( false );
+  constraint exclusive on (.name, .actor) filter .status = QueueStatus.Pending;
+}
+
+---
+
+(source_file
+  (type_definition
+    name: (type_identifier
+      (identifier))
+    (policy
+      name: (field_identifier
+        (identifier))
+      command: (identifier)
+      command: (identifier)
+      check: (aql_block
+        (identifier)))
+    (constraint
+      name: (identifier)
+      field: (field_identifier
+        (identifier))
+      field: (field_identifier
+        (identifier))
+      filter: (filter_predicate
+        (identifier)
+        (identifier)
+        (identifier)))))

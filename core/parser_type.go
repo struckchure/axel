@@ -1,6 +1,8 @@
 package axel
 
 import (
+	"fmt"
+
 	"github.com/struckchure/axel/core/asl"
 )
 
@@ -13,9 +15,13 @@ type Model struct {
 	Constraints []TypeConstraint
 }
 
-// Index is an index over one or more columns of a model.
+// Index is an index over one or more columns of a model. A partial unique index
+// (Unique with a WhereSQL predicate) is how a filtered `constraint exclusive …
+// filter …` is lowered, since Postgres cannot put a WHERE on a table constraint.
 type Index struct {
-	Columns []string
+	Columns  []string
+	Unique   bool
+	WhereSQL string // compiled SQL predicate for a partial index; "" if not partial
 }
 
 // TypeConstraint is a type-level constraint spanning one or more columns
@@ -53,7 +59,7 @@ type Constraint struct {
 //
 // Inheritance is already flattened in SchemaIR, so all models are emitted with
 // their full field set and no Extends value.
-func SchemaIRToModels(ir *asl.SchemaIR) []Model {
+func SchemaIRToModels(ir *asl.SchemaIR) ([]Model, error) {
 	var models []Model
 
 	for _, rt := range ir.ObjectTypes {
@@ -123,7 +129,23 @@ func SchemaIRToModels(ir *asl.SchemaIR) []Model {
 		}
 
 		// Type-level constraints → composite UNIQUE / PRIMARY KEY / length CHECK.
+		// A filtered `exclusive` is a partial unique constraint, which Postgres
+		// can only express as a `CREATE UNIQUE INDEX … WHERE`; route it through
+		// the index path with the predicate compiled to SQL (same lowering as
+		// policy predicates: target columns unqualified).
 		for _, tc := range rt.Constraints {
+			if tc.Expression == "exclusive" && tc.FilterAQL != "" {
+				whereSQL, err := compilePolicyPredicate(tc.FilterAQL, rt, ir)
+				if err != nil {
+					return nil, fmt.Errorf("constraint on %q filter: %w", rt.Name, err)
+				}
+				model.Indexes = append(model.Indexes, Index{
+					Columns:  append([]string(nil), tc.Columns...),
+					Unique:   true,
+					WhereSQL: whereSQL,
+				})
+				continue
+			}
 			model.Constraints = append(model.Constraints, TypeConstraint{
 				Expression: tc.Expression,
 				Args:       append([]string(nil), tc.Args...),
@@ -134,7 +156,7 @@ func SchemaIRToModels(ir *asl.SchemaIR) []Model {
 		models = append(models, model)
 	}
 
-	return models
+	return models, nil
 }
 
 // sqlTypeToASLType is the reverse of the SQL type map: SQL type → ASL type name.

@@ -83,6 +83,16 @@
           }
         ]
       },
+      "filter": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "filter_predicate",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -285,6 +295,37 @@
     }
   },
   {
+    "type": "filter_predicate",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "aql_block",
+          "named": true
+        },
+        {
+          "type": "dollar_string",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "function_definition",
     "named": true,
     "fields": {
@@ -481,7 +522,7 @@
         ]
       },
       "command": {
-        "multiple": false,
+        "multiple": true,
         "required": true,
         "types": [
           {
@@ -1016,6 +1057,10 @@
   },
   {
     "type": "extension",
+    "named": false
+  },
+  {
+    "type": "filter",
     "named": false
   },
   {

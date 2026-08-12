@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"strings"
+
 	"github.com/struckchure/axel/core/aql"
 	"github.com/struckchure/axel/core/asl"
 )
@@ -16,7 +18,7 @@ var aqlOperatorKeywords = []string{"and", "or", "in", "like", "ilike", "asc", "d
 var aslKeywords = []string{
 	"scalar", "type", "model", "enum", "abstract", "extends", "extending",
 	"required", "multi", "single", "property", "link", "constraint", "index",
-	"on", "computed", "default",
+	"on", "filter", "computed", "default",
 	"rewrite", "trigger", "function", "before", "after", "do", "execute",
 	"when", "for", "each", "row", "statement", "language", "body",
 	// Row-level security policies
@@ -33,12 +35,23 @@ var aslKeywords = []string{
 // given byte offset, resolved against the workspace schema (may be nil).
 func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []CompletionItem {
 	wStart := wordStart(text, offset)
-	prev, _ := prevSignificant(text, wStart)
+	prev, prevIdx := prevSignificant(text, wStart)
 	pw := prevWord(text, wStart)
 
 	switch {
 	case prev == '.':
+		// `EnumName.` completes enum members; otherwise the query type's fields.
+		if items := enumMemberCompletions(text, prevIdx, schema); items != nil {
+			return items
+		}
 		return fieldCompletions(text, schema)
+	case prev == '=':
+		// Right-hand side of a comparison (`=`, `!=`, `<=`, `>=`) whose left side
+		// is an enum-typed field → suggest that enum's members.
+		if items := enumComparisonCompletions(text, prevIdx, schema); items != nil {
+			return items
+		}
+		return append(keywordItems(aqlStatementKeywords), keywordItems(aqlOperatorKeywords)...)
 	case prev == '<':
 		return typeAnnotationCompletions(schema)
 	case pw == "select" || pw == "insert" || pw == "update" || pw == "delete":
@@ -63,9 +76,14 @@ func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []Completion
 // `:` annotation or `extending`, otherwise schema keywords.
 func SchemaCompletion(text string, offset int, schema *asl.SchemaIR) []CompletionItem {
 	wStart := wordStart(text, offset)
-	prev, _ := prevSignificant(text, wStart)
+	prev, prevIdx := prevSignificant(text, wStart)
 	pw := prevWord(text, wStart)
 
+	// `default := Enum.` (and any `EnumName.` such as a constraint filter RHS)
+	// completes that enum's members.
+	if prev == '.' {
+		return enumMemberCompletions(text, prevIdx, schema)
+	}
 	if prev == ':' || pw == "extending" || pw == "extends" {
 		items := make([]CompletionItem, 0, len(builtinScalars))
 		for _, b := range builtinScalars {
@@ -142,6 +160,61 @@ func typeAnnotationCompletions(schema *asl.SchemaIR) []CompletionItem {
 		for _, name := range sortedKeys(schema.ScalarTypes) {
 			items = append(items, CompletionItem{Label: name, Detail: "scalar", Kind: CompletionKindClass})
 		}
+	}
+	return items
+}
+
+// enumMemberCompletions returns the members of the enum named immediately before
+// the dot at dotIdx (e.g. the `QueueStatus` in `QueueStatus.`), or nil if that
+// identifier is not a known enum type.
+func enumMemberCompletions(text string, dotIdx int, schema *asl.SchemaIR) []CompletionItem {
+	if schema == nil || dotIdx < 0 {
+		return nil
+	}
+	enum, ok := schema.EnumTypes[prevWord(text, dotIdx)]
+	if !ok {
+		return nil
+	}
+	return enumValueItems(enum, "")
+}
+
+// enumComparisonCompletions handles the RHS of a comparison operator ending at
+// opIdx: if the compared field is enum-typed, it suggests the enum's members as
+// qualified `Enum.Value` labels. Returns nil when the field isn't enum-typed.
+func enumComparisonCompletions(text string, opIdx int, schema *asl.SchemaIR) []CompletionItem {
+	if schema == nil || opIdx < 0 {
+		return nil
+	}
+	// Step left over the operator run (=, !=, <=, >=) to the field being compared.
+	i := opIdx
+	for i >= 0 && strings.IndexByte("=!<>", text[i]) >= 0 {
+		i--
+	}
+	field := prevWord(text, i+1)
+	if field == "" {
+		return nil
+	}
+	rt := queryType(text, schema)
+	if rt == nil {
+		return nil
+	}
+	p, ok := rt.Properties[field]
+	if !ok || p.EnumType == "" {
+		return nil
+	}
+	enum, ok := schema.EnumTypes[p.EnumType]
+	if !ok {
+		return nil
+	}
+	return enumValueItems(enum, p.EnumType+".")
+}
+
+// enumValueItems renders an enum's members as completion items, each label
+// carrying the given prefix (e.g. "Status." for a qualified suggestion).
+func enumValueItems(enum *asl.ResolvedEnum, prefix string) []CompletionItem {
+	items := make([]CompletionItem, 0, len(enum.Values))
+	for _, v := range enum.Values {
+		items = append(items, CompletionItem{Label: prefix + v, Detail: enum.Name, Kind: CompletionKindEnumMember})
 	}
 	return items
 }
