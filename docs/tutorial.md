@@ -164,11 +164,11 @@ docker compose up -d
 
 ## Step 5 — Generate and apply the first migration
 
-`axel generate` diffs your schema against the last migration and writes a new
+`axel diff` diffs your schema against the last migration and writes a new
 one. On a fresh project that diff is "create everything":
 
 ```sh
-axel -d . generate -n "initial schema"
+axel -d . diff -n "initial schema"
 ```
 
 This writes a versioned migration folder:
@@ -229,7 +229,7 @@ axel -d . status
 
 ::: tip Rolling back
 `axel -d . down 1` reverts the last migration using its `down.sql`. Edit the
-schema and re-run `generate` to produce `0002`, and so on.
+schema and re-run `diff` to produce `0002`, and so on.
 :::
 
 ---
@@ -530,12 +530,12 @@ You went from an empty folder to a working, type-safe data layer:
 
 1. **`axel.yaml` + `schema.asl`** — declared the project and its types.
 2. **`axel validate`** — checked the schema with no database.
-3. **`axel generate` + `axel up`** — turned the schema into migration SQL and applied it.
+3. **`axel diff` + `axel up`** — turned the schema into migration SQL and applied it.
 4. **`.aql` files** — wrote queries, including a nested shape that avoids N+1.
 5. **`axel codegen`** — got typed TypeScript and Go clients.
 6. Called the generated `Runner` from a real program.
 
-The whole loop — edit schema → `generate` → `up`, edit queries → `codegen` — is
+The whole loop — edit schema → `diff` → `up`, edit queries → `codegen` — is
 what you repeat as the project grows.
 
 ## Next steps

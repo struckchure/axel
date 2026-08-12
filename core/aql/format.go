@@ -1,0 +1,301 @@
+package aql
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/alecthomas/participle/v2/lexer"
+)
+
+// Format parses an AQL statement and returns it re-printed in canonical form,
+// preserving `#` comments. It is safe: if the reformatted text fails to re-parse
+// or does not render back to the same structure as the input, the original
+// source is returned unchanged.
+func Format(src []byte) (string, error) {
+	stmt, err := Parse(src)
+	if err != nil {
+		return "", err
+	}
+	out := formatStmt(string(src), stmt)
+
+	stmt2, err := Parse([]byte(out))
+	if err != nil || Print(stmt) != Print(stmt2) {
+		return string(src), nil
+	}
+	return out, nil
+}
+
+// formatStmt renders a statement with comments from origSrc reattached.
+func formatStmt(origSrc string, stmt *Statement) string {
+	f := &aqlFmt{cmts: collectComments(origSrc)}
+	f.statement(stmt)
+	return f.done()
+}
+
+// aqlFmt accumulates formatted output line by line, mirroring the ASL formatter,
+// so trailing comments can be appended to the line they belong to.
+type aqlFmt struct {
+	out    strings.Builder
+	cur    strings.Builder
+	indent int
+	cmts   []comment
+	ci     int
+}
+
+type comment struct {
+	Text   string
+	Offset int
+	Own    bool
+}
+
+func (f *aqlFmt) w(s string)                 { f.cur.WriteString(s) }
+func (f *aqlFmt) wf(format string, a ...any) { fmt.Fprintf(&f.cur, format, a...) }
+
+func (f *aqlFmt) commit(trailingBefore int) {
+	for f.ci < len(f.cmts) && !f.cmts[f.ci].Own && f.cmts[f.ci].Offset < trailingBefore {
+		f.cur.WriteString("  " + f.cmts[f.ci].Text)
+		f.ci++
+	}
+	if f.cur.Len() > 0 {
+		f.out.WriteString(strings.Repeat("  ", f.indent))
+		f.out.WriteString(f.cur.String())
+	}
+	f.out.WriteByte('\n')
+	f.cur.Reset()
+}
+
+func (f *aqlFmt) leading(offset int) {
+	for f.ci < len(f.cmts) && f.cmts[f.ci].Offset < offset {
+		f.out.WriteString(strings.Repeat("  ", f.indent))
+		f.out.WriteString(f.cmts[f.ci].Text)
+		f.out.WriteByte('\n')
+		f.ci++
+	}
+}
+
+func (f *aqlFmt) done() string {
+	f.leading(1 << 30)
+	s := strings.TrimLeft(f.out.String(), "\n")
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
+	}
+	return strings.TrimRight(s, "\n") + "\n"
+}
+
+func (f *aqlFmt) statement(stmt *Statement) {
+	f.leading(stmt.Pos.Offset)
+	for _, d := range stmt.Directives {
+		f.wf("@%s %s", d.Name, d.Value)
+		f.commit(d.EndPos.Offset)
+	}
+	switch {
+	case stmt.Select != nil:
+		f.selectStmt(stmt.Select)
+	case stmt.Insert != nil:
+		f.insertStmt(stmt.Insert)
+	case stmt.Update != nil:
+		f.updateStmt(stmt.Update)
+	case stmt.Delete != nil:
+		f.deleteStmt(stmt.Delete)
+	}
+}
+
+func (f *aqlFmt) selectStmt(s *SelectStmt) {
+	if s.Multi {
+		f.w("multi ")
+	}
+	f.w("select ")
+	f.selectBody(s.Body)
+	f.w(";")
+	f.commit(1 << 30)
+}
+
+// selectBody renders an aggregate or object select. The object form may open a
+// multi-line shape; clauses (filter/order/limit/offset) follow on their own
+// lines. The caller appends the terminating ';' to the final line.
+func (f *aqlFmt) selectBody(body *SelectBody) {
+	if body.AggFunc != nil {
+		f.wf("%s(%s", body.AggFunc.Func, body.AggFunc.TypeName)
+		if body.AggFunc.Filter != nil {
+			f.w(" ")
+			printFilter(&f.cur, body.AggFunc.Filter)
+		}
+		f.w(")")
+		return
+	}
+	f.w(body.TypeName)
+	if body.Shape != nil {
+		f.w(" ")
+		f.shape(body.Shape)
+	}
+	if body.Filter != nil {
+		f.newlineClause()
+		printFilter(&f.cur, body.Filter)
+	}
+	for i, o := range body.OrderBy {
+		if i == 0 {
+			f.newlineClause()
+			f.w("order by ")
+		} else {
+			f.w(", ")
+		}
+		printExpr(&f.cur, o.Expr)
+		if o.Dir != "" {
+			f.wf(" %s", o.Dir)
+		}
+	}
+	if body.Limit != nil {
+		f.newlineClause()
+		f.w("limit ")
+		printExpr(&f.cur, body.Limit)
+	}
+	if body.Offset != nil {
+		f.newlineClause()
+		f.w("offset ")
+		printExpr(&f.cur, body.Offset)
+	}
+}
+
+// newlineClause commits the current line and starts the next clause at indent 0.
+func (f *aqlFmt) newlineClause() { f.commit(1 << 30) }
+
+func (f *aqlFmt) shape(s *Shape) {
+	f.w("{")
+	first := 1 << 30
+	if len(s.Fields) > 0 {
+		first = s.Fields[0].Pos.Offset
+	}
+	f.commit(first)
+	f.indent++
+	for i, fld := range s.Fields {
+		f.leading(fld.Pos.Offset)
+		f.shapeField(fld)
+		if i < len(s.Fields)-1 {
+			f.w(",")
+		}
+		next := 1 << 30
+		if i+1 < len(s.Fields) {
+			next = s.Fields[i+1].Pos.Offset
+		}
+		f.commit(next)
+	}
+	f.indent--
+	f.w("}")
+}
+
+func (f *aqlFmt) shapeField(fld *ShapeField) {
+	if fld.Star {
+		f.w("*")
+	} else {
+		f.w(fld.Name)
+	}
+	if fld.SubShape != nil {
+		f.w(": ")
+		f.shape(fld.SubShape)
+	}
+	if fld.Computed != nil {
+		f.w(" := ")
+		printExpr(&f.cur, fld.Computed)
+	}
+	if fld.AggFilter != nil {
+		f.w(" ")
+		printFilter(&f.cur, fld.AggFilter)
+	}
+}
+
+func (f *aqlFmt) insertStmt(s *InsertStmt) {
+	f.wf("insert %s {", s.TypeName)
+	f.assignmentBlock(s.Assignments)
+	f.w("}")
+	printConflict(&f.cur, s.Conflict)
+	f.w(";")
+	f.commit(1 << 30)
+}
+
+func (f *aqlFmt) updateStmt(s *UpdateStmt) {
+	f.wf("update %s", s.TypeName)
+	if s.Filter != nil {
+		f.w(" ")
+		printFilter(&f.cur, s.Filter)
+	}
+	f.commit(1 << 30)
+	f.w("set {")
+	f.assignmentBlock(s.Assignments)
+	f.w("};")
+	f.commit(1 << 30)
+}
+
+func (f *aqlFmt) deleteStmt(s *DeleteStmt) {
+	f.wf("delete %s", s.TypeName)
+	if s.Filter != nil {
+		f.w(" ")
+		printFilter(&f.cur, s.Filter)
+	}
+	f.w(";")
+	f.commit(1 << 30)
+}
+
+// assignmentBlock renders `field := expr` entries, one per indented line, between
+// an already-open `{` (on the current line) and a `}` the caller writes next.
+func (f *aqlFmt) assignmentBlock(as []*Assignment) {
+	first := 1 << 30
+	if len(as) > 0 {
+		first = as[0].Pos.Offset
+	}
+	f.commit(first)
+	f.indent++
+	for i, a := range as {
+		f.leading(a.Pos.Offset)
+		f.wf("%s := ", a.Field)
+		printExpr(&f.cur, a.Value)
+		if i < len(as)-1 {
+			f.w(",")
+		}
+		next := 1 << 30
+		if i+1 < len(as) {
+			next = as[i+1].Pos.Offset
+		}
+		f.commit(next)
+	}
+	f.indent--
+}
+
+// collectComments lexes src and returns its `#` comments in source order.
+func collectComments(src string) []comment {
+	if src == "" {
+		return nil
+	}
+	lex, err := aqlLexer.Lex("", strings.NewReader(src))
+	if err != nil {
+		return nil
+	}
+	toks, err := lexer.ConsumeAll(lex)
+	if err != nil {
+		return nil
+	}
+	ct, ok := aqlLexer.Symbols()["Comment"]
+	if !ok {
+		return nil
+	}
+	var out []comment
+	for _, t := range toks {
+		if t.Type != ct {
+			continue
+		}
+		out = append(out, comment{
+			Text:   strings.TrimRight(t.Value, " \t\r"),
+			Offset: t.Pos.Offset,
+			Own:    ownLine(src, t.Pos.Offset),
+		})
+	}
+	return out
+}
+
+func ownLine(src string, offset int) bool {
+	for i := offset - 1; i >= 0 && src[i] != '\n'; i-- {
+		if src[i] != ' ' && src[i] != '\t' && src[i] != '\r' {
+			return false
+		}
+	}
+	return true
+}

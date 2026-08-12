@@ -13,6 +13,7 @@ import (
 	glspserver "github.com/tliron/glsp/server"
 	"gopkg.in/yaml.v3"
 
+	"github.com/struckchure/axel/core/aql"
 	"github.com/struckchure/axel/core/asl"
 	corelsp "github.com/struckchure/axel/core/lsp"
 )
@@ -68,6 +69,7 @@ func (s *lspServer) handler() *protocol.Handler {
 	h.TextDocumentHover = s.hover
 	h.TextDocumentDefinition = s.definition
 	h.TextDocumentCompletion = s.completion
+	h.TextDocumentFormatting = s.formatting
 	return h
 }
 
@@ -82,10 +84,11 @@ func (s *lspServer) initialize(ctx *glsp.Context, params *protocol.InitializePar
 
 	syncFull := protocol.TextDocumentSyncKindFull
 	capabilities := protocol.ServerCapabilities{
-		TextDocumentSync:       syncFull,
-		HoverProvider:          true,
-		DefinitionProvider:     true,
-		DocumentSymbolProvider: true,
+		TextDocumentSync:           syncFull,
+		HoverProvider:              true,
+		DefinitionProvider:         true,
+		DocumentSymbolProvider:     true,
+		DocumentFormattingProvider: true,
 		CompletionProvider: &protocol.CompletionOptions{
 			TriggerCharacters: []string{".", "{", "$", "<"},
 		},
@@ -275,6 +278,35 @@ func (s *lspServer) definition(ctx *glsp.Context, params *protocol.DefinitionPar
 		return nil, nil
 	}
 	return protocol.Location{URI: protocol.DocumentUri(loc.URI), Range: toProtocolRange(loc.Range)}, nil
+}
+
+// formatting reformats the whole document, returning a single full-range edit.
+// A parse error or an already-formatted document yields no edits.
+func (s *lspServer) formatting(ctx *glsp.Context, params *protocol.DocumentFormattingParams) ([]protocol.TextEdit, error) {
+	defer recoverLog("formatting")
+	uri := params.TextDocument.URI
+	text, ok := s.getDoc(uri)
+	if !ok {
+		return nil, nil
+	}
+	var out string
+	var err error
+	switch {
+	case strings.HasSuffix(uriToPath(uri), ".asl"):
+		out, err = asl.Format([]byte(text))
+	case strings.HasSuffix(uriToPath(uri), ".aql"):
+		out, err = aql.Format([]byte(text))
+	default:
+		return nil, nil
+	}
+	if err != nil || out == text {
+		return nil, nil
+	}
+	end := corelsp.OffsetToPosition(text, len(text))
+	return []protocol.TextEdit{{
+		Range:   toProtocolRange(corelsp.Range{Start: corelsp.Position{Line: 0, Char: 0}, End: end}),
+		NewText: out,
+	}}, nil
 }
 
 func (s *lspServer) completion(ctx *glsp.Context, params *protocol.CompletionParams) (any, error) {

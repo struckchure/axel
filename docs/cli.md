@@ -59,14 +59,16 @@ axel --config axel.yaml <command>
 
 ## Schema commands
 
-### `axel generate`
+### `axel diff`
 
 Diffs the current `.asl` schema against the last migration and writes a new migration.
 
 ```sh
-axel generate --name "add users table"
-axel generate -n "add comments table"
+axel diff --name "add users table"
+axel diff -n "add comments table"
 ```
+
+> `axel generate` is a deprecated alias for `axel diff` and still works, printing a deprecation notice.
 
 | Flag     | Short | Description                              |
 |----------|-------|------------------------------------------|
@@ -214,6 +216,30 @@ WHERE u.active = $1 AND u.age >= $2;
 
 ---
 
+### `axel fmt`
+
+Formats `.asl` schema and `.aql` query files in canonical style, preserving comments. Paths may be files or directories (searched recursively); with no paths, the current directory is formatted.
+
+```sh
+# Print the formatted result to stdout
+axel fmt schema.asl
+
+# Rewrite files in place
+axel fmt -w .
+
+# CI check — exits non-zero and lists files that aren't formatted
+axel fmt --check .
+```
+
+| Flag      | Short | Description                                                        |
+|-----------|-------|--------------------------------------------------------------------|
+| `--write` | `-w`  | Write the result back to each file instead of stdout               |
+| `--check` |       | List files whose formatting differs and exit non-zero if any do    |
+
+Formatting is safe: if a reformatted file would not parse back to the same structure, the original is left untouched. Invalid source is reported as an error.
+
+---
+
 ### `axel codegen`
 
 Generates code from your schema and compiled AQL queries. See the [Code Generation](./codegen) guide for full details.
@@ -250,7 +276,7 @@ vim schema.asl
 axel -d . validate
 
 # 3. Generate and apply a migration
-axel -d . generate -n "initial schema"
+axel -d . diff -n "initial schema"
 axel -d . up
 
 # 4. Write queries

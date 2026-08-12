@@ -97,7 +97,7 @@ var initCmd = &cobra.Command{
 		fmt.Println("\nNext steps:")
 		fmt.Println("  1. Set your database URL in axel.yaml")
 		fmt.Println("  2. Edit the schema, then run: axel validate")
-		fmt.Println("  3. Generate a migration:      axel generate -n init")
+		fmt.Println("  3. Generate a migration:      axel diff -n init")
 		return nil
 	},
 }

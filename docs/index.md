@@ -36,7 +36,7 @@ features:
 
   - icon: 🛠️
     title: Migration lifecycle
-    details: axel generate diffs your schema, axel up applies it, axel down rolls it back. Migration history is tracked in a _axel_migrations table.
+    details: axel diff diffs your schema, axel up applies it, axel down rolls it back. Migration history is tracked in a _axel_migrations table.
 
   - icon: 🔒
     title: Row-level security
