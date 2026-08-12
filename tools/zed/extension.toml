@@ -16,11 +16,11 @@ languages = ["Axel Schema", "Axel Query"]
 # Zed clones into and manages itself). `rev` must point at a commit that contains
 # those sources — see tools/zed/README.md for the local `file://` dev workflow.
 [grammars.asl]
-repository = "file:///Users/mohammed/projects/axel"
+repository = "https://github.com/struckchure/axel"
 path = "tools/zed/parsers/asl"
 rev = "c58980e42274a77534d90d61518181933f817ee0"
 
 [grammars.aql]
-repository = "file:///Users/mohammed/projects/axel"
+repository = "https://github.com/struckchure/axel"
 path = "tools/zed/parsers/aql"
 rev = "c58980e42274a77534d90d61518181933f817ee0"
