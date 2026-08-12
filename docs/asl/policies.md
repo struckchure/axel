@@ -33,12 +33,14 @@ CREATE POLICY "hide_expired" ON "kv"
 ## Syntax
 
 ```
-policy <name> for <command> [to <role>, …] [using ( … )] [with check ( … )];
+policy <name> for <command>, … [to <role>, …] [using ( … )] [with check ( … )];
 ```
 
-- **`for <command>`** — one of `select`, `insert`, `update`, `delete`, or `all`
-  (Postgres allows a single command per policy; use `all`, or declare several
-  policies, to cover more).
+- **`for <command>, …`** — one or more of `select`, `insert`, `update`, `delete`,
+  or `all`. Postgres allows a single command per `CREATE POLICY`, so a list like
+  `for update, delete` **expands to one policy per command** — the generated
+  policies are suffixed (`<name>_update`, `<name>_delete`) to keep their names
+  unique. A single-command policy keeps its declared name.
 - **`to <role>, …`** — the roles the policy applies to. Omit for `PUBLIC`.
 - **`using ( … )`** — predicate for **existing** rows: which rows are visible to
   `SELECT`/`UPDATE`/`DELETE`. A row is visible when the predicate is true.
@@ -46,6 +48,32 @@ policy <name> for <command> [to <role>, …] [using ( … )] [with check ( … )
   `INSERT`/`UPDATE`; a write is rejected when it's false.
 
 At least one of `using` / `with check` is required.
+
+::: warning Which clause each command accepts
+Postgres restricts the clauses per command, and Axel validates this at
+`axel validate` / `axel diff` time (before it ever reaches the database):
+
+- `using` — `select`, `update`, `delete`, `all`
+- `with check` — `insert`, `update`, `all`
+
+So `policy p for delete with check ( … )` is rejected up front (a `DELETE` has no
+new row to check) — use `using ( … )` to block deletes instead. See the
+[append-only log example](/examples/append-only-log).
+:::
+
+A multi-command policy lowers to one statement per command:
+
+```asl
+type Event {
+  required topic: str;
+  policy append_only for update, delete using ( false );
+}
+```
+
+```sql
+CREATE POLICY "append_only_update" ON "event" FOR UPDATE USING (false);
+CREATE POLICY "append_only_delete" ON "event" FOR DELETE USING (false);
+```
 
 ## The predicate
 

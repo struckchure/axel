@@ -35,8 +35,20 @@ export default defineConfig({
           { text: "Slugs from titles", link: "/examples/slugs" },
           { text: "Multi-tenant row ownership", link: "/examples/multi-tenancy" },
           { text: "Expiring rows + cleanup", link: "/examples/expiring-rows" },
+          { text: "Append-only event log", link: "/examples/append-only-log" },
+          { text: "Job queue with a single claim", link: "/examples/job-queue" },
           { text: "Upserts", link: "/examples/upsert" },
           { text: "Nested data in one query", link: "/examples/nested-data" },
+        ],
+      },
+      {
+        text: "Integrations",
+        items: [
+          { text: "Overview", link: "/integrations/" },
+          { text: "Supabase", link: "/integrations/supabase" },
+          { text: "Neon", link: "/integrations/neon" },
+          { text: "TypeScript", link: "/integrations/typescript" },
+          { text: "Go", link: "/integrations/golang" },
         ],
       },
       {
@@ -178,8 +190,33 @@ export default defineConfig({
           { text: "Slugs from titles", link: "/examples/slugs" },
           { text: "Multi-tenant row ownership", link: "/examples/multi-tenancy" },
           { text: "Expiring rows + cleanup", link: "/examples/expiring-rows" },
+          { text: "Append-only event log", link: "/examples/append-only-log" },
+          { text: "Job queue with a single claim", link: "/examples/job-queue" },
           { text: "Upserts", link: "/examples/upsert" },
           { text: "Nested data in one query", link: "/examples/nested-data" },
+        ],
+      },
+      {
+        text: "Integrations",
+        collapsed: false,
+        items: [
+          { text: "Overview", link: "/integrations/" },
+          {
+            text: "Database providers",
+            collapsed: true,
+            items: [
+              { text: "Supabase", link: "/integrations/supabase" },
+              { text: "Neon", link: "/integrations/neon" },
+            ],
+          },
+          {
+            text: "Language clients",
+            collapsed: true,
+            items: [
+              { text: "TypeScript", link: "/integrations/typescript" },
+              { text: "Go", link: "/integrations/golang" },
+            ],
+          },
         ],
       },
       {
