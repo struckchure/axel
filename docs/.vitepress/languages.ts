@@ -13,6 +13,9 @@ export const asl: LanguageRegistration = {
   embeddedLangs: ["aql"],
   patterns: [
     { include: "#comment" },
+    // Inline AQL literals are AQL — must precede #string so the query's own
+    // quoted literals are highlighted by the embedded grammar, not the outer one.
+    { include: "#inline-aql" },
     { include: "#string" },
     { include: "#number" },
     // Policy predicates are AQL — must precede #keyword so `using (` opens the
@@ -92,6 +95,22 @@ export const asl: LanguageRegistration = {
       begin: "\\(",
       end: "\\)",
       patterns: [{ include: "#aql-parens" }, { include: "source.aql" }],
+    },
+    // An inline query in a function body: aql`delete KV filter …`. The interior
+    // is a whole AQL statement, so it embeds the AQL grammar; the compiler
+    // compiles it and inlines the resulting SQL as a string literal.
+    "inline-aql": {
+      begin: "\\b(aql)\\s*(`)",
+      beginCaptures: {
+        "1": { name: "keyword.declaration.asl" },
+        "2": { name: "punctuation.definition.string.begin.asl" },
+      },
+      end: "(`)",
+      endCaptures: {
+        "1": { name: "punctuation.definition.string.end.asl" },
+      },
+      contentName: "meta.embedded.block.aql",
+      patterns: [{ include: "source.aql" }],
     },
   },
 };
