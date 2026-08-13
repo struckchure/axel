@@ -79,7 +79,7 @@ return a row), use a [trigger](/asl/triggers) with an inline `do ( … )` body.
 Some Postgres functions take **SQL as a string** — `cron.schedule`, `EXECUTE`,
 `dblink`. Writing that SQL by hand means hand-maintaining table and column names
 that your schema already knows. An <code>aql`…`</code> literal lets you write
-[AQL](/aql) instead: axel compiles it while generating the migration and inlines
+[AQL](/aql/) instead: axel compiles it while generating the migration and inlines
 the result as a quoted SQL string.
 
 Both forms below are valid, and emit the same migration:
