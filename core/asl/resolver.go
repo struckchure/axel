@@ -386,7 +386,8 @@ func (r *Resolver) resolveFunction(fd *FunctionDecl, ir *SchemaIR) (*ResolvedFun
 	if fd.Return == nil {
 		return nil, fmt.Errorf("missing body")
 	}
-	fn.ReturnSQL = fd.Return.Raw
+	fn.ReturnSQL = fd.Return.Lowered
+	fn.InlineAQL = fd.Return.AQL
 	return fn, nil
 }
 

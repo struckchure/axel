@@ -12,6 +12,9 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
+  // See _operand: `<` starts either a cast or a less-than comparison.
+  conflicts: ($) => [[$._operand]],
+
   extras: ($) => [/\s/, $.comment],
 
   rules: {
@@ -211,15 +214,16 @@ module.exports = grammar({
     null_test: ($) => seq("is", optional("not"), "null"),
 
     // An operand is a primary with an optional trailing `<Type>` cast that applies
-    // to any operand — a literal, path, (expr), or subquery projection. prec.right
-    // greedily takes a following "<Ident>" as a cast rather than a "<" comparison.
+    // to any operand — a literal, path, (expr), or subquery projection.
+    //
+    // `<` is ambiguous here: `.age<int32>` is a cast but `.age < now()` is a
+    // comparison, and one token of lookahead can't tell them apart. Resolving it
+    // with precedence would swallow every `<` comparison whose right operand
+    // starts with an identifier (`filter .expires_at < now()`), so both readings
+    // are declared as a conflict instead and tree-sitter's GLR keeps whichever
+    // one parses.
     _operand: ($) =>
-      prec.right(
-        seq(
-          $._primary,
-          optional(seq("<", field("cast", $.type_identifier), ">")),
-        ),
-      ),
+      seq($._primary, optional(seq("<", field("cast", $.type_identifier), ">"))),
 
     _primary: ($) =>
       choice(

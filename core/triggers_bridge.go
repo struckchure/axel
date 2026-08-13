@@ -150,7 +150,11 @@ func SchemaIRToFunctionsAndTriggers(ir *asl.SchemaIR) ([]Function, []Trigger, er
 	}
 	sort.Strings(fnNames)
 	for _, name := range fnNames {
-		fns = append(fns, declaredFunctionSQL(ir.Functions[name]))
+		fn, err := declaredFunctionSQL(ir.Functions[name], ir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function %q: %w", name, err)
+		}
+		fns = append(fns, fn)
 	}
 
 	// Concrete types, sorted for deterministic output.
@@ -309,21 +313,52 @@ func buildRewriteBody(byEvent map[string][]string) (events []string, body string
 }
 
 // declaredFunctionSQL builds the CREATE/DROP for a user-declared function.
-func declaredFunctionSQL(fn *asl.ResolvedFunction) Function {
+func declaredFunctionSQL(fn *asl.ResolvedFunction, ir *asl.SchemaIR) (Function, error) {
 	var argDecls, argTypes []string
 	for _, p := range fn.Params {
 		argDecls = append(argDecls, fmt.Sprintf("%s %s", p.Name, p.SQLType))
 		argTypes = append(argTypes, p.SQLType)
 	}
 
-	body, lang := functionBody(fn)
+	returnSQL, err := inlineFunctionAQL(fn, ir)
+	if err != nil {
+		return Function{}, err
+	}
+	body, lang := functionBody(fn, returnSQL)
 
 	create := fmt.Sprintf(
 		"CREATE OR REPLACE FUNCTION %q(%s) RETURNS %s AS $$\n%s\n$$ LANGUAGE %s%s;",
 		fn.Name, strings.Join(argDecls, ", "), fn.Returns, body, lang, funcAttrSuffix(fn),
 	)
 	drop := fmt.Sprintf("DROP FUNCTION IF EXISTS %q(%s);", fn.Name, strings.Join(argTypes, ", "))
-	return Function{Name: fn.Name, CreateSQL: create, DropSQL: drop, RunOnce: fn.RunOnceFor != ""}
+	return Function{Name: fn.Name, CreateSQL: create, DropSQL: drop, RunOnce: fn.RunOnceFor != ""}, nil
+}
+
+// inlineFunctionAQL returns the function's return expression with every inline
+// aql`…` literal replaced by the SQL it compiles to, quoted as a Postgres
+// string literal. Functions without inline AQL pass through untouched.
+func inlineFunctionAQL(fn *asl.ResolvedFunction, ir *asl.SchemaIR) (string, error) {
+	if len(fn.InlineAQL) == 0 {
+		return fn.ReturnSQL, nil
+	}
+	// ReturnSQL carries one NUL per literal, in the same order as InlineAQL.
+	parts := strings.Split(fn.ReturnSQL, "\x00")
+	if len(parts) != len(fn.InlineAQL)+1 {
+		return "", fmt.Errorf("internal: %d inline aql markers for %d queries", len(parts)-1, len(fn.InlineAQL))
+	}
+	var b strings.Builder
+	for i, part := range parts {
+		b.WriteString(part)
+		if i == len(fn.InlineAQL) {
+			break
+		}
+		lit, err := compiler.CompileInline(fn.InlineAQL[i], ir)
+		if err != nil {
+			return "", fmt.Errorf("inline aql %q: %w", fn.InlineAQL[i], err)
+		}
+		b.WriteString(lit)
+	}
+	return b.String(), nil
 }
 
 // funcAttrSuffix renders a function's attributes as a SQL suffix (leading space
@@ -366,12 +401,13 @@ func funcAttrSuffix(fn *asl.ResolvedFunction) string {
 }
 
 // functionBody returns the plpgsql/sql body and language for a declared
-// function. The `return <expr>;` expression is raw Postgres, wrapped per language.
-func functionBody(fn *asl.ResolvedFunction) (body, lang string) {
+// function. returnSQL is raw Postgres (inline AQL already lowered), wrapped per
+// language.
+func functionBody(fn *asl.ResolvedFunction, returnSQL string) (body, lang string) {
 	if fn.Language == "sql" {
-		return fmt.Sprintf("  SELECT %s;", fn.ReturnSQL), "sql"
+		return fmt.Sprintf("  SELECT %s;", returnSQL), "sql"
 	}
-	return fmt.Sprintf("BEGIN\n  RETURN %s;\nEND;", fn.ReturnSQL), fn.Language
+	return fmt.Sprintf("BEGIN\n  RETURN %s;\nEND;", returnSQL), fn.Language
 }
 
 // triggerSQL builds the SQL for one declared trigger. For an inline do-body it

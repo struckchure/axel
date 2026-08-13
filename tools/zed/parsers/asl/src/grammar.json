@@ -1836,6 +1836,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "inline_aql"
+        },
+        {
+          "type": "SYMBOL",
           "name": "identifier"
         },
         {
@@ -1963,6 +1967,42 @@
           "value": ")"
         }
       ]
+    },
+    "inline_aql": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "aql"
+        },
+        {
+          "type": "STRING",
+          "value": "`"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "aql_source"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "`"
+        }
+      ]
+    },
+    "aql_source": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "[^`]+"
+      }
     },
     "aql_block": {
       "type": "SEQ",

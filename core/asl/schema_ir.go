@@ -83,6 +83,11 @@ type ResolvedFunction struct {
 	Language  string // "plpgsql" (default) | "sql"
 	ReturnSQL string // raw SQL expression from `return <expr>;`; wrapped by the lowerer
 
+	// InlineAQL holds the raw source of each aql`…` literal in ReturnSQL, in
+	// order; ReturnSQL carries one NUL byte per entry where the compiled SQL
+	// string literal goes. The lowerer in package axel does the substitution.
+	InlineAQL []string
+
 	// Attributes, from leading @-directives.
 	Volatility string // "immutable" | "stable" | "volatile" | ""
 	Strict     bool

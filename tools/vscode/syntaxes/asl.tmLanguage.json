@@ -10,6 +10,9 @@
       "include": "#dollar-sql"
     },
     {
+      "include": "#inline-aql"
+    },
+    {
       "include": "#strings"
     },
     {
@@ -145,6 +148,22 @@
       "contentName": "meta.embedded.block.aql",
       "patterns": [
         { "include": "#aql-parens" },
+        { "include": "source.aql" }
+      ]
+    },
+    "inline-aql": {
+      "comment": "An inline AQL query in a function body: aql`delete KV filter …`. The interior is a whole AQL statement, highlighted with the AQL grammar; the compiler compiles it and inlines the resulting SQL as a string literal.",
+      "begin": "\\b(aql)\\s*(`)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.asl" },
+        "2": { "name": "punctuation.definition.string.begin.asl" }
+      },
+      "end": "(`)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.asl" }
+      },
+      "contentName": "meta.embedded.block.aql",
+      "patterns": [
         { "include": "source.aql" }
       ]
     },

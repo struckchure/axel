@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/alecthomas/participle/v2"
@@ -36,7 +37,45 @@ func SchemaDiagnostics(text string) []Diagnostic {
 			Message:  e.Error(),
 		})
 	}
+	return append(diags, inlineAQLDiagnostics(text, ir)...)
+}
+
+// inlineAQLDiagnostics compiles every aql`…` literal embedded in a function
+// body, so a bad inline query is reported in the editor rather than at migration
+// time. Functions are visited in name order for stable output.
+func inlineAQLDiagnostics(text string, ir *asl.SchemaIR) []Diagnostic {
+	names := make([]string, 0, len(ir.Functions))
+	for name, fn := range ir.Functions {
+		if len(fn.InlineAQL) > 0 {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	var diags []Diagnostic
+	for _, name := range names {
+		for _, src := range ir.Functions[name].InlineAQL {
+			if _, err := compiler.CompileInline(src, ir); err != nil {
+				msg := "inline aql: " + err.Error()
+				diags = append(diags, Diagnostic{
+					Range:    inlineAQLRange(text, src, msg),
+					Severity: SeverityError,
+					Message:  msg,
+				})
+			}
+		}
+	}
 	return diags
+}
+
+// inlineAQLRange ranges the failing query in the source. The stored source has
+// its whitespace collapsed by the ASL token reconstruction, so an exact match is
+// only likely for single-spaced queries — fall back to the offending name.
+func inlineAQLRange(text, src, msg string) Range {
+	if idx := strings.Index(text, src); idx >= 0 {
+		return Range{Start: OffsetToPosition(text, idx), End: OffsetToPosition(text, idx+len(src))}
+	}
+	return errorRange(text, msg)
 }
 
 // QueryDiagnostics parses an AQL document and, when a resolved schema is

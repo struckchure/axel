@@ -6,6 +6,10 @@
 ((aql_block) @injection.content
   (#set! injection.language "aql"))
 
+; The interior of an inline aql`…` literal is a whole AQL statement.
+((aql_source) @injection.content
+  (#set! injection.language "aql"))
+
 ; A constraint's `filter <predicate>` is an unparenthesized AQL predicate.
 ((filter_predicate) @injection.content
   (#set! injection.language "aql"))

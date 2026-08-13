@@ -24,12 +24,15 @@ type Session extending Base {
 @for Session
 function session_gc() -> int64 {
   return cron.schedule('session-gc', '*/5 * * * *',
-    'DELETE FROM session WHERE expires_at < now()');
+    aql`delete Session filter .expires_at < now()`);
 };
 ```
 
 - The policy makes a query see only rows that are **not yet expired** (or have no
   expiry) — the app never has to add a `WHERE expires_at >= now()`.
+- The sweep is written as [inline AQL](/asl/functions#inline-aql-aql): it compiles
+  to `DELETE FROM "session" … ` while the migration is generated, so a rename in
+  the type is caught at build time rather than silently breaking the cron job.
 - `@for Session` marks `session_gc` as a run-once setup function: Axel invokes it
   a single time (`SELECT session_gc();`) in the migration that first creates it,
   scheduling the cron job. See [Functions → `@for`](/asl/functions).

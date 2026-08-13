@@ -13,6 +13,10 @@ var aslLexer = lexer.MustSimple([]lexer.SimpleRule{
 	// and function bodies. It must precede Ident/Punct so the whole span is one
 	// opaque token (its interior is never tokenized).
 	{Name: "DollarString", Pattern: `\$\$[\s\S]*?\$\$`},
+	// AQLString is a backtick-delimited inline AQL query (` aql`select …` `). Like
+	// DollarString it is one opaque token: the AQL inside is never tokenized by the
+	// ASL lexer, and is handed to the AQL parser at lowering time. See ReturnExpr.
+	{Name: "AQLString", Pattern: "`[^`]*`"},
 	// Multi-char tokens must come before single-char Punct
 	{Name: "Assign", Pattern: `:=`},
 	{Name: "Arrow", Pattern: `->`},

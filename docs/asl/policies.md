@@ -202,6 +202,16 @@ function kv_gc() -> int64 {
 };
 ```
 
+The swept SQL can also be written as AQL and compiled in place, so the job is
+checked against the schema — see [Inline AQL](/asl/functions#inline-aql-aql):
+
+```asl
+@for KV
+function kv_gc() -> int64 {
+  return cron.schedule('kv-gc', '0 * * * *', aql`delete KV filter .expires_at < now()`);
+};
+```
+
 emitting, in that migration:
 
 ```sql

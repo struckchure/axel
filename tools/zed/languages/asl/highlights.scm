@@ -53,6 +53,12 @@
 ; Dollar-quoted raw SQL bodies
 (dollar_string) @string
 
+; Inline AQL literals: aql`select …` — the tag reads as a keyword, the backticks
+; as delimiters. The interior is highlighted by the AQL injection.
+(inline_aql
+  "aql" @keyword
+  "`" @punctuation.delimiter)
+
 ; Type names
 (type_identifier) @type
 (enum_value) @constant

@@ -396,3 +396,23 @@ select Transaction {
             (identifier)))
         (parameter
           name: (identifier))))))
+
+==================
+comparison against a function call (not a cast)
+==================
+
+delete KV filter .expires_at < now();
+
+---
+
+(source_file
+  (delete_statement
+    type: (type_identifier
+      (identifier))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (function_call
+          name: (identifier))))))

@@ -181,3 +181,32 @@ type Event {
         (identifier)
         (identifier)
         (identifier)))))
+
+==================
+inline aql in a function body
+==================
+
+@for KV
+function kv_gc() -> int64 {
+  return cron.schedule('kv-gc', '0 * * * *', aql`delete KV filter .expires_at < now()`);
+};
+
+---
+
+(source_file
+  (function_definition
+    (function_directive
+      name: (identifier)
+      value: (identifier))
+    name: (field_identifier
+      (identifier))
+    returns: (type_identifier
+      (identifier))
+    body: (return_expression
+      (identifier)
+      (identifier)
+      (sql_paren
+        (string)
+        (string)
+        (inline_aql
+          (aql_source))))))

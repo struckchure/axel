@@ -331,6 +331,7 @@ module.exports = grammar({
       choice(
         $.sql_paren,
         $.dollar_string,
+        $.inline_aql,
         $.identifier,
         $.string,
         $.integer,
@@ -341,6 +342,13 @@ module.exports = grammar({
       ),
 
     sql_paren: ($) => seq("(", repeat($._sql_token), ")"),
+
+    // An inline AQL query inside a raw SQL expression: aql`select … `. The
+    // compiler compiles it and inlines the SQL as a string literal. aql_source is
+    // its own node so injections.scm can re-parse just the interior as AQL.
+    inline_aql: ($) => seq("aql", "`", optional($.aql_source), "`"),
+
+    aql_source: ($) => token.immediate(/[^`]+/),
 
     // A balanced parenthesized AQL body. Not parsed structurally — this just
     // brackets the span for the editor; the compiler parses the real AQL.

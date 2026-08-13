@@ -74,6 +74,56 @@ Everything in the expression — operators, function calls (`lower`, `regexp_rep
 full SQL surface is available. For multi-statement logic (mutations that also
 return a row), use a [trigger](/asl/triggers) with an inline `do ( … )` body.
 
+## Inline AQL: <code>aql`…`</code>
+
+Some Postgres functions take **SQL as a string** — `cron.schedule`, `EXECUTE`,
+`dblink`. Writing that SQL by hand means hand-maintaining table and column names
+that your schema already knows. An <code>aql`…`</code> literal lets you write
+[AQL](/aql) instead: axel compiles it while generating the migration and inlines
+the result as a quoted SQL string.
+
+Both forms below are valid, and emit the same migration:
+
+```asl
+@for KV
+function kv_gc() -> int64 {
+  return cron.schedule('kv-gc', '0 * * * *', 'DELETE FROM "kv" WHERE expires_at < now()');
+};
+
+@for KV
+function kv_gc() -> int64 {
+  return cron.schedule('kv-gc', '0 * * * *', aql`delete KV filter .expires_at < now()`);
+};
+```
+
+```sql
+CREATE OR REPLACE FUNCTION "kv_gc"() RETURNS BIGINT AS $$
+BEGIN
+  RETURN cron.schedule('kv-gc', '0 * * * *', 'DELETE FROM "kv" k WHERE k.expires_at < now();');
+END;
+$$ LANGUAGE plpgsql;
+```
+
+The literal is a **compile-time** construct — nothing about it survives into the
+database. What you get for it:
+
+- The query is checked against your schema. A renamed property or a deleted type
+  fails `axel diff` (and is underlined in the editor) instead of failing at 3am
+  inside a cron job.
+- Table and column names come from the schema, so `snake_case` derivation and
+  quoting are handled the same way `CREATE TABLE` handles them.
+
+Two rules:
+
+- **No query parameters.** The compiled SQL is embedded as a literal, so there is
+  nothing to bind `$name` to — a parameterized inline query is an error. Take a
+  function parameter and concatenate if you need a value.
+- **Backticks are the delimiter**, and the `aql` tag is required — a bare
+  `` `…` `` is a parse error.
+
+An inline query is a complete AQL statement, so any of `select` / `insert` /
+`update` / `delete` works. The trailing `;` is optional.
+
 ## Directives (attributes)
 
 Attributes are declared as directives **above** the function, decorator-style.

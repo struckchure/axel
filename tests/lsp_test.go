@@ -267,3 +267,28 @@ func keys(m map[string]bool) []string {
 	}
 	return out
 }
+
+// An inline aql`…` literal in a function body is compiled during schema
+// diagnostics, so a bad query is flagged in the editor rather than at
+// migration time — and ranged at the query itself.
+func TestInlineAQLDiagnostics(t *testing.T) {
+	schema := "type KV {\n  required key: str;\n}\n\n" +
+		"function kv_gc() -> int64 {\n  return run(aql`delete KV filter .nope = 'x'`);\n};\n"
+	diags := lsp.SchemaDiagnostics(schema)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d: %+v", len(diags), diags)
+	}
+	if !strings.Contains(diags[0].Message, "inline aql") || !strings.Contains(diags[0].Message, "nope") {
+		t.Errorf("unexpected message: %q", diags[0].Message)
+	}
+	if diags[0].Range.Start.Line != 5 {
+		t.Errorf("diagnostic should be on the return line, got %d", diags[0].Range.Start.Line)
+	}
+
+	// A well-formed inline query is silent.
+	ok := "type KV {\n  required key: str;\n}\n\n" +
+		"function kv_gc() -> int64 {\n  return run(aql`delete KV filter .key = 'x'`);\n};\n"
+	if d := lsp.SchemaDiagnostics(ok); len(d) != 0 {
+		t.Errorf("valid inline query should have no diagnostics, got %+v", d)
+	}
+}
