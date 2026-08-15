@@ -22,9 +22,10 @@ Every generation of Object-Relational Mappers (ORMs) and query builders has trie
 * **The Problem:** Excellent for type inference and writing SQL expressions in TypeScript, but relational modeling feels estranged.
 * **The Reality:** Defining relationships requires separate `relations()` helper objects disconnected from the column schema definitions. Querying related data across many-to-many links feels ad-hoc and bolted-on rather than a natural part of the query syntax.
 
-### 4. Black-Box Runtime Clients (Prisma)
-* **The Problem:** An intermediate Rust binary engine running as a sidecar process.
-* **The Reality:** Significant runtime overhead and memory consumption, high latency on serverless platforms, and sub-optimal query generation. Fundamental SQL operations like insert/update conflict handling (`ON CONFLICT DO UPDATE` / custom upserts) are either unsupported, restricted to unique indices, or require messy raw SQL workarounds.
+### 4. The Prisma Evolution & Runtime Lock-In (Prisma 6.x vs. Prisma 7)
+* **The Prisma 6.x Architecture (Rust Engine Binary):** For years, Prisma relied on a compiled Rust query engine binary shipped as a sidecar process. While this enabled community multi-language clients (in Go, Python, and Rust), it introduced substantial IPC overhead, heavy memory footprint, huge deployment bundles, and notorious serverless cold-start latency.
+* **The Prisma 7 Shift (TypeScript / WASM):** Shipped in late 2025, Prisma 7 removed the Rust engine binary in favor of a pure TypeScript and WebAssembly query compiler. While this resolved binary distribution for Node.js, it **locked Prisma exclusively to the TypeScript/JavaScript ecosystem** — abandoning multi-language compatibility.
+* **The Core Flaws Persist Across Both:** Whether running via a Rust binary or a WASM module, Prisma remains a complex runtime layer. It still lacks native insert/update conflict resolution (`ON CONFLICT DO UPDATE` / custom upsert logic without raw SQL), cannot declaratively manage PostgreSQL extensions or triggers, and incurs runtime abstraction costs on every query.
 
 ### 5. Neglected PostgreSQL Capabilities
 * **The Problem:** Most ORMs treat databases as generic, lowest-common-denominator storage engines.
@@ -119,14 +120,14 @@ Because Axel compiles directly to pure SQL, it can be used with **any programmin
 
 ## Comparison Matrix
 
-| Feature | Django ORM | TypeORM | Prisma | Drizzle | Axel |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Architecture** | Runtime ORM | Runtime ORM | Rust Engine Sidecar | TypeScript Builder | **AOT Compiler** |
-| **Runtime Driver Overhead** | High | High | Very High | Zero | **Zero** |
-| **Relational Shapes** | Lazy / Prefetch | Manual Joins | Nested Roundtrips | `relations()` helper | **Native `json_agg` in 1 query** |
-| **Insert / Update Conflicts** | Verbose | Awkward | Partial / Raw SQL | Supported | **Native `unless conflict`** |
-| **PostgreSQL Extensions** | Manual SQL | Manual SQL | Manual SQL | Manual SQL | **First-class `extension`** |
-| **Row-Level Security (RLS)** | No | No | No | Supported (`pgPolicy`) | **First-class `policy`** |
-| **Database Triggers** | No | Decorators / Hooks | No | No | **First-class `trigger`** |
-| **Multi-Language Support** | Python Only | JS/TS Only | JS/TS / Go / Rust | TS/JS Only | **Any Language (Go, TS, +)** |
-| **Interactive Studio** | Django Admin | None | Prisma Studio | Drizzle Studio | **Axel Studio (`axel studio`)** |
+| Feature | Django ORM | TypeORM | Prisma 6.x | Prisma 7 | Drizzle | Axel |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Architecture** | Runtime ORM | Runtime ORM | Rust Engine Sidecar | TS / WASM Runtime | TypeScript Builder | **AOT Compiler** |
+| **Runtime Driver Overhead** | High | High | Very High (IPC / Cold Starts) | Moderate (WASM / Runtime) | Zero | **Zero (Pure SQL)** |
+| **Relational Shapes** | Lazy / Prefetch | Manual Joins | Nested Roundtrips | Nested Roundtrips | `relations()` helper | **Native `json_agg` in 1 query** |
+| **Insert / Update Conflicts** | Verbose | Awkward | Partial / Raw SQL | Partial / Raw SQL | Supported | **Native `unless conflict`** |
+| **PostgreSQL Extensions** | Manual SQL | Manual SQL | Manual SQL | Manual SQL | Manual SQL | **First-class `extension`** |
+| **Row-Level Security (RLS)** | No | No | No | No | Supported (`pgPolicy`) | **First-class `policy`** |
+| **Database Triggers** | No | Decorators / Hooks | No | No | No | **First-class `trigger`** |
+| **Multi-Language Support** | Python Only | JS/TS Only | Multi (via Rust Engine) | **JS/TS Only** | TS/JS Only | **Any Language (Go, TS, +)** |
+| **Interactive Studio** | Django Admin | None | Prisma Studio | Prisma Studio | Drizzle Studio | **Axel Studio (`axel studio`)** |
