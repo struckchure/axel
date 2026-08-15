@@ -101,6 +101,50 @@ func printSelectBody(b *strings.Builder, body *SelectBody, sep string) {
 	}
 }
 
+// printSelectBodyInline renders a select body with all clauses space-separated
+// and the shape (if any) on a single line. Used by printPrimary so subqueries
+// inside expressions are always compact: `(select T { id } filter .x = $y)`.
+func printSelectBodyInline(b *strings.Builder, body *SelectBody) {
+	if body.AggFunc != nil {
+		fmt.Fprintf(b, "%s(%s", body.AggFunc.Func, body.AggFunc.TypeName)
+		if body.AggFunc.Filter != nil {
+			b.WriteString(" ")
+			printFilter(b, body.AggFunc.Filter)
+		}
+		b.WriteString(")")
+		return
+	}
+	b.WriteString(body.TypeName)
+	if body.Shape != nil {
+		b.WriteString(" ")
+		printShapeInline(b, body.Shape)
+	}
+	if body.Filter != nil {
+		b.WriteString(" ")
+		printFilter(b, body.Filter)
+	}
+	for i, o := range body.OrderBy {
+		if i == 0 {
+			b.WriteString(" order by ")
+		} else {
+			b.WriteString(", ")
+		}
+		printExpr(b, o.Expr)
+		if o.Dir != "" {
+			fmt.Fprintf(b, " %s", o.Dir)
+		}
+	}
+	if body.Limit != nil {
+		b.WriteString(" limit ")
+		printExpr(b, body.Limit)
+	}
+	if body.Offset != nil {
+		b.WriteString(" offset ")
+		printExpr(b, body.Offset)
+	}
+}
+
+
 func printInsert(b *strings.Builder, s *InsertStmt) {
 	fmt.Fprintf(b, "insert %s {\n", s.TypeName)
 	for i, a := range s.Assignments {
@@ -178,6 +222,9 @@ func printDelete(b *strings.Builder, s *DeleteStmt) {
 	b.WriteString(";")
 }
 
+// printShape renders a shape in canonical multi-line form (used by Print and
+// the re-parse oracle). For inline use inside subquery expressions, call
+// printShapeInline instead.
 func printShape(b *strings.Builder, s *Shape) {
 	b.WriteString("{\n")
 	for i, f := range s.Fields {
@@ -205,6 +252,35 @@ func printShape(b *strings.Builder, s *Shape) {
 		b.WriteString("\n")
 	}
 	b.WriteString("}")
+}
+
+// printShapeInline renders a shape on a single line: `{ id, name, email }`.
+// Used by printPrimary so subquery shapes inside expressions stay compact.
+func printShapeInline(b *strings.Builder, s *Shape) {
+	b.WriteString("{ ")
+	for i, f := range s.Fields {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		if f.Star {
+			b.WriteString("*")
+		} else {
+			b.WriteString(f.Name)
+		}
+		if f.SubShape != nil {
+			b.WriteString(": ")
+			printShapeInline(b, f.SubShape)
+		}
+		if f.Computed != nil {
+			b.WriteString(" := ")
+			printExpr(b, f.Computed)
+		}
+		if f.AggFilter != nil {
+			b.WriteString(" ")
+			printFilter(b, f.AggFilter)
+		}
+	}
+	b.WriteString(" }")
 }
 
 func printFilter(b *strings.Builder, f *Filter) {
@@ -264,7 +340,7 @@ func printPrimary(b *strings.Builder, p *Primary) {
 			b.WriteString("multi ")
 		}
 		b.WriteString("select ")
-		printSelectBody(b, p.SubQuery, " ")
+		printSelectBodyInline(b, p.SubQuery)
 		b.WriteString(")")
 		if p.SubQueryField != "" {
 			b.WriteString("." + p.SubQueryField)

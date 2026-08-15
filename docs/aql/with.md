@@ -72,32 +72,80 @@ multi select User filter .business = Business.id;
 
 Lowercase binding names avoid the ambiguity entirely and are the recommended style.
 
-## Restrictions
+## Narrowing the projection with `{ shape }`
 
-A binding names a whole row, so it takes neither a shape nor a projection — select the
-columns you want at the use site:
+By default a binding projects every scalar column and single-link FK column of its type
+into the CTE. When only a subset of fields will be used at the reference sites, you can
+list them explicitly with a `{ shape }`:
 
 ```aql
--- error: a with-binding selects every column of Business
-with (business := (select Business { id } filter .id = $id))
-
--- error: project at the use site instead
-with (slug := (select Business filter .id = $id).slug)
+with (
+  api_key := (
+    multi select ApiKey { id }
+    filter .id = $api_key_id<uuid>? or .business.id = $business_id<uuid>?
+  )
+)
+multi select Transaction
+filter .sender_id in api_key.id or .reciever_id in api_key.id;
 ```
+
+Only the named fields are projected into the CTE. Referencing a field that was not
+included in the shape is caught at compile time:
+
+```aql
+-- error: field "label" was not included in the { shape }
+filter .name = api_key.label
+```
+
+Use `*` to keep the full projection explicit without restricting it:
+
+```aql
+api_key := (multi select ApiKey { * } filter ...)
+```
+
+### Casting on a set reference
+
+When the column type in the CTE does not match the column you are comparing against,
+you can attach a `<cast>` directly to the field reference on the right of `in`. The cast
+is applied inside the subquery projection:
+
+```aql
+-- api_key.id is uuid; sender_id is stored as text — cast at the reference site
+filter .sender_id in api_key.id<str> or .reciever_id in api_key.id<str>
+```
+
+This avoids having to rewrite the binding itself or add a computed column.
+
+## Restrictions
 
 `limit` / `offset` require a `multi` binding, matching the rule for a plain `select`.
 Aggregates cannot be bound; use them directly in the query. A `with` block is also not
 available inside a trigger or function body, which has no host statement to carry the CTE.
 
+Nested sub-shapes and computed (`:=`) fields inside a binding shape are not supported —
+the shape may only name scalar properties and single-link FK columns.
+
 ## Formatting
 
-`axel fmt` keeps each binding on its own line and breaks a boolean filter across lines when
-the single-line form would exceed 80 columns — the layout shown at the top of this page is
-what the formatter produces. Shorter filters are left inline:
+`axel fmt` keeps each binding on its own line. When a binding subquery doesn't fit on a
+single line, it is wrapped in indented parens with each clause on its own line — the same
+treatment a top-level select gets:
 
 ```aql
-multi select User filter .active = true and .age >= $min_age;
+with (
+  api_key := (
+    multi select ApiKey { id }
+    filter .id = $api_key_id<uuid>? or .business.id = $business_id<uuid>?
+  )
+)
 ```
 
+Short bindings that fit within 80 columns are left on a single line:
+
+```aql
+with (business := (select Business filter .id = $business_id))
+```
+
+Boolean filters are broken across lines only when the single-line form exceeds 80 columns.
 The formatter never adds or removes parentheses, so the grouping you write is the grouping
 you keep.

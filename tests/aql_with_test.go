@@ -199,9 +199,17 @@ func TestWithBlockErrors(t *testing.T) {
 		query: `with (k := (multi select ApiKey filter .business = $id)) multi select User filter .email = k.label;`,
 		want:  "use it on the right of `in`",
 	}, {
-		name:  "shape on a binding",
-		query: `with (b := (select Business { id } filter .id = $id)) multi select User filter .email = $e;`,
-		want:  "can't take a { shape }",
+		name:  "shape on a binding — unprojected field reference",
+		query: `with (b := (select Business { id } filter .id = $id)) multi select User filter .email = b.name;`,
+		want:  `field "name" was not included in the { shape }`,
+	}, {
+		name:  "shape on a binding — unknown field in shape",
+		query: `with (b := (select Business { nope } filter .id = $id)) multi select User filter .email = $e;`,
+		want:  `has no field "nope"`,
+	}, {
+		name:  "shape on a binding — nested sub-shape rejected",
+		query: `with (b := (select Business { id: { sub } } filter .id = $id)) multi select User filter .email = $e;`,
+		want:  "nested shapes are not supported",
 	}, {
 		name:  "duplicate binding name",
 		query: `with (b := (select Business filter .id = $id), b := (select Business filter .id = $id)) multi select User;`,
@@ -230,6 +238,51 @@ func TestWithBlockErrors(t *testing.T) {
 				t.Errorf("error = %q, want it to contain %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// A with-binding may name a { shape } to project only a subset of columns into
+// the CTE. This is useful when only one or two fields are needed at use sites,
+// keeping the CTE narrow without requiring callers to cast inside the binding.
+func TestWithBlockShape(t *testing.T) {
+	// Single named field: only id is projected; the CTE body must SELECT only id.
+	c := compileAQL(t, withSchema, `
+with (
+  b := (select Business { id } filter .id = $bid)
+)
+multi select User filter .business = b.id;`)
+
+	body := cteBody(t, c.SQL, "_with_b")
+	if strings.Contains(body, "name") {
+		t.Errorf("shaped binding should not project 'name', got CTE body:\n%s", body)
+	}
+	if !strings.Contains(body, "b.id AS id") && !strings.Contains(body, ".id AS id") {
+		t.Errorf("shaped binding should project 'id', got CTE body:\n%s", body)
+	}
+
+	// Multi binding with shape + cast: sender_id in api_key.id<str> must work.
+	c2 := compileAQL(t, withSchema, `
+with (
+  api_key := (multi select ApiKey { id } filter .id = $kid<uuid>? or .business = $bid<uuid>?)
+)
+multi select Transaction
+filter .sender_id in api_key.id<str> or .reciever_id in api_key.id<str>;`)
+
+	for _, want := range []string{
+		"(SELECT (_with_api_key.id)::TEXT FROM _with_api_key)",
+	} {
+		if !strings.Contains(c2.SQL, want) {
+			t.Errorf("expected %q in:\n%s", want, c2.SQL)
+		}
+	}
+
+	// A `*` in a shaped binding reverts to full projection (no projectedFields restriction).
+	c3 := compileAQL(t, withSchema, `
+with (b := (select Business { * } filter .id = $bid))
+multi select User filter .business = b.id and b.name = $name;`)
+
+	if !strings.Contains(c3.SQL, "b.name AS name") || !strings.Contains(c3.SQL, "b.id AS id") {
+		t.Errorf("star shape should project all columns, got CTE body:\n%s", cteBody(t, c3.SQL, "_with_b"))
 	}
 }
 

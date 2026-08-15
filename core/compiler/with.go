@@ -20,12 +20,14 @@ const withCTEPrefix = "_with_"
 
 // withBinding is one resolved entry of a `with (...)` block: the name as
 // written, the CTE backing it, the type its rows come from (so `name.field` can
-// be resolved), and whether it was declared `multi` (a set rather than a row).
+// be resolved), whether it was declared `multi` (a set rather than a row), and
+// the optional set of fields explicitly selected by a { shape } (nil = all).
 type withBinding struct {
-	name  string
-	cte   string
-	rt    *asl.ResolvedType
-	multi bool
+	name            string
+	cte             string
+	rt              *asl.ResolvedType
+	multi           bool
+	projectedFields map[string]bool // nil = all fields; non-nil = shape-restricted
 }
 
 // compileWith lowers a with-block to CTEs, recording each binding so later
@@ -83,16 +85,19 @@ func withSubQuery(b *aql.WithBinding) (*aql.SelectBody, bool, error) {
 	if p.SubQuery.AggFunc != nil {
 		return nil, false, fmt.Errorf("binding %q: an aggregate can't be bound in a `with` block; use it directly in the query", b.Name)
 	}
-	if p.SubQuery.Shape != nil {
-		return nil, false, fmt.Errorf("binding %q: a with-binding selects every column of %s, so it can't take a { shape }", b.Name, p.SubQuery.TypeName)
-	}
 	return p.SubQuery, p.SubQueryMulti, nil
 }
 
-// compileWithBody builds the SELECT inside a binding's CTE. Every scalar
-// property and single-link FK column is projected under its AQL field name —
-// the same expansion `select *` uses (see sortedProps / sortedSingleLinks) — so
-// a `name.field` reference resolves by field name with no column mapping.
+// compileWithBody builds the SELECT inside a binding's CTE.
+//
+// Without a shape, every scalar property and single-link FK column is projected
+// under its AQL field name — the same expansion `select *` uses — so a
+// `name.field` reference resolves by field name with no column mapping.
+//
+// With a `{ field, ... }` shape, only the listed fields are projected. A `*`
+// anywhere in the shape expands back to all fields (same as no shape). Nested
+// sub-shapes and computed fields are rejected — with-binding shapes may only
+// name scalar properties and single-link FK columns.
 //
 // A plain binding is a single row (LIMIT 1, mirroring plain `select`); a `multi`
 // binding is a set and honours an explicit limit/offset instead.
@@ -101,6 +106,91 @@ func (c *compiler) compileWithBody(bind *withBinding, body *aql.SelectBody) (str
 	alias := c.newAlias(body.TypeName)
 
 	var cols []string
+	if body.Shape != nil {
+		// Shape-restricted projection. Validate each field and collect only what
+		// was named. A `*` anywhere reverts to the full projection.
+		projected := make(map[string]bool, len(body.Shape.Fields))
+		hasStar := false
+		for _, sf := range body.Shape.Fields {
+			if sf.Star {
+				hasStar = true
+				break
+			}
+			if sf.SubShape != nil {
+				return "", fmt.Errorf("binding %q: nested shapes are not supported in a with-binding shape", bind.name)
+			}
+			if sf.Computed != nil {
+				return "", fmt.Errorf("binding %q: computed fields (:=) are not supported in a with-binding shape", bind.name)
+			}
+			name := sf.Name
+			if prop, ok := rt.Properties[name]; ok {
+				cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, prop.Column, prop.Name))
+				projected[name] = true
+			} else if link, ok := rt.Links[name]; ok {
+				if link.IsMulti {
+					return "", fmt.Errorf("binding %q: %q is a multi-link and has no column on %s", bind.name, name, rt.Name)
+				}
+				cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, link.JoinColumn, link.JoinColumn))
+				projected[name] = true
+			} else {
+				return "", fmt.Errorf("binding %q: type %q has no field %q", bind.name, rt.Name, name)
+			}
+		}
+		if !hasStar {
+			// Record shape restriction so withColumn can enforce it at reference sites.
+			bind.projectedFields = projected
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "SELECT %s FROM %q %s", strings.Join(cols, ", "), rt.Table, alias)
+			if body.Filter != nil {
+				where, err := c.compileExpr(body.Filter.Expr, alias, rt)
+				if err != nil {
+					return "", fmt.Errorf("binding %q: %w", bind.name, err)
+				}
+				fmt.Fprintf(&sb, " WHERE %s", where)
+			}
+			if len(body.OrderBy) > 0 {
+				var parts []string
+				for _, o := range body.OrderBy {
+					expr, err := c.compileExpr(o.Expr, alias, rt)
+					if err != nil {
+						return "", fmt.Errorf("binding %q: %w", bind.name, err)
+					}
+					dir := strings.ToUpper(o.Dir)
+					if dir == "" {
+						dir = "ASC"
+					}
+					parts = append(parts, expr+" "+dir)
+				}
+				fmt.Fprintf(&sb, " ORDER BY %s", strings.Join(parts, ", "))
+			}
+			if !bind.multi {
+				if body.Limit != nil || body.Offset != nil {
+					return "", fmt.Errorf("binding %q: limit/offset require `multi select` (a plain binding is a single row)", bind.name)
+				}
+				sb.WriteString(" LIMIT 1")
+				return sb.String(), nil
+			}
+			if body.Limit != nil {
+				limit, err := c.compileExpr(body.Limit, alias, rt)
+				if err != nil {
+					return "", fmt.Errorf("binding %q: %w", bind.name, err)
+				}
+				fmt.Fprintf(&sb, " LIMIT %s", limit)
+			}
+			if body.Offset != nil {
+				offset, err := c.compileExpr(body.Offset, alias, rt)
+				if err != nil {
+					return "", fmt.Errorf("binding %q: %w", bind.name, err)
+				}
+				fmt.Fprintf(&sb, " OFFSET %s", offset)
+			}
+			return sb.String(), nil
+		}
+		// hasStar: fall through to full projection below.
+	}
+
+	// No shape (or `*` in shape): project all scalar props + single-link FK columns.
+	cols = nil
 	for _, prop := range sortedProps(rt) {
 		cols = append(cols, fmt.Sprintf("%s.%s AS %s", alias, prop.Column, prop.Name))
 	}
@@ -201,16 +291,45 @@ func (c *compiler) withRef(b *withBinding, field string) (string, error) {
 // withSetRef lowers a binding reference without the single-row check, for the
 // membership position where a set is exactly what is wanted.
 func (c *compiler) withSetRef(b *withBinding, field string) (string, error) {
+	return c.withSetRefCast(b, field, "")
+}
+
+// withSetRefCast is like withSetRef but applies an optional AQL type cast to
+// the projected column. When cast is non-empty (e.g. "str") the subquery
+// becomes `(SELECT (_with_api_key.id)::TEXT FROM _with_api_key)`, which lets
+// Postgres coerce the set values without requiring the user to rewrite their
+// `with` binding.
+func (c *compiler) withSetRefCast(b *withBinding, field string, cast string) (string, error) {
 	col, err := withColumn(b, field)
 	if err != nil {
 		return "", err
+	}
+	if cast != "" {
+		sqlType, err := c.annotSQLType(cast)
+		if err != nil {
+			return "", fmt.Errorf("binding %q: cast <%s> on set reference: %w", b.name, cast, err)
+		}
+		return fmt.Sprintf("(SELECT (%s.%s)::%s FROM %s)", b.cte, col, sqlType, b.cte), nil
 	}
 	return fmt.Sprintf("(SELECT %s.%s FROM %s)", b.cte, col, b.cte), nil
 }
 
 // withColumn resolves a field name to the column the binding's CTE projects it
-// as. An empty field means the row's id.
+// as. An empty field means the row's id. When the binding was created with a
+// { shape }, only the listed fields were projected into the CTE; referencing
+// any other field is rejected here rather than letting Postgres fail at runtime.
 func withColumn(b *withBinding, field string) (string, error) {
+	lookup := field
+	if lookup == "" {
+		lookup = "id"
+	}
+	// Shape-restriction check.
+	if b.projectedFields != nil && !b.projectedFields[lookup] {
+		if field == "" {
+			return "", fmt.Errorf("binding %q: field \"id\" was not included in the { shape }; add it to use the binding as a value", b.name)
+		}
+		return "", fmt.Errorf("binding %q: field %q was not included in the { shape }; add it or remove the shape restriction", b.name, field)
+	}
 	if field == "" {
 		return "id", nil
 	}

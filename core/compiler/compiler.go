@@ -1202,12 +1202,15 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		}
 	}
 
-	// Membership over a `multi` with-binding: `.sender_id in api_keys.id`. This
-	// is the one position where a set-valued binding is meaningful, so it is
-	// taken here before compilePrimary rejects it as a non-scalar.
-	if cmp.Op == "in" && cmp.Right != nil && cmp.Right.Cast == "" {
+	// Membership over a `multi` with-binding: `.sender_id in api_keys.id` or
+	// `.sender_id in api_keys.id<str>`. This is the one position where a
+	// set-valued binding is meaningful, so it is taken here before compilePrimary
+	// rejects it as a non-scalar. A trailing cast (<str>, <uuid>, …) is applied
+	// inside the subquery projection so Postgres sees the cast at the column
+	// level: `IN (SELECT (_with_api_key.id)::TEXT FROM _with_api_key)`.
+	if cmp.Op == "in" && cmp.Right != nil {
 		if b, field, ok := c.withOperand(cmp.Right); ok && b.multi {
-			set, err := c.withSetRef(b, field)
+			set, err := c.withSetRefCast(b, field, cmp.Right.Cast)
 			if err != nil {
 				return "", err
 			}

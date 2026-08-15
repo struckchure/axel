@@ -139,8 +139,18 @@ func (f *aqlFmt) statement(stmt *Statement) {
 }
 
 // withBlock renders `with ( name := expr, … )` with one binding per indented
-// line, mirroring assignmentBlock. Binding values stay single-line: a binding is
-// a subquery, and subquery bodies are printed inline everywhere else too.
+// line. When a binding's value is a solo subquery (the common case), it is
+// rendered with the same clause-per-line treatment as a top-level select,
+// wrapped in indented parens:
+//
+//	with (
+//	  api_key := (
+//	    multi select ApiKey { id }
+//	    filter .id = $id<uuid>?
+//	  )
+//	)
+//
+// Non-subquery bindings (rare) are rendered inline on the same line as `:=`.
 func (f *aqlFmt) withBlock(w *WithBlock) {
 	if w == nil {
 		return
@@ -155,7 +165,7 @@ func (f *aqlFmt) withBlock(w *WithBlock) {
 	for i, b := range w.Bindings {
 		f.leading(b.Pos.Offset)
 		f.wf("%s := ", b.Name)
-		printExpr(&f.cur, b.Value)
+		f.withBindingValue(b.Value)
 		if i < len(w.Bindings)-1 {
 			f.w(",")
 		}
@@ -169,6 +179,86 @@ func (f *aqlFmt) withBlock(w *WithBlock) {
 	f.w(")")
 	f.commit(w.EndPos.Offset)
 }
+
+// withBindingValue renders the right-hand side of a with-binding. When the
+// value is a solo subquery (the overwhelmingly common case) it is formatted
+// like a top-level select: opening paren on the current line, each clause on
+// its own indented line, closing paren de-indented. Everything else is inlined
+// via the single-line printer.
+func (f *aqlFmt) withBindingValue(val *Expr) {
+	p := val.SoloPrimary()
+	if p == nil || p.SubQuery == nil {
+		// Not a solo subquery — render inline.
+		printExpr(&f.cur, val)
+		return
+	}
+	body := p.SubQuery
+
+	// Try to fit the whole thing on the current line first.
+	inline := oneLine(func(b *strings.Builder) {
+		b.WriteString("(")
+		if p.SubQueryMulti {
+			b.WriteString("multi ")
+		}
+		b.WriteString("select ")
+		printSelectBodyInline(b, body)
+		b.WriteString(")")
+	})
+	if f.fits(inline) {
+		f.w(inline)
+		return
+	}
+
+	// Doesn't fit: open paren, then render each clause on its own indented line.
+	f.w("(")
+	f.commit(1 << 30)
+	f.indent++
+
+	// Header: [multi] select TypeName [{ shape }]
+	if p.SubQueryMulti {
+		f.w("multi ")
+	}
+	f.w("select ")
+	f.w(body.TypeName)
+	if body.Shape != nil {
+		f.w(" ")
+		f.shape(body.Shape)
+	}
+
+	// filter / order by / limit / offset — each on its own line.
+	if body.Filter != nil {
+		f.clauseBreak(1 << 30)
+		f.w("filter ")
+		f.expr(body.Filter.Expr, true)
+	}
+	for i, o := range body.OrderBy {
+		if i == 0 {
+			f.clauseBreak(1 << 30)
+			f.w("order by ")
+		} else {
+			f.w(", ")
+		}
+		printExpr(&f.cur, o.Expr)
+		if o.Dir != "" {
+			f.wf(" %s", o.Dir)
+		}
+	}
+	if body.Limit != nil {
+		f.clauseBreak(1 << 30)
+		f.w("limit ")
+		printExpr(&f.cur, body.Limit)
+	}
+	if body.Offset != nil {
+		f.clauseBreak(1 << 30)
+		f.w("offset ")
+		printExpr(&f.cur, body.Offset)
+	}
+
+	f.commit(1 << 30)
+	f.indent--
+	f.w(")")
+}
+
 
 func (f *aqlFmt) selectStmt(s *SelectStmt) {
 	if s.Multi {
@@ -354,6 +444,12 @@ func groupOperand(c *Cmp) *Expr {
 }
 
 func (f *aqlFmt) shape(s *Shape) {
+	// Try to keep the shape on a single line: `{ id, name }`.
+	if inline := oneLine(func(b *strings.Builder) { printShapeInline(b, s) }); f.fits(inline) {
+		f.w(inline)
+		return
+	}
+	// Doesn't fit: multi-line with one field per indented line.
 	f.w("{")
 	first := 1 << 30
 	if len(s.Fields) > 0 {
@@ -376,6 +472,7 @@ func (f *aqlFmt) shape(s *Shape) {
 	f.indent--
 	f.w("}")
 }
+
 
 func (f *aqlFmt) shapeField(fld *ShapeField) {
 	if fld.Star {
