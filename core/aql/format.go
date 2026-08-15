@@ -38,8 +38,18 @@ type aqlFmt struct {
 	out    strings.Builder
 	cur    strings.Builder
 	indent int
-	cmts   []comment
-	ci     int
+	// hang is an extra indent level applied to committed lines. A boolean chain
+	// broken without wrapping parens uses it so its continuations read as
+	// subordinate to `filter` rather than as new clauses:
+	//
+	//	filter .sender_id = $a
+	//	  and .reciever_id = $b
+	//
+	// It is set by expr/andExpr at their first break and cleared by clauseBreak,
+	// which every clause and statement boundary goes through.
+	hang int
+	cmts []comment
+	ci   int
 }
 
 type comment struct {
@@ -48,8 +58,28 @@ type comment struct {
 	Own    bool
 }
 
+// maxWidth is the column budget the formatter keeps lines within. It governs
+// only boolean chains: one that fits stays on a single line, a longer one is
+// broken at its outermost connective (see expr).
+const maxWidth = 80
+
 func (f *aqlFmt) w(s string)                 { f.cur.WriteString(s) }
 func (f *aqlFmt) wf(format string, a ...any) { fmt.Fprintf(&f.cur, format, a...) }
+
+// fits reports whether appending s to the line under construction keeps it
+// within maxWidth. f.cur holds the line without its indent prefix — commit
+// writes the indent ahead of it — so the prefix is counted explicitly here.
+func (f *aqlFmt) fits(s string) bool {
+	return f.indent*2+f.cur.Len()+len(s) <= maxWidth
+}
+
+// oneLine renders a node through the canonical single-line printer so its width
+// can be measured before deciding whether to break.
+func oneLine(write func(*strings.Builder)) string {
+	var b strings.Builder
+	write(&b)
+	return b.String()
+}
 
 func (f *aqlFmt) commit(trailingBefore int) {
 	for f.ci < len(f.cmts) && !f.cmts[f.ci].Own && f.cmts[f.ci].Offset < trailingBefore {
@@ -57,16 +87,23 @@ func (f *aqlFmt) commit(trailingBefore int) {
 		f.ci++
 	}
 	if f.cur.Len() > 0 {
-		f.out.WriteString(strings.Repeat("  ", f.indent))
+		f.out.WriteString(strings.Repeat("  ", f.indent+f.hang))
 		f.out.WriteString(f.cur.String())
 	}
 	f.out.WriteByte('\n')
 	f.cur.Reset()
 }
 
+// clauseBreak commits the current line and drops any hanging indent, so the next
+// clause starts back at the statement's own level.
+func (f *aqlFmt) clauseBreak(trailingBefore int) {
+	f.commit(trailingBefore)
+	f.hang = 0
+}
+
 func (f *aqlFmt) leading(offset int) {
 	for f.ci < len(f.cmts) && f.cmts[f.ci].Offset < offset {
-		f.out.WriteString(strings.Repeat("  ", f.indent))
+		f.out.WriteString(strings.Repeat("  ", f.indent+f.hang))
 		f.out.WriteString(f.cmts[f.ci].Text)
 		f.out.WriteByte('\n')
 		f.ci++
@@ -88,6 +125,7 @@ func (f *aqlFmt) statement(stmt *Statement) {
 		f.wf("@%s %s", d.Name, d.Value)
 		f.commit(d.EndPos.Offset)
 	}
+	f.withBlock(stmt.With)
 	switch {
 	case stmt.Select != nil:
 		f.selectStmt(stmt.Select)
@@ -100,6 +138,38 @@ func (f *aqlFmt) statement(stmt *Statement) {
 	}
 }
 
+// withBlock renders `with ( name := expr, … )` with one binding per indented
+// line, mirroring assignmentBlock. Binding values stay single-line: a binding is
+// a subquery, and subquery bodies are printed inline everywhere else too.
+func (f *aqlFmt) withBlock(w *WithBlock) {
+	if w == nil {
+		return
+	}
+	f.w("with (")
+	first := 1 << 30
+	if len(w.Bindings) > 0 {
+		first = w.Bindings[0].Pos.Offset
+	}
+	f.commit(first)
+	f.indent++
+	for i, b := range w.Bindings {
+		f.leading(b.Pos.Offset)
+		f.wf("%s := ", b.Name)
+		printExpr(&f.cur, b.Value)
+		if i < len(w.Bindings)-1 {
+			f.w(",")
+		}
+		next := 1 << 30
+		if i+1 < len(w.Bindings) {
+			next = w.Bindings[i+1].Pos.Offset
+		}
+		f.commit(next)
+	}
+	f.indent--
+	f.w(")")
+	f.commit(w.EndPos.Offset)
+}
+
 func (f *aqlFmt) selectStmt(s *SelectStmt) {
 	if s.Multi {
 		f.w("multi ")
@@ -107,7 +177,7 @@ func (f *aqlFmt) selectStmt(s *SelectStmt) {
 	f.w("select ")
 	f.selectBody(s.Body)
 	f.w(";")
-	f.commit(1 << 30)
+	f.clauseBreak(1 << 30)
 }
 
 // selectBody renders an aggregate or object select. The object form may open a
@@ -130,7 +200,8 @@ func (f *aqlFmt) selectBody(body *SelectBody) {
 	}
 	if body.Filter != nil {
 		f.newlineClause()
-		printFilter(&f.cur, body.Filter)
+		f.w("filter ")
+		f.expr(body.Filter.Expr, true)
 	}
 	for i, o := range body.OrderBy {
 		if i == 0 {
@@ -157,7 +228,130 @@ func (f *aqlFmt) selectBody(body *SelectBody) {
 }
 
 // newlineClause commits the current line and starts the next clause at indent 0.
-func (f *aqlFmt) newlineClause() { f.commit(1 << 30) }
+func (f *aqlFmt) newlineClause() { f.clauseBreak(1 << 30) }
+
+// inlineFilter renders the `filter <expr>` tail of an update/delete, which
+// shares a line with the statement head. When the whole line would overflow the
+// filter moves to its own line, giving those statements the same shape select
+// already has.
+func (f *aqlFmt) inlineFilter(flt *Filter) {
+	if flt == nil {
+		return
+	}
+	if s := oneLine(func(b *strings.Builder) { printFilter(b, flt) }); f.fits(" " + s) {
+		f.w(" " + s)
+		return
+	}
+	f.commit(flt.Expr.Pos.Offset)
+	f.w("filter ")
+	f.expr(flt.Expr, true)
+}
+
+// expr renders a boolean expression, breaking it across lines only when the
+// single-line form would overflow maxWidth. Arms after the first lead with their
+// connective on a fresh line at the current indent:
+//
+//	filter (
+//	  business is not null
+//	  and (
+//	    .sender_id = business.id
+//	    or .sender_id in api_keys.id
+//	  )
+//	)
+//
+// Breaking never changes the AST — no parens are added or removed — so Format's
+// re-parse check still proves the reformat was lossless.
+//
+// hang requests the subordinate indent described on aqlFmt.hang. It is set by
+// the filter call sites and cleared inside a parenthesized group, which supplies
+// its own indentation.
+func (f *aqlFmt) expr(e *Expr, hang bool) {
+	if e == nil {
+		return
+	}
+	if s := oneLine(func(b *strings.Builder) { printExpr(b, e) }); f.fits(s) {
+		f.w(s)
+		return
+	}
+	f.andExpr(e.Left, hang)
+	for _, a := range e.Rest {
+		// Commit the preceding line first, then hang: the first line of a chain
+		// sits at the clause's own level, only its continuations are indented.
+		f.commit(a.Pos.Offset)
+		if hang {
+			f.hang = 1
+		}
+		f.leading(a.Pos.Offset)
+		f.w("or ")
+		f.andExpr(a, hang)
+	}
+}
+
+// andExpr is expr's `and` level: same try-inline-then-break shape, one
+// precedence step down.
+func (f *aqlFmt) andExpr(a *AndExpr, hang bool) {
+	if a == nil {
+		return
+	}
+	if s := oneLine(func(b *strings.Builder) { printAndExpr(b, a) }); f.fits(s) {
+		f.w(s)
+		return
+	}
+	f.cmp(a.Left)
+	for _, c := range a.Rest {
+		f.commit(c.Pos.Offset)
+		if hang {
+			f.hang = 1
+		}
+		f.leading(c.Pos.Offset)
+		f.w("and ")
+		f.cmp(c)
+	}
+}
+
+// cmp renders one comparison. The only comparison the formatter may open across
+// lines is a bare parenthesized group, whose interior is re-entered at one more
+// indent; everything else — a comparison, a null test, a subquery operand — is
+// atomic and stays on its line even when it overflows.
+func (f *aqlFmt) cmp(c *Cmp) {
+	if c == nil {
+		return
+	}
+	s := oneLine(func(b *strings.Builder) { printCmp(b, c) })
+	if f.fits(s) {
+		f.w(s)
+		return
+	}
+	g := groupOperand(c)
+	if g == nil {
+		f.w(s)
+		return
+	}
+	f.w("(")
+	f.commit(g.Pos.Offset)
+	f.indent++
+	f.leading(g.Pos.Offset)
+	f.expr(g, false)
+	// Commit the group's last line while still at the inner indent, so the
+	// closing paren lands back at the parent's.
+	f.commit(g.EndPos.Offset)
+	f.indent--
+	f.w(")")
+}
+
+// groupOperand returns the interior of a comparison that is nothing but a
+// parenthesized expression — the one shape that can be opened across lines. A
+// cast or an operator makes the parens part of a larger operand, so those stay
+// inline.
+func groupOperand(c *Cmp) *Expr {
+	if c.Is || c.Op != "" || c.Left == nil {
+		return nil
+	}
+	if c.Left.SubExpr == nil || c.Left.Cast != "" {
+		return nil
+	}
+	return c.Left.SubExpr
+}
 
 func (f *aqlFmt) shape(s *Shape) {
 	f.w("{")
@@ -209,30 +403,24 @@ func (f *aqlFmt) insertStmt(s *InsertStmt) {
 	f.w("}")
 	printConflict(&f.cur, s.Conflict)
 	f.w(";")
-	f.commit(1 << 30)
+	f.clauseBreak(1 << 30)
 }
 
 func (f *aqlFmt) updateStmt(s *UpdateStmt) {
 	f.wf("update %s", s.TypeName)
-	if s.Filter != nil {
-		f.w(" ")
-		printFilter(&f.cur, s.Filter)
-	}
-	f.commit(1 << 30)
+	f.inlineFilter(s.Filter)
+	f.clauseBreak(1 << 30)
 	f.w("set {")
 	f.assignmentBlock(s.Assignments)
 	f.w("};")
-	f.commit(1 << 30)
+	f.clauseBreak(1 << 30)
 }
 
 func (f *aqlFmt) deleteStmt(s *DeleteStmt) {
 	f.wf("delete %s", s.TypeName)
-	if s.Filter != nil {
-		f.w(" ")
-		printFilter(&f.cur, s.Filter)
-	}
+	f.inlineFilter(s.Filter)
 	f.w(";")
-	f.commit(1 << 30)
+	f.clauseBreak(1 << 30)
 }
 
 // assignmentBlock renders `field := expr` entries, one per indented line, between

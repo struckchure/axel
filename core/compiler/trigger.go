@@ -29,6 +29,12 @@ func CompileTriggerBody(stmt *aql.Statement, schema *asl.SchemaIR, enclosing *as
 		trig:   &triggerContext{enclosing: enclosing, params: params},
 	}
 
+	// Rejects a `with` block rather than silently dropping it: a trigger body is
+	// spliced into plpgsql, with no host statement to carry the CTE.
+	if err := c.compileWith(stmt.With); err != nil {
+		return "", err
+	}
+
 	var sql string
 	var err error
 	switch {

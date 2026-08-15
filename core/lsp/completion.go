@@ -8,7 +8,7 @@ import (
 )
 
 var aqlStatementKeywords = []string{
-	"multi", "select", "insert", "update", "delete", "filter",
+	"with", "multi", "select", "insert", "update", "delete", "filter",
 	"order", "by", "limit", "offset", "set",
 	"unless", "conflict", "on", "else",
 }

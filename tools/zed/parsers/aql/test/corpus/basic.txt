@@ -416,3 +416,108 @@ delete KV filter .expires_at < now();
             (identifier)))
         (function_call
           name: (identifier))))))
+
+==================
+with block binding a single row and a set
+==================
+
+with (
+  business := (select Business filter .id = $business_id),
+  api_keys := (multi select ApiKey filter .business = $business_id)
+)
+multi select Transaction
+filter (
+  business is not null
+  and (
+    (.sender_id = business.id)
+    or (.sender_id in api_keys.id)
+    or (.reciever_id in api_keys.id)
+  )
+)
+order by .updated_at desc
+limit $limit<int32>?
+offset $offset<int32>?;
+
+---
+
+(source_file
+  (with_block
+    (with_binding
+      (identifier)
+      (expression
+        (subquery
+          (type_identifier
+            (identifier))
+          (filter
+            (expression
+              (path
+                (field_identifier
+                  (identifier)))
+              (parameter
+                (identifier)))))))
+    (with_binding
+      (identifier)
+      (expression
+        (subquery
+          (type_identifier
+            (identifier))
+          (filter
+            (expression
+              (path
+                (field_identifier
+                  (identifier)))
+              (parameter
+                (identifier))))))))
+  (select_statement
+    (type_identifier
+      (identifier))
+    (filter
+      (expression
+        (parenthesized_expression
+          (expression
+            (identifier)
+            (null_test)
+            (parenthesized_expression
+              (expression
+                (parenthesized_expression
+                  (expression
+                    (path
+                      (field_identifier
+                        (identifier)))
+                    (qualified_identifier
+                      (identifier)
+                      (identifier))))
+                (parenthesized_expression
+                  (expression
+                    (path
+                      (field_identifier
+                        (identifier)))
+                    (qualified_identifier
+                      (identifier)
+                      (identifier))))
+                (parenthesized_expression
+                  (expression
+                    (path
+                      (field_identifier
+                        (identifier)))
+                    (qualified_identifier
+                      (identifier)
+                      (identifier))))))))))
+    (order_by
+      (order_term
+        (expression
+          (path
+            (field_identifier
+              (identifier))))))
+    (limit_clause
+      (expression
+        (parameter
+          (identifier)
+          (type_identifier
+            (identifier)))))
+    (offset_clause
+      (expression
+        (parameter
+          (identifier)
+          (type_identifier
+            (identifier)))))))

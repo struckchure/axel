@@ -176,6 +176,7 @@ export default defineConfig({
               { text: "Casts & Types", link: "/aql/expressions/casts" },
             ],
           },
+          { text: "With Bindings", link: "/aql/with" },
           { text: "Directives", link: "/aql/directives" },
           { text: "Grammar reference", link: "/aql/grammar" },
         ],

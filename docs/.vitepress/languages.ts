@@ -165,7 +165,7 @@ export const aql: LanguageRegistration = {
     },
     keyword: {
       match:
-        "\\b(multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
+        "\\b(with|multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
       name: "keyword.control.aql",
     },
     "operator-word": {

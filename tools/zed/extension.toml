@@ -15,12 +15,16 @@ languages = ["Axel Schema", "Axel Query"]
 # Grammar sources live at tools/zed/parsers/<name> (NOT under grammars/, which
 # Zed clones into and manages itself). `rev` must point at a commit that contains
 # those sources — see tools/zed/README.md for the local `file://` dev workflow.
+#
+# ⚠ LOCAL DEV OVERRIDE — revert both `repository` values to
+# "https://github.com/struckchure/axel" and re-pin `rev` to the pushed commit
+# before releasing. A published extension cannot fetch from a file:// URL.
 [grammars.asl]
-repository = "https://github.com/struckchure/axel"
+repository = "file:///Users/mohammed/projects/axel"
 path = "tools/zed/parsers/asl"
 rev = "7b15541a6d626e0c88f11b49e2682449a9870ddb"
 
 [grammars.aql]
-repository = "https://github.com/struckchure/axel"
+repository = "file:///Users/mohammed/projects/axel"
 path = "tools/zed/parsers/aql"
 rev = "7b15541a6d626e0c88f11b49e2682449a9870ddb"

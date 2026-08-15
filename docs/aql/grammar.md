@@ -8,7 +8,10 @@ description: The full AQL grammar
 The semicolon at the end of each statement is optional when the query is passed as an inline string.
 
 ```
-Statement   = SelectStmt | InsertStmt | UpdateStmt | DeleteStmt
+Statement   = WithBlock? (SelectStmt | InsertStmt | UpdateStmt | DeleteStmt)
+
+WithBlock   = "with" "(" WithBinding ("," WithBinding)* ","? ")"
+WithBinding = Ident ":=" "(" "multi"? "select" SelectBody ")"
 
 SelectStmt  = "select" SelectBody ";"?
 SelectBody  = AggExpr

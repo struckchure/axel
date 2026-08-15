@@ -35,12 +35,30 @@ module.exports = grammar({
       ),
 
     _statement: ($) =>
-      choice(
-        $.select_statement,
-        $.insert_statement,
-        $.update_statement,
-        $.delete_statement,
+      seq(
+        optional($.with_block),
+        choice(
+          $.select_statement,
+          $.insert_statement,
+          $.update_statement,
+          $.delete_statement,
+        ),
       ),
+
+    // with ( name := (select ...), name := (multi select ...) )
+    // Binds named subqueries for the statement that follows; each lowers to a CTE.
+    with_block: ($) =>
+      seq(
+        "with",
+        "(",
+        $.with_binding,
+        repeat(seq(",", $.with_binding)),
+        optional(","),
+        ")",
+      ),
+
+    with_binding: ($) =>
+      seq(field("name", $.identifier), ":=", field("value", $.expression)),
 
     // select ( count(...) | Type shape? filter? order? limit? offset? ) ;?
     select_statement: ($) =>

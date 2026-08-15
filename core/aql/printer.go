@@ -16,6 +16,7 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 	for _, d := range stmt.Directives {
 		fmt.Fprintf(b, "@%s %s\n", d.Name, d.Value)
 	}
+	printWith(b, stmt.With)
 	switch {
 	case stmt.Select != nil:
 		printSelect(b, stmt.Select)
@@ -26,6 +27,26 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 	case stmt.Delete != nil:
 		printDelete(b, stmt.Delete)
 	}
+}
+
+// printWith renders a with-block, one binding per indented line. It stays
+// deliberately layout-fixed (never width-aware): Print is the oracle Format
+// compares against to prove a reformat was lossless, so its output must depend
+// only on the AST.
+func printWith(b *strings.Builder, w *WithBlock) {
+	if w == nil {
+		return
+	}
+	b.WriteString("with (\n")
+	for i, bind := range w.Bindings {
+		fmt.Fprintf(b, "  %s := ", bind.Name)
+		printExpr(b, bind.Value)
+		if i < len(w.Bindings)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(")\n")
 }
 
 func printSelect(b *strings.Builder, s *SelectStmt) {

@@ -64,6 +64,13 @@ func returningColumns(rt *asl.ResolvedType) string {
 // Compile compiles a parsed AQL statement against a SchemaIR into SQL.
 func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 	c := &compiler{schema: schema, params: newParamCollector()}
+
+	// Bindings are lowered first so their params are numbered in the order the
+	// CTEs are emitted, ahead of the statement body that references them.
+	if err := c.compileWith(stmt.With); err != nil {
+		return nil, err
+	}
+
 	var sql string
 	var err error
 
@@ -71,6 +78,8 @@ func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 	case stmt.Select != nil:
 		sql, err = c.compileSelect(stmt.Select)
 	case stmt.Insert != nil:
+		// compileInsertBody emits its own WITH — it may add sub-insert CTEs of
+		// its own — so it folds the bindings in rather than being prefixed here.
 		sql, err = c.compileInsert(stmt.Insert)
 	case stmt.Update != nil:
 		sql, err = c.compileUpdate(stmt.Update)
@@ -81,6 +90,9 @@ func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	if stmt.Insert == nil {
+		sql = c.withPrefix() + sql
 	}
 
 	return &CompiledSQL{
@@ -110,6 +122,12 @@ type compiler struct {
 	// — instead of matching all rows and returning an arbitrary one. See
 	// compileValueFilter / compileCmp.
 	valueFilter bool
+	// withs maps a `with (...)` binding name to the CTE backing it. Bindings
+	// shadow type names of the same spelling; see compileWith / withRef.
+	withs map[string]*withBinding
+	// withCTEs holds the binding CTEs in declaration order, emitted as the
+	// statement's WITH prefix.
+	withCTEs []string
 	// policyMode is true while lowering an RLS policy predicate: the target row's
 	// columns are emitted unqualified and bind params are rejected. Link traversal
 	// is allowed and correlates back to the base row by table name (see outerRef).
@@ -655,7 +673,13 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 	}
 
 	var sb strings.Builder
-	if len(ctes) > 0 {
+	if topLevel {
+		// With-block bindings share the statement's single WITH clause with any
+		// sub-insert CTEs. Only the top-level insert carries them: a nested
+		// (insert ...) operand compiles inside this statement and sees the same
+		// bindings already in scope.
+		sb.WriteString(c.withPrefix(ctes...))
+	} else if len(ctes) > 0 {
 		sb.WriteString("WITH ")
 		sb.WriteString(strings.Join(ctes, ", "))
 		sb.WriteString("\n")
@@ -1178,6 +1202,19 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		}
 	}
 
+	// Membership over a `multi` with-binding: `.sender_id in api_keys.id`. This
+	// is the one position where a set-valued binding is meaningful, so it is
+	// taken here before compilePrimary rejects it as a non-scalar.
+	if cmp.Op == "in" && cmp.Right != nil && cmp.Right.Cast == "" {
+		if b, field, ok := c.withOperand(cmp.Right); ok && b.multi {
+			set, err := c.withSetRef(b, field)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("%s IN %s", left, set), nil
+		}
+	}
+
 	right, err := c.compilePrimary(cmp.Right, alias, rt)
 	if err != nil {
 		return "", err
@@ -1188,6 +1225,8 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		inferFilterParamType(c.params, cmp.Left, cmp.Right, rt)
 		inferFilterParamType(c.params, cmp.Right, cmp.Left, rt)
 	}
+	c.inferWithParamType(cmp.Left, cmp.Right)
+	c.inferWithParamType(cmp.Right, cmp.Left)
 
 	// Null-coalesce ($x ?? .field) is a function, not an infix operator: emit
 	// COALESCE(left, right). A param operand is cast to the SQL type of the
@@ -1323,6 +1362,11 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		return c.compileGlobalRef(*p.GlobalRef)
 	case p.QualifiedIdent != nil:
 		qi := p.QualifiedIdent
+		// A `with` binding shadows a type or enum of the same name, so it is
+		// resolved first: business.id reads the bound row's id column.
+		if b, ok := c.lookupWith(qi.TypeName); ok {
+			return c.withRef(b, qi.Field)
+		}
 		// Trigger magic: __new__.field / __old__.field / __subject__.field →
 		// NEW."col" / OLD."col", validated against the enclosing type.
 		if c.trig != nil {
@@ -1354,6 +1398,11 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		return "", fmt.Errorf("type %q has no field %q", qi.TypeName, qi.Field)
 
 	case p.Ident != nil:
+		// A bare binding reference means its row's id, so `business is not null`
+		// reads as "the binding matched a row".
+		if b, ok := c.lookupWith(*p.Ident); ok {
+			return c.withRef(b, "")
+		}
 		// Trigger magic: bare __new__/__old__/__subject__ (whole row) and event.
 		if c.trig != nil {
 			switch *p.Ident {

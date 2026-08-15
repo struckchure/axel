@@ -8,6 +8,7 @@
 
 ; Statement keywords
 [
+  "with"
   "multi"
   "select"
   "insert"
@@ -42,6 +43,9 @@
 ; Global references (global current_user)
 (global "global" @keyword)
 (global name: (identifier) @variable)
+
+; A with-block binding introduces a name referenced in the statement below.
+(with_binding name: (identifier) @variable)
 
 ; Type names
 (type_identifier) @type

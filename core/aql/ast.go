@@ -12,11 +12,44 @@ import (
 type Statement struct {
 	Pos        lexer.Position
 	Directives []*Directive `parser:"@@*"`
+	With       *WithBlock   `parser:"@@?"`
 	Select     *SelectStmt  `parser:"( @@"`
 	Insert     *InsertStmt  `parser:"| @@"`
 	Update     *UpdateStmt  `parser:"| @@"`
 	Delete     *DeleteStmt  `parser:"| @@ )"`
 	EndPos     lexer.Position
+}
+
+// WithBlock is a leading `with ( name := (select ...), ... )` clause that binds
+// named subqueries for the statement that follows. Each binding lowers to a
+// Postgres CTE, so a sub-select reused at several points in the filter is
+// evaluated once instead of being inlined per use site.
+//
+//	with (
+//	  business := (select Business filter .id = $business_id),
+//	  api_keys := (multi select ApiKey filter .business = $business_id)
+//	)
+//	multi select Transaction filter .sender_id in api_keys.id;
+//
+// A binding is referenced by name: bare (`business`, meaning its id) or
+// qualified (`business.id`, `api_keys.id`). Both forms already parse as
+// Primary.Ident / Primary.QualifiedIdent — the compiler resolves them against
+// the block's bindings, which shadow type names of the same spelling.
+type WithBlock struct {
+	Pos      lexer.Position
+	Bindings []*WithBinding `parser:"'with' '(' @@ ( ',' @@ )* ','? ')'"`
+	EndPos   lexer.Position
+}
+
+// WithBinding is one `name := expr` entry in a WithBlock. Value is a full Expr
+// rather than a dedicated subquery rule so `(select ...)` and `(multi select
+// ...)` reuse Primary's existing subquery parsing; the compiler validates that
+// the value really is a solo subquery and reports a precise error when it isn't.
+type WithBinding struct {
+	Pos    lexer.Position
+	Name   string `parser:"@Ident ':='"`
+	Value  *Expr  `parser:"@@"`
+	EndPos lexer.Position
 }
 
 // Directive is a leading `@name value` declaration that carries codegen metadata
@@ -230,15 +263,23 @@ type Order struct {
 // `and` binds tighter than `or`, so `a or b and c` means `a or (b and c)`.
 // Parenthesize to override — a group is a Primary (see Primary.SubExpr), so it
 // nests to any depth: (a or b) and (c or d) and e
+//
+// Pos/EndPos are carried on every expression node so the formatter can attach
+// `#` comments to the right operand when it breaks a long boolean chain across
+// lines (see format.go's expr/andExpr/cmp).
 type Expr struct {
-	Left *AndExpr   `parser:"@@"`
-	Rest []*AndExpr `parser:"( 'or' @@ )*"`
+	Pos    lexer.Position
+	Left   *AndExpr   `parser:"@@"`
+	Rest   []*AndExpr `parser:"( 'or' @@ )*"`
+	EndPos lexer.Position
 }
 
 // AndExpr is one or more comparisons joined by `and`.
 type AndExpr struct {
-	Left *Cmp   `parser:"@@"`
-	Rest []*Cmp `parser:"( 'and' @@ )*"`
+	Pos    lexer.Position
+	Left   *Cmp   `parser:"@@"`
+	Rest   []*Cmp `parser:"( 'and' @@ )*"`
+	EndPos lexer.Position
 }
 
 // Cmp is a single comparison, a postfix null-test (`.x is null` /
@@ -246,11 +287,13 @@ type AndExpr struct {
 // and the binary comparison are mutually-exclusive tails: `Is` marks the former
 // (with `IsNot` for the negated form), `Op`/`Right` the latter.
 type Cmp struct {
-	Left  *Primary `parser:"@@"`
-	Is    bool     `parser:"( @'is'"`
-	IsNot bool     `parser:"@'not'? 'null'"`
-	Op    string   `parser:"| @( '!=' | '<=' | '>=' | '=' | '<' | '>' | '??' | 'in' | 'like' | 'ilike' )"`
-	Right *Primary `parser:"@@ )?"`
+	Pos    lexer.Position
+	Left   *Primary `parser:"@@"`
+	Is     bool     `parser:"( @'is'"`
+	IsNot  bool     `parser:"@'not'? 'null'"`
+	Op     string   `parser:"| @( '!=' | '<=' | '>=' | '=' | '<' | '>' | '??' | 'in' | 'like' | 'ilike' )"`
+	Right  *Primary `parser:"@@ )?"`
+	EndPos lexer.Position
 }
 
 // SingleCmp returns the lone comparison when the expression does not chain
@@ -278,6 +321,7 @@ func (e *Expr) SoloPrimary() *Primary {
 // projection ((select Org ...).slug<str>). The cast emits `(<sql>)::<sqltype>`
 // and gives an otherwise un-inferable computed field a concrete type.
 type Primary struct {
+	Pos lexer.Position
 	// Subquery: ( [multi] select TypeName { shape } filter ... )
 	// Must come before SubExpr so that '(' 'select' is matched here, not as an expr.
 	// A leading `multi` makes a computed shape field a JSON array; without it the
@@ -319,7 +363,8 @@ type Primary struct {
 	// Bare identifier (enum value, type name, etc.)
 	Ident *string `parser:"| @Ident )"`
 	// Optional `<Type>` cast applied to the operand above.
-	Cast string `parser:"( '<' @Ident '>' )?"`
+	Cast   string `parser:"( '<' @Ident '>' )?"`
+	EndPos lexer.Position
 }
 
 // Param is a query parameter: $email (required) or $email? (optional).

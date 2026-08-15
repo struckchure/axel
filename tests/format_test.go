@@ -88,6 +88,10 @@ func TestAQLFormatIdempotent(t *testing.T) {
 		"update User filter .id = $id set { name := $name, active := true };",
 		"delete Session filter .expires_at < $now;",
 		"select count(User filter .active = true);",
+		"with ( b := (select Business filter .id = $id) ) multi select User filter .business = b.id;",
+		"multi select Transaction filter .sender_id = $a and .reciever_id = $b and .status = $c and .created_at >= $since;",
+		"update User filter .organization = $org and .email = $email and .active = true and .role = $role set { name := $name };",
+		"delete Session filter .expires_at < now() and .user = $user and .revoked = false and .kind = $kind;",
 	}
 	for _, q := range queries {
 		out, err := aql.Format([]byte(q))
@@ -134,6 +138,105 @@ func TestAQLFormatPreservesComments(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("formatted query dropped comment %q:\n%s", want, out)
 		}
+	}
+}
+
+// A filter that fits the width budget stays on one line — the formatter breaks
+// boolean chains for readability, not on principle.
+func TestAQLFormatKeepsShortFilterInline(t *testing.T) {
+	out, err := aql.Format([]byte("multi select User filter .active = true and .age >= $min_age;"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "filter .active = true and .age >= $min_age;") {
+		t.Errorf("short filter should stay on one line:\n%s", out)
+	}
+}
+
+// The motivating query, written on a single line, must format to the canonical
+// layout — and formatting the result again must not move anything.
+func TestAQLFormatBreaksLongFilter(t *testing.T) {
+	src := "with ( business := (select Business filter .id = $business_id), " +
+		"api_keys := (multi select ApiKey filter .business = $business_id) ) " +
+		"multi select Transaction filter (business is not null and " +
+		"((.sender_id = business.id) or (.sender_id in api_keys.id) or " +
+		"(.reciever_id in api_keys.id))) order by .updated_at desc " +
+		"limit $limit<int32>? offset $offset<int32>?;"
+
+	want := `with (
+  business := (select Business filter .id = $business_id),
+  api_keys := (multi select ApiKey filter .business = $business_id)
+)
+multi select Transaction
+filter (
+  business is not null
+  and (
+    (.sender_id = business.id)
+    or (.sender_id in api_keys.id)
+    or (.reciever_id in api_keys.id)
+  )
+)
+order by .updated_at desc
+limit $limit<int32>?
+offset $offset<int32>?;
+`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != want {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+	out2, err := aql.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2 != out {
+		t.Errorf("not idempotent:\n%s\n---\n%s", out, out2)
+	}
+}
+
+// A chain broken without wrapping parens hangs its continuations one level in,
+// so they read as part of the filter rather than as new clauses — and, on an
+// update, stay visually distinct from the `set` block that follows.
+func TestAQLFormatHangsUnparenthesizedChain(t *testing.T) {
+	src := "update User filter .organization = $org and .email = $email and " +
+		".active = true and .role = $role set { name := $name };"
+	want := `update User
+filter .organization = $org
+  and .email = $email
+  and .active = true
+  and .role = $role
+set {
+  name := $name
+};
+`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != want {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+// Comments must stay attached to their operand when a filter is broken apart.
+func TestAQLFormatKeepsCommentsInBrokenFilter(t *testing.T) {
+	src := "multi select Transaction\n" +
+		"filter (\n" +
+		"  # only real senders\n" +
+		"  business is not null # bound above\n" +
+		"  and (.sender_id = business.id or .sender_id in api_keys.id or .reciever_id in api_keys.id)\n" +
+		");"
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "  # only real senders\n  business is not null") {
+		t.Errorf("own-line comment lost its operand:\n%s", out)
+	}
+	if !strings.Contains(out, "business is not null  # bound above") {
+		t.Errorf("trailing comment lost its line:\n%s", out)
 	}
 }
 

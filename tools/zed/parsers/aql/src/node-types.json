@@ -704,6 +704,10 @@
         {
           "type": "update_statement",
           "named": true
+        },
+        {
+          "type": "with_block",
+          "named": true
         }
       ]
     }
@@ -800,6 +804,47 @@
         },
         {
           "type": "filter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "with_binding",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "with_block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "with_binding",
           "named": true
         }
       ]
@@ -1008,6 +1053,10 @@
   },
   {
     "type": "update",
+    "named": false
+  },
+  {
+    "type": "with",
     "named": false
   },
   {
