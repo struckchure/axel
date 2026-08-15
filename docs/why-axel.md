@@ -27,8 +27,8 @@ Every generation of Object-Relational Mappers (ORMs) and query builders has trie
 * **The Reality:** Significant runtime overhead and memory consumption, high latency on serverless platforms, and sub-optimal query generation. Fundamental SQL operations like insert/update conflict handling (`ON CONFLICT DO UPDATE` / custom upserts) are either unsupported, restricted to unique indices, or require messy raw SQL workarounds.
 
 ### 5. Neglected PostgreSQL Capabilities
-* **The Problem:** Most ORMs treat databases as generic, dumb storage engines.
-* **The Reality:** Good luck declaratively defining PostgreSQL extensions (`pgvector`, `pg_trgm`, `postgis`, `citext`), triggers (`BEFORE/AFTER INSERT/UPDATE`), row-level security (`CREATE POLICY`), partial indexes, and conditional aggregates (`FILTER (WHERE ...)`). You are forced to maintain out-of-band manual SQL migration scripts.
+* **The Problem:** Most ORMs treat databases as generic, lowest-common-denominator storage engines.
+* **The Reality:** While tools like Drizzle have added basic `pgPolicy` helpers, declarative support across conventional ORMs for PostgreSQL extensions (`pgvector`, `pg_trgm`, `postgis`, `citext`), database triggers (`BEFORE/AFTER INSERT/UPDATE`), custom procedures, partial indexes, and conditional aggregates (`FILTER (WHERE ...)`) is largely missing, forcing teams to maintain out-of-band manual SQL migration scripts.
 
 ### 6. Enterprise Demands
 * Traditional ORMs struggle to deliver the clean, deterministic, and predictable SQL required by high-throughput systems, database administrators, and enterprise compliance standards.
@@ -126,7 +126,7 @@ Because Axel compiles directly to pure SQL, it can be used with **any programmin
 | **Relational Shapes** | Lazy / Prefetch | Manual Joins | Nested Roundtrips | `relations()` helper | **Native `json_agg` in 1 query** |
 | **Insert / Update Conflicts** | Verbose | Awkward | Partial / Raw SQL | Supported | **Native `unless conflict`** |
 | **PostgreSQL Extensions** | Manual SQL | Manual SQL | Manual SQL | Manual SQL | **First-class `extension`** |
-| **Row-Level Security (RLS)** | No | No | No | No | **First-class `policy`** |
+| **Row-Level Security (RLS)** | No | No | No | Supported (`pgPolicy`) | **First-class `policy`** |
 | **Database Triggers** | No | Decorators / Hooks | No | No | **First-class `trigger`** |
 | **Multi-Language Support** | Python Only | JS/TS Only | JS/TS / Go / Rust | TS/JS Only | **Any Language (Go, TS, +)** |
 | **Interactive Studio** | Django Admin | None | Prisma Studio | Drizzle Studio | **Axel Studio (`axel studio`)** |
