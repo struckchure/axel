@@ -1,9 +1,9 @@
 ---
-title: With bindings — AQL
+title: With — AQL
 description: Bind a subquery once with `with (...)` and reuse it across the query
 ---
 
-# With bindings
+# With
 
 A `with (...)` block binds named subqueries for the statement that follows. Each binding
 lowers to a Postgres CTE, so a sub-select used at several points in a filter is evaluated
@@ -11,8 +11,8 @@ once instead of being inlined per use site.
 
 ```aql
 with (
-  business := (select Business filter .id = $business_id),
-  api_keys := (multi select ApiKey filter .business = $business_id)
+  business := (select Business filter .id = $business_id);
+  api_keys := (multi select ApiKey filter .business = $business_id);
 )
 multi select Transaction
 filter (

@@ -8,14 +8,18 @@ description: The full AQL grammar
 The semicolon at the end of each statement is optional when the query is passed as an inline string.
 
 ```
-Statement   = WithBlock? (SelectStmt | InsertStmt | UpdateStmt | DeleteStmt)
+Statement   = VarBlock* WithBlock? (SelectStmt | InsertStmt | UpdateStmt | DeleteStmt)
 
-WithBlock   = "with" "(" WithBinding ("," WithBinding)* ","? ")"
+VarBlock    = "var" "(" (Param ";")* ")"
+            | "var" Param ";"
+Param       = "$" Ident ("<" Ident ">")? "?"?
+
+WithBlock   = "with" "(" (WithBinding ";")* ")"
 WithBinding = Ident ":=" "(" "multi"? "select" SelectBody ")"
 
 SelectStmt  = "select" SelectBody ";"?
 SelectBody  = AggExpr
-            | TypeName Shape? Filter? OrderBy? Limit? Offset?
+            | TypeName Shape? Filter? GroupBy? Having? OrderBy? Limit? Offset?
 
 AggExpr     = Ident "(" TypeName Filter? ")"
 
@@ -29,11 +33,13 @@ ConflictUpdate = "update" TypeName "set" "{" Assignment ("," Assignment)* ","? "
 
 Shape       = "{" ShapeField ("," ShapeField)* ","? "}"
 ShapeField  = Ident (":" Shape)?          # leaf or nested link shape
-            | Ident ":=" Expr             # computed field
+            | Ident ":=" Expr Filter?     # computed or aggregate field (with optional per-field filter)
 
 Assignment  = Ident ":=" Expr
 
 Filter      = "filter" Expr
+GroupBy     = "group" "by" Expr ("," Expr)*
+Having      = "having" Expr
 OrderBy     = "order" "by" OrderItem ("," OrderItem)*
 OrderItem   = Expr ("asc" | "desc")?
 Limit       = "limit" Expr

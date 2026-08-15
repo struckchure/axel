@@ -65,7 +65,13 @@ func returningColumns(rt *asl.ResolvedType) string {
 func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 	c := &compiler{schema: schema, params: newParamCollector()}
 
-	// Bindings are lowered first so their params are numbered in the order the
+	// Variables are declared first so they receive initial positional slots
+	// and explicit types/optionality ahead of use sites.
+	if err := c.compileVars(stmt.Vars); err != nil {
+		return nil, err
+	}
+
+	// Bindings are lowered next so their params are numbered in the order the
 	// CTEs are emitted, ahead of the statement body that references them.
 	if err := c.compileWith(stmt.With); err != nil {
 		return nil, err
@@ -180,8 +186,14 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 	// set (each with an optional per-field `filter`). Lowers to a single scan with
 	// `FUNC(arg) FILTER (WHERE ...)` columns and the shared filter as the outer
 	// WHERE — one row out, no LIMIT.
-	if body.Shape != nil && shapeIsAggregation(body.Shape) {
+	if body.Shape != nil && shapeIsAggregation(body.Shape) && len(body.GroupBy) == 0 {
 		return c.compileAggregationSelect(stmt, rt, alias)
+	}
+
+	if len(body.GroupBy) > 0 {
+		if err := c.validateGroupByShape(body.Shape, body.GroupBy, rt); err != nil {
+			return "", err
+		}
 	}
 
 	// Build SELECT columns from shape (or "*" if no shape).
@@ -223,6 +235,31 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 			return "", err
 		}
 		fmt.Fprintf(&sb, "\nWHERE %s", where)
+	}
+
+	// GROUP BY
+	if len(body.GroupBy) > 0 {
+		var parts []string
+		for _, g := range body.GroupBy {
+			expr, err := c.compileExpr(g.Expr, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, expr)
+		}
+		fmt.Fprintf(&sb, "\nGROUP BY %s", strings.Join(parts, ", "))
+	}
+
+	// HAVING
+	if body.Having != nil {
+		if len(body.GroupBy) == 0 {
+			return "", fmt.Errorf("HAVING clause requires a GROUP BY clause")
+		}
+		having, err := c.compileExpr(body.Having.Expr, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&sb, "\nHAVING %s", having)
 	}
 
 	// ORDER BY
@@ -453,9 +490,44 @@ func (c *compiler) compileShapeCols(shape *aql.Shape, rt *asl.ResolvedType, alia
 	return cols, nil
 }
 
+func (c *compiler) validateGroupByShape(shape *aql.Shape, groupBy []*aql.GroupBy, rt *asl.ResolvedType) error {
+	if shape == nil {
+		return fmt.Errorf("grouped select requires an explicit shape")
+	}
+
+	groupedFields := make(map[string]bool)
+	for _, g := range groupBy {
+		if p := g.Expr.SoloPrimary(); p != nil && p.Path != nil && len(p.Path.Steps) > 0 {
+			groupedFields[p.Path.Steps[0]] = true
+		}
+	}
+
+	for _, f := range shape.Fields {
+		if f.Star {
+			return fmt.Errorf("wildcard '*' is not allowed in a grouped select; list grouping fields and aggregate fields explicitly")
+		}
+		if _, _, ok := f.AggCall(); ok {
+			continue
+		}
+		if f.Computed != nil {
+			continue
+		}
+		if !groupedFields[f.Name] {
+			return fmt.Errorf("field %q must appear in the GROUP BY clause or be used in an aggregate function", f.Name)
+		}
+	}
+	return nil
+}
+
 // compileShapeField compiles one field in a shape.
 // Returns (column expression, lateral subquery string, error).
 func (c *compiler) compileShapeField(f *aql.ShapeField, parentType *asl.ResolvedType, parentAlias string) (string, string, error) {
+	// Aggregate field: name := sum(...) [filter ...] [<cast>]
+	if _, _, ok := f.AggCall(); ok {
+		col, err := c.compileAggField(f, parentType, parentAlias)
+		return col, "", err
+	}
+
 	// Inline computed field: name := expr
 	if f.Computed != nil {
 		return c.compileComputedShapeField(f, parentType, parentAlias)
@@ -1179,10 +1251,14 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 
 	// Postfix null-test: `.x is null` / `.x is not null`.
 	if cmp.Is {
-		if cmp.IsNot {
-			return left + " IS NOT NULL", nil
+		cast := ""
+		if cmp.Left != nil && cmp.Left.Param != nil && !strings.Contains(left, "::") {
+			cast = c.paramCastSuffix(cmp.Left, nil, rt)
 		}
-		return left + " IS NULL", nil
+		if cmp.IsNot {
+			return left + cast + " IS NOT NULL", nil
+		}
+		return left + cast + " IS NULL", nil
 	}
 
 	if cmp.Op == "" {
@@ -1235,8 +1311,14 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	// COALESCE(left, right). A param operand is cast to the SQL type of the
 	// opposite operand so its type is determinable when the value is null.
 	if cmp.Op == "??" {
-		lc := left + c.paramCastSuffix(cmp.Left, cmp.Right, rt)
-		rc := right + c.paramCastSuffix(cmp.Right, cmp.Left, rt)
+		lc := left
+		if !strings.Contains(left, "::") {
+			lc += c.paramCastSuffix(cmp.Left, cmp.Right, rt)
+		}
+		rc := right
+		if !strings.Contains(right, "::") {
+			rc += c.paramCastSuffix(cmp.Right, cmp.Left, rt)
+		}
 		return fmt.Sprintf("COALESCE(%s, %s)", lc, rc), nil
 	}
 
@@ -1346,6 +1428,14 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		}
 		if p.Param.Optional {
 			c.params.markOptional(p.Param.Name)
+		}
+		if aqlType == "" && c.params.isExplicit(p.Param.Name) {
+			aqlType = paramAQLType(c.params, p.Param.Name)
+		}
+		if aqlType != "" && (p.Param.Type != "" || c.params.isExplicit(p.Param.Name)) {
+			if sqlType, ok := asl.BuiltinSQLType(aqlType); ok {
+				return fmt.Sprintf("%s::%s", ph, sqlType), nil
+			}
 		}
 		return ph, nil
 
@@ -1643,15 +1733,25 @@ func (c *compiler) compileMembership(left string, path *aql.PathExpr, alias stri
 }
 
 func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.ResolvedType) (string, error) {
+	fn := fc.Name
+	if aql.AggFuncs[strings.ToLower(fn)] {
+		fn = strings.ToUpper(fn)
+	}
+	if strings.ToLower(fc.Name) == "count" && len(fc.Args) == 0 {
+		return "COUNT(*)", nil
+	}
 	var args []string
 	for _, a := range fc.Args {
 		s, err := c.compileExpr(a, alias, rt)
 		if err != nil {
 			return "", err
 		}
+		if p := a.SoloPrimary(); p != nil && p.Param != nil && p.Cast == "" && !strings.Contains(s, "::") {
+			s += c.paramCastSuffix(p, nil, rt)
+		}
 		args = append(args, s)
 	}
-	return fmt.Sprintf("%s(%s)", fc.Name, strings.Join(args, ", ")), nil
+	return fmt.Sprintf("%s(%s)", fn, strings.Join(args, ", ")), nil
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1695,6 +1795,34 @@ func (c *compiler) newAlias(typeName string) string {
 		return base
 	}
 	return fmt.Sprintf("%s%d", base, n)
+}
+
+func (c *compiler) compileVars(vars []*aql.VarBlock) error {
+	for _, vb := range vars {
+		if vb == nil {
+			continue
+		}
+		for _, p := range vb.Params {
+			if p == nil {
+				continue
+			}
+			baseType, enumType, err := c.resolveParamType(p.Name, p.Type)
+			if err != nil {
+				return err
+			}
+			c.params.add(p.Name, baseType)
+			if p.Type != "" {
+				c.params.setExplicitType(p.Name, baseType)
+			}
+			if enumType != "" {
+				c.params.setEnumType(p.Name, enumType)
+			}
+			if p.Optional {
+				c.params.markOptional(p.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // resolveParamType classifies an inline param annotation ($name<type>) against

@@ -16,6 +16,9 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 	for _, d := range stmt.Directives {
 		fmt.Fprintf(b, "@%s %s\n", d.Name, d.Value)
 	}
+	for _, v := range stmt.Vars {
+		printVar(b, v)
+	}
 	printWith(b, stmt.With)
 	switch {
 	case stmt.Select != nil:
@@ -29,6 +32,25 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 	}
 }
 
+func printVar(b *strings.Builder, v *VarBlock) {
+	if v == nil || len(v.Params) == 0 {
+		return
+	}
+	if len(v.Params) == 1 && v.Pos.Line == v.EndPos.Line {
+		b.WriteString("var ")
+		printParam(b, v.Params[0])
+		b.WriteString(";\n")
+		return
+	}
+	b.WriteString("var (\n")
+	for _, p := range v.Params {
+		b.WriteString("  ")
+		printParam(b, p)
+		b.WriteString(";\n")
+	}
+	b.WriteString(")\n")
+}
+
 // printWith renders a with-block, one binding per indented line. It stays
 // deliberately layout-fixed (never width-aware): Print is the oracle Format
 // compares against to prove a reformat was lossless, so its output must depend
@@ -38,15 +60,25 @@ func printWith(b *strings.Builder, w *WithBlock) {
 		return
 	}
 	b.WriteString("with (\n")
-	for i, bind := range w.Bindings {
+	for _, bind := range w.Bindings {
 		fmt.Fprintf(b, "  %s := ", bind.Name)
 		printExpr(b, bind.Value)
-		if i < len(w.Bindings)-1 {
-			b.WriteString(",")
-		}
-		b.WriteString("\n")
+		b.WriteString(";\n")
 	}
 	b.WriteString(")\n")
+}
+
+func printParam(b *strings.Builder, p *Param) {
+	if p == nil {
+		return
+	}
+	fmt.Fprintf(b, "$%s", p.Name)
+	if p.Type != "" {
+		fmt.Fprintf(b, "<%s>", p.Type)
+	}
+	if p.Optional {
+		b.WriteString("?")
+	}
 }
 
 func printSelect(b *strings.Builder, s *SelectStmt) {
@@ -79,6 +111,18 @@ func printSelectBody(b *strings.Builder, body *SelectBody, sep string) {
 	if body.Filter != nil {
 		b.WriteString(sep)
 		printFilter(b, body.Filter)
+	}
+	for i, g := range body.GroupBy {
+		if i == 0 {
+			b.WriteString(sep + "group by ")
+		} else {
+			b.WriteString(", ")
+		}
+		printExpr(b, g.Expr)
+	}
+	if body.Having != nil {
+		b.WriteString(sep + "having ")
+		printExpr(b, body.Having.Expr)
 	}
 	for i, o := range body.OrderBy {
 		if i == 0 {
@@ -122,6 +166,18 @@ func printSelectBodyInline(b *strings.Builder, body *SelectBody) {
 	if body.Filter != nil {
 		b.WriteString(" ")
 		printFilter(b, body.Filter)
+	}
+	for i, g := range body.GroupBy {
+		if i == 0 {
+			b.WriteString(" group by ")
+		} else {
+			b.WriteString(", ")
+		}
+		printExpr(b, g.Expr)
+	}
+	if body.Having != nil {
+		b.WriteString(" having ")
+		printExpr(b, body.Having.Expr)
 	}
 	for i, o := range body.OrderBy {
 		if i == 0 {

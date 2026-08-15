@@ -14,13 +14,32 @@ templ sqlView(v StudioView) {
 			hx-target="#sql-result"
 			hx-swap="innerHTML"
 		>
-			<textarea
-				name="sql"
-				rows="5"
-				spellcheck="false"
-				placeholder="SELECT * FROM ..."
-				class="w-full font-mono text-[13px] p-3 bg-muted border border-input outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y"
-			>{ defaultSQL(v) }</textarea>
+			<div class="border border-input min-h-[400px] h-[400px] resize-y overflow-hidden mb-2" id="sql-editor-container"></div>
+			<input type="hidden" name="sql" id="sql-hidden" value={ defaultSQL(v) } />
+			<script>
+				require(['vs/editor/editor.main'], function() {
+					const container = document.getElementById('sql-editor-container');
+					const hiddenInput = document.getElementById('sql-hidden');
+					
+					const isDark = document.documentElement.classList.contains("dark");
+					const editor = monaco.editor.create(container, {
+						value: hiddenInput.value,
+						language: 'sql',
+						theme: isDark ? 'vs-dark' : 'vs',
+						minimap: { enabled: false },
+						automaticLayout: true,
+						fontSize: 13,
+						fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+						scrollBeyondLastLine: false,
+					});
+					
+					editor.onDidChangeModelContent(function() {
+						hiddenInput.value = editor.getValue();
+					});
+					
+					container._editor = editor;
+				});
+			</script>
 			<div class="flex items-center justify-between mt-2">
 				<span class="text-xs text-muted-foreground">Read-only queries run against { v.ConnName }.</span>
 				<button

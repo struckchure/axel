@@ -26,12 +26,12 @@ type Project {
 func TestFilterChainsAnd(t *testing.T) {
 	c := compileAQL(t, boolSchema, `
 multi select Project { *, members: { id } }
-filter .owner = $owner<str> and .organization = $application<str>
+filter .owner = $owner<uuid> and .organization = $application<str>
 order by .created_at desc
 limit $limit<int32>?
 offset $offset<int32>?;`)
 
-	if !strings.Contains(c.SQL, `p.owner = $1 AND p.organization = $2`) {
+	if !strings.Contains(c.SQL, `p.owner = $1::UUID AND p.organization = $2::TEXT`) {
 		t.Errorf("expected a single AND-joined WHERE clause:\n%s", c.SQL)
 	}
 	want := []string{"owner", "application", "limit", "offset"}
@@ -48,12 +48,12 @@ offset $offset<int32>?;`)
 // `and` chains to any length, and `or` chains too.
 func TestFilterChainsAndOrToAnyLength(t *testing.T) {
 	c := compileAQL(t, boolSchema, `multi select Project filter .name = $a<str> and .organization = $b<str> and .active = true;`)
-	if !strings.Contains(c.SQL, `p.name = $1 AND p.organization = $2 AND p.active = true`) {
+	if !strings.Contains(c.SQL, `p.name = $1::TEXT AND p.organization = $2::TEXT AND p.active = true`) {
 		t.Errorf("three-way and chain:\n%s", c.SQL)
 	}
 
 	c = compileAQL(t, boolSchema, `multi select Project filter .name = $a<str> or .organization = $b<str> or .active = true;`)
-	if !strings.Contains(c.SQL, `p.name = $1 OR p.organization = $2 OR p.active = true`) {
+	if !strings.Contains(c.SQL, `p.name = $1::TEXT OR p.organization = $2::TEXT OR p.active = true`) {
 		t.Errorf("three-way or chain:\n%s", c.SQL)
 	}
 }
@@ -62,7 +62,7 @@ func TestFilterChainsAndOrToAnyLength(t *testing.T) {
 // emitted SQL makes the grouping explicit rather than leaning on SQL precedence.
 func TestFilterAndBindsTighterThanOr(t *testing.T) {
 	c := compileAQL(t, boolSchema, `multi select Project filter .name = $a<str> or .organization = $b<str> and .active = true;`)
-	if !strings.Contains(c.SQL, `p.name = $1 OR (p.organization = $2 AND p.active = true)`) {
+	if !strings.Contains(c.SQL, `p.name = $1::TEXT OR (p.organization = $2::TEXT AND p.active = true)`) {
 		t.Errorf("and should bind tighter than or:\n%s", c.SQL)
 	}
 }
@@ -73,9 +73,9 @@ func TestFilterParenthesizedGroups(t *testing.T) {
 multi select Project
 filter (.name = $a<str> or .organization = $b<str>)
    and (.active = true or .age = $c<int32>)
-   and .owner = $owner<str>;`)
+   and .owner = $owner<uuid>;`)
 
-	want := `(p.name = $1 OR p.organization = $2) AND (p.active = true OR p.age = $3) AND p.owner = $4`
+	want := `(p.name = $1::TEXT OR p.organization = $2::TEXT) AND (p.active = true OR p.age = $3::INTEGER) AND p.owner = $4::UUID`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("grouped filter should emit %q:\n%s", want, c.SQL)
 	}
@@ -90,7 +90,7 @@ filter (.name = $a<str> or .organization = $b<str>)
 func TestFilterNestedGroups(t *testing.T) {
 	c := compileAQL(t, boolSchema, `multi select Project filter ((.name = $a<str> or .organization = $b<str>) and .active = true) or .age = $c<int32>;`)
 
-	want := `((p.name = $1 OR p.organization = $2) AND p.active = true) OR p.age = $3`
+	want := `((p.name = $1::TEXT OR p.organization = $2::TEXT) AND p.active = true) OR p.age = $3::INTEGER`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("nested group should emit %q:\n%s", want, c.SQL)
 	}
@@ -100,13 +100,13 @@ func TestFilterNestedGroups(t *testing.T) {
 // applied to the whole conjunction, omitting $owner would also let rows through
 // that fail the .name test.
 func TestOptionalParamGuardsOnlyItsOwnComparison(t *testing.T) {
-	c := compileAQL(t, boolSchema, `multi select Project filter .owner = $owner<str>? and .name = $name<str>;`)
+	c := compileAQL(t, boolSchema, `multi select Project filter .owner = $owner<uuid>? and .name = $name<str>;`)
 
-	want := `($1::UUID IS NULL OR p.owner = $1) AND p.name = $2`
+	want := `($1::UUID IS NULL OR p.owner = $1::UUID) AND p.name = $2::TEXT`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("optional param must guard only its own comparison, want %q:\n%s", want, c.SQL)
 	}
-	if strings.Contains(c.SQL, `IS NULL OR p.owner = $1 AND`) {
+	if strings.Contains(c.SQL, `IS NULL OR p.owner = $1::UUID AND`) {
 		t.Errorf("null guard leaked across the conjunction:\n%s", c.SQL)
 	}
 }
@@ -116,9 +116,9 @@ func TestOptionalParamGuardsOnlyItsOwnComparison(t *testing.T) {
 // param silently voids the whole `or` group — e.g. leaving $owner null here would
 // make every row match regardless of .organization.
 func TestOptionalParamInOrDropsOut(t *testing.T) {
-	c := compileAQL(t, boolSchema, `multi select Project filter .owner = $owner<str>? or .organization = $org<str>?;`)
+	c := compileAQL(t, boolSchema, `multi select Project filter .owner = $owner<uuid>? or .organization = $org<str>?;`)
 
-	want := `($1::UUID IS NOT NULL AND p.owner = $1) OR ($2::TEXT IS NOT NULL AND p.organization = $2)`
+	want := `($1::UUID IS NOT NULL AND p.owner = $1::UUID) OR ($2::TEXT IS NOT NULL AND p.organization = $2::TEXT)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("optional params in an OR must use the IS NOT NULL guard, want %q:\n%s", want, c.SQL)
 	}
@@ -134,14 +134,14 @@ func TestOptionalParamMixedAndOrContexts(t *testing.T) {
 	c := compileAQL(t, boolSchema, `
 multi select Project
 filter .name = $name<str>?
-   and (.owner = $owner<str>? or .organization = $org<str>?);`)
+   and (.owner = $owner<uuid>? or .organization = $org<str>?);`)
 
 	// Sibling AND filter → match-all when null.
-	if !strings.Contains(c.SQL, `($1::TEXT IS NULL OR p.name = $1)`) {
+	if !strings.Contains(c.SQL, `($1::TEXT IS NULL OR p.name = $1::TEXT)`) {
 		t.Errorf("AND-context optional param should keep the IS NULL OR guard:\n%s", c.SQL)
 	}
 	// Both OR arms → drop out when null.
-	if !strings.Contains(c.SQL, `($2::UUID IS NOT NULL AND p.owner = $2) OR ($3::TEXT IS NOT NULL AND p.organization = $3)`) {
+	if !strings.Contains(c.SQL, `($2::UUID IS NOT NULL AND p.owner = $2::UUID) OR ($3::TEXT IS NOT NULL AND p.organization = $3::TEXT)`) {
 		t.Errorf("OR-context optional params should use the IS NOT NULL guard:\n%s", c.SQL)
 	}
 }
@@ -150,13 +150,13 @@ filter .name = $name<str>?
 // identity even when that AND-group is itself one arm of an OR: within the group
 // the param is AND-ed, so omitting it should relax to its sibling, not vanish.
 func TestOptionalParamAndSiblingInsideOr(t *testing.T) {
-	c := compileAQL(t, boolSchema, `multi select Project filter (.owner = $owner<str>? and .active = true) or .age = $age<int32>?;`)
+	c := compileAQL(t, boolSchema, `multi select Project filter (.owner = $owner<uuid>? and .active = true) or .age = $age<int32>?;`)
 
-	if !strings.Contains(c.SQL, `($1::UUID IS NULL OR p.owner = $1) AND p.active = true`) {
+	if !strings.Contains(c.SQL, `($1::UUID IS NULL OR p.owner = $1::UUID) AND p.active = true`) {
 		t.Errorf("optional param with an AND sibling keeps the match-all identity:\n%s", c.SQL)
 	}
 	// The lone OR arm still drops out when null.
-	if !strings.Contains(c.SQL, `($2::INTEGER IS NOT NULL AND p.age = $2)`) {
+	if !strings.Contains(c.SQL, `($2::INTEGER IS NOT NULL AND p.age = $2::INTEGER)`) {
 		t.Errorf("lone OR-arm optional param should use the IS NOT NULL guard:\n%s", c.SQL)
 	}
 }

@@ -33,6 +33,9 @@ type StudioView struct {
 	// LinkOptions holds picker candidates for each single-link column of the
 	// active table, keyed by column name (editable views only).
 	LinkOptions map[string][]db.Option
+
+	// Enums provides all enum types and their values from the schema, if any.
+	Enums map[string][]string
 }
 
 // Page returns the 1-based current page number.

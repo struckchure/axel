@@ -165,7 +165,7 @@ export const aql: LanguageRegistration = {
     },
     keyword: {
       match:
-        "\\b(with|multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
+        "\\b(var|with|multi|select|insert|update|delete|filter|group|having|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
       name: "keyword.control.aql",
     },
     "operator-word": {
@@ -177,7 +177,7 @@ export const aql: LanguageRegistration = {
       name: "constant.language.aql",
     },
     "builtin-func": {
-      match: "\\b(count)(?=\\s*\\()",
+      match: "\\b(count|sum|avg|min|max)(?=\\s*\\()",
       name: "support.function.builtin.aql",
     },
     "func-call": {

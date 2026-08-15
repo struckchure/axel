@@ -2,6 +2,24 @@ package pages
 
 import "fmt"
 
+templ enumScript(v StudioView) {
+	if len(v.Enums) > 0 {
+		<script>
+			window.aqlEnums = {
+				for name, values := range v.Enums {
+					"{ name }": [
+						for i, val := range values {
+							"{ val }"if i < len(values)-1 {
+								,
+							}
+						}
+					],
+				}
+			};
+		</script>
+	}
+}
+
 templ aqlView(v StudioView) {
 	<div class="flex-1 min-h-0 flex flex-col">
 		<form
@@ -14,13 +32,258 @@ templ aqlView(v StudioView) {
 				<span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">AQL</span>
 				@aqlBadge(v)
 			</div>
-			<textarea
-				name="aql"
-				rows="6"
-				spellcheck="false"
-				placeholder="multi select User { id, email } filter .active = true;"
-				class="w-full font-mono text-[13px] p-3 bg-muted border border-input outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y"
-			>{ defaultAQL(v) }</textarea>
+			<div class="flex border border-input min-h-[400px] h-[400px] resize-y overflow-hidden mb-2">
+				<div class="flex-1 min-w-0" id="aql-editor-container"></div>
+				<div class="w-1/5 shrink-0 border-l border-border bg-muted/30 p-3 overflow-y-auto hidden" id="aql-params-container">
+					<div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Parameters</div>
+					<div id="aql-params-list" class="space-y-2"></div>
+				</div>
+			</div>
+			<input type="hidden" name="aql" id="aql-hidden" value={ defaultAQL(v) } />
+			@enumScript(v)
+			<script>
+				require(['vs/editor/editor.main'], function() {
+					const container = document.getElementById('aql-editor-container');
+					const hiddenInput = document.getElementById('aql-hidden');
+					const paramsContainer = document.getElementById('aql-params-container');
+					const paramsList = document.getElementById('aql-params-list');
+					
+					const isDark = document.documentElement.classList.contains("dark");
+					const editor = monaco.editor.create(container, {
+						value: hiddenInput.value,
+						language: 'sql',
+						theme: isDark ? 'vs-dark' : 'vs',
+						minimap: { enabled: false },
+						automaticLayout: true,
+						fontSize: 13,
+						fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+						scrollBeyondLastLine: false,
+					});
+					
+					function escapeHTML(str) {
+						return String(str).replace(/[&<>'"]/g, 
+							tag => ({
+								'&': '&amp;',
+								'<': '&lt;',
+								'>': '&gt;',
+								"'": '&#39;',
+								'"': '&quot;'
+							}[tag] || tag)
+						);
+					}
+					
+					function updateParams() {
+						try {
+							const text = editor.getValue();
+							hiddenInput.value = text;
+							
+							const regex = /\$([a-zA-Z0-9_]+)(?:<([^>]+)>)?(\?)?/g;
+							const params = new Map();
+							let match;
+							while ((match = regex.exec(text)) !== null) {
+								if (!params.has(match[1])) {
+									params.set(match[1], { type: match[2] || 'any', optional: match[3] === '?' });
+								}
+							}
+							
+							if (params.size === 0) {
+								paramsContainer.classList.add('hidden');
+								paramsList.innerHTML = '';
+							} else {
+								paramsContainer.classList.remove('hidden');
+								const currentInputs = {};
+								paramsList.querySelectorAll('input, select').forEach(inp => {
+									currentInputs[inp.name] = inp.value;
+								});
+								
+								let html = '';
+								params.forEach((info, name) => {
+									const val = escapeHTML(currentInputs['param_' + name] || '');
+									const typeHtml = escapeHTML(info.type);
+									const reqStar = info.optional ? '' : '<span class="text-destructive ml-0.5">*</span>';
+									
+									let inputHtml = '';
+									if (window.aqlEnums && window.aqlEnums[info.type]) {
+										const options = window.aqlEnums[info.type].map(opt => {
+											const selected = val === opt ? 'selected' : '';
+											return `<option value="${escapeHTML(opt)}" ${selected}>${escapeHTML(opt)}</option>`;
+										}).join('');
+										inputHtml = `
+											<select name="param_${name}" class="w-full h-7 px-1.5 text-xs bg-background border border-input outline-none focus-visible:ring-1 focus-visible:ring-ring/40">
+												<option value="" disabled ${val === '' ? 'selected' : ''}>Select ${typeHtml}...</option>
+												${options}
+											</select>
+										`;
+									} else {
+										inputHtml = `<input type="text" name="param_${name}" value="${val}" autocomplete="off" spellcheck="false" class="w-full h-7 px-2 text-xs bg-background border border-input outline-none focus-visible:ring-1 focus-visible:ring-ring/40" />`;
+									}
+									
+									html += `
+										<div class="mb-2">
+											<label class="block text-[11px] font-medium text-foreground mb-1 flex items-center justify-between">
+												<span><span class="text-primary font-mono">$${name}</span>${reqStar}</span>
+												<span class="text-muted-foreground text-[9px] ml-1 truncate max-w-[60px]" title="${typeHtml}">${typeHtml}</span>
+											</label>
+											${inputHtml}
+										</div>
+									`;
+								});
+								paramsList.innerHTML = html;
+							}
+						} catch (e) {
+							paramsContainer.classList.remove('hidden');
+							paramsList.innerHTML = '<div class="text-xs text-red-500">' + e.toString() + '</div>';
+						}
+					}
+					
+					editor.onDidChangeModelContent(updateParams);
+					updateParams();
+					
+					if (!window.__aqlLspRegistered) {
+						window.__aqlLspRegistered = true;
+						
+						// Register LSP Completion Provider
+						monaco.languages.registerCompletionItemProvider('sql', {
+							triggerCharacters: ['.', '=', '<', ' '],
+							provideCompletionItems: async function(model, position) {
+								const text = model.getValue();
+								const req = {
+									text: text,
+									line: position.lineNumber - 1,
+									char: position.column - 1
+								};
+								
+								try {
+									const res = await fetch('/lsp/completion', {
+										method: 'POST',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify(req)
+									});
+									if (!res.ok) return { suggestions: [] };
+									const items = await res.json();
+									
+									// Map LSP CompletionKind to Monaco CompletionItemKind
+									const kindMap = {
+										3: monaco.languages.CompletionItemKind.Function,
+										5: monaco.languages.CompletionItemKind.Field,
+										6: monaco.languages.CompletionItemKind.Variable,
+										7: monaco.languages.CompletionItemKind.Class,
+										13: monaco.languages.CompletionItemKind.Enum,
+										14: monaco.languages.CompletionItemKind.Keyword,
+										20: monaco.languages.CompletionItemKind.EnumMember,
+									};
+									
+									const word = model.getWordUntilPosition(position);
+									const range = {
+										startLineNumber: position.lineNumber,
+										endLineNumber: position.lineNumber,
+										startColumn: word.startColumn,
+										endColumn: word.endColumn
+									};
+									
+									const suggestions = items.map(item => ({
+										label: item.Label,
+										kind: kindMap[item.Kind] || monaco.languages.CompletionItemKind.Text,
+										detail: item.Detail,
+										insertText: item.Label,
+										range: range
+									}));
+									
+									return { suggestions: suggestions };
+								} catch (e) {
+									console.error("LSP Completion Error:", e);
+									return { suggestions: [] };
+								}
+							}
+						});
+						
+						// Register LSP Hover Provider
+						monaco.languages.registerHoverProvider('sql', {
+							provideHover: async function(model, position) {
+								const text = model.getValue();
+								const req = {
+									text: text,
+									line: position.lineNumber - 1,
+									char: position.column - 1
+								};
+								
+								try {
+									const res = await fetch('/lsp/hover', {
+										method: 'POST',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify(req)
+									});
+									if (!res.ok) return null;
+									const hover = await res.json();
+									if (!hover || !hover.Contents) return null;
+									
+									return {
+										range: {
+											startLineNumber: hover.Range.Start.Line + 1,
+											startColumn: hover.Range.Start.Char + 1,
+											endLineNumber: hover.Range.End.Line + 1,
+											endColumn: hover.Range.End.Char + 1
+										},
+										contents: [
+											{ value: hover.Contents }
+										]
+									};
+								} catch (e) {
+									console.error("LSP Hover Error:", e);
+									return null;
+								}
+							}
+						});
+					}
+					
+					let diagTimeout = null;
+					function updateDiagnostics() {
+						const text = editor.getValue();
+						if (diagTimeout) clearTimeout(diagTimeout);
+						diagTimeout = setTimeout(async () => {
+							try {
+								const res = await fetch('/lsp/diagnostics', {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({ text: text })
+								});
+								if (!res.ok) return;
+								const diags = await res.json();
+								
+								const markers = (diags || []).map(d => {
+									let severity = monaco.MarkerSeverity.Error;
+									if (d.Severity === 2) severity = monaco.MarkerSeverity.Warning;
+									else if (d.Severity === 3) severity = monaco.MarkerSeverity.Info;
+									else if (d.Severity === 4) severity = monaco.MarkerSeverity.Hint;
+									
+									return {
+										severity: severity,
+										startLineNumber: d.Range.Start.Line + 1,
+										startColumn: d.Range.Start.Char + 1,
+										endLineNumber: d.Range.End.Line + 1,
+										endColumn: d.Range.End.Char + 1,
+										message: d.Message
+									};
+								});
+								
+								monaco.editor.setModelMarkers(editor.getModel(), 'lsp', markers);
+							} catch (e) {
+								console.error("LSP Diagnostics Error:", e);
+							}
+						}, 300);
+					}
+					
+					editor.onDidChangeModelContent(() => {
+						updateParams();
+						updateDiagnostics();
+					});
+					updateParams();
+					updateDiagnostics();
+					
+					// Make editor accessible to htmx events if needed
+					container._editor = editor;
+				});
+			</script>
 			<div class="flex items-center justify-between mt-2">
 				<span class="text-xs text-muted-foreground">
 					if v.AQLLive {

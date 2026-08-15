@@ -8,6 +8,7 @@
 
 ; Statement keywords
 [
+  "var"
   "with"
   "multi"
   "select"
@@ -15,6 +16,8 @@
   "update"
   "delete"
   "filter"
+  "group"
+  "having"
   "order"
   "by"
   "limit"

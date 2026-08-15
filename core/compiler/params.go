@@ -5,12 +5,16 @@ import "fmt"
 // paramCollector accumulates named AQL parameters ($name) in first-appearance
 // order and maps them to positional SQL parameters ($1, $2, ...).
 type paramCollector struct {
-	params []ParamInfo
-	index  map[string]int // name → 1-based position
+	params        []ParamInfo
+	index         map[string]int // name → 1-based position
+	explicitTypes map[string]bool
 }
 
 func newParamCollector() *paramCollector {
-	return &paramCollector{index: make(map[string]int)}
+	return &paramCollector{
+		index:         make(map[string]int),
+		explicitTypes: make(map[string]bool),
+	}
 }
 
 // setType updates the AQLType for an already-registered param.
@@ -26,7 +30,12 @@ func (p *paramCollector) setType(name, aqlType string) {
 func (p *paramCollector) setExplicitType(name, aqlType string) {
 	if pos, ok := p.index[name]; ok && aqlType != "" {
 		p.params[pos-1].AQLType = aqlType
+		p.explicitTypes[name] = true
 	}
+}
+
+func (p *paramCollector) isExplicit(name string) bool {
+	return p.explicitTypes[name]
 }
 
 // setEnumType records the enum type name for an already-registered param.

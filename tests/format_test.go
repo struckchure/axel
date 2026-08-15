@@ -156,16 +156,16 @@ func TestAQLFormatKeepsShortFilterInline(t *testing.T) {
 // The motivating query, written on a single line, must format to the canonical
 // layout — and formatting the result again must not move anything.
 func TestAQLFormatBreaksLongFilter(t *testing.T) {
-	src := "with ( business := (select Business filter .id = $business_id), " +
-		"api_keys := (multi select ApiKey filter .business = $business_id) ) " +
+	src := "with ( business := (select Business filter .id = $business_id); " +
+		"api_keys := (multi select ApiKey filter .business = $business_id); ) " +
 		"multi select Transaction filter (business is not null and " +
 		"((.sender_id = business.id) or (.sender_id in api_keys.id) or " +
 		"(.reciever_id in api_keys.id))) order by .updated_at desc " +
 		"limit $limit<int32>? offset $offset<int32>?;"
 
 	want := `with (
-  business := (select Business filter .id = $business_id),
-  api_keys := (multi select ApiKey filter .business = $business_id)
+  business := (select Business filter .id = $business_id);
+  api_keys := (multi select ApiKey filter .business = $business_id);
 )
 multi select Transaction
 filter (
@@ -245,3 +245,113 @@ func TestAQLFormatParseErrorReturnsError(t *testing.T) {
 		t.Error("expected a parse error for malformed query")
 	}
 }
+
+func TestAQLFormatTransactionBalance(t *testing.T) {
+	src := `with (
+  api_key := (
+    multi select ApiKey { id }
+    filter .id = $api_key_id<uuid>?
+    or (
+      .business.id = $business_id<uuid>?
+      and .environment = $api_environment<ApiKeyEnvironment>?
+    )
+  );
+)
+select Transaction {
+  success_debit := sum(.amount)<int64> filter .type = TransactionType.Debit and .status = TransactionStatus.Successful,
+  pending_debit := sum(.amount)<int64> filter .type = TransactionType.Debit and .status = TransactionStatus.Pending,
+  success_credit := sum(.amount)<int64> filter .type = TransactionType.Credit and .status = TransactionStatus.Successful,
+  pending_credit := sum(.amount)<int64> filter .type = TransactionType.Credit and .status = TransactionStatus.Pending
+}
+filter (
+  .currency = $currency
+  and (.sender_id in api_key.id<str> or .reciever_id in api_key.id<str>)
+);
+`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != src {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, src)
+	}
+	out2, err := aql.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2 != out {
+		t.Errorf("not idempotent:\n%s\n---\n%s", out, out2)
+	}
+}
+
+func TestAQLFormatGroupByAndHaving(t *testing.T) {
+	src := `multi select Transaction {
+  status,
+  total_volume := sum(.amount)<int64>,
+  successful_volume := sum(.amount)<int64> filter .status = TransactionStatus.Successful,
+  order_count := count()
+}
+filter .created_at >= $since
+group by .status
+having count() >= $min_orders and sum(.amount) > $min_volume
+order by total_volume desc
+limit $limit;
+`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != src {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, src)
+	}
+	out2, err := aql.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2 != out {
+		t.Errorf("not idempotent:\n%s\n---\n%s", out, out2)
+	}
+}
+
+func TestAQLFormatVarBlock(t *testing.T) {
+	src := `var (
+  $status<TransactionStatus>?;
+  $limit<int32>?;
+)
+multi select Transaction { id }
+filter .status = $status
+limit $limit;
+`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != src {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, src)
+	}
+	out2, err := aql.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2 != out {
+		t.Errorf("not idempotent:\n%s\n---\n%s", out, out2)
+	}
+}
+
+func TestAQLFormatSingleVarStatements(t *testing.T) {
+	src := `var $status<TransactionStatus>?;
+var $limit<int32>?;
+multi select Transaction { id }
+filter .status = $status
+limit $limit;
+`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != src {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, src)
+	}
+}
+
+

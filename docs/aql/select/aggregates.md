@@ -102,8 +102,8 @@ The result is a **single row** (one `*Row` in generated code); `multi`, `order b
   is `COUNT(*)`; the others take one `.column` argument. The per-field `filter` is
   optional.
 - A shape is an **aggregate shape** as soon as one field is an aggregate; **every**
-  field must then be an aggregate — mixing aggregates with plain row fields is an
-  error (SQL would require a `GROUP BY`).
+  field must then be an aggregate — mixing aggregates with plain row fields requires
+  a **[Group By clause](/aql/select/group-by)**.
 - **Result types.** Aggregate fields are nullable (an aggregate over zero rows is
   `NULL`). `count` is `int64`; `min`/`max` keep the column's type. `sum` and `avg`
   change type in Postgres (e.g. `sum` of a `bigint` column is `numeric`), so add a

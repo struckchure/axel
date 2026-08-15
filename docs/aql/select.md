@@ -11,3 +11,4 @@ description: Shapes, filters, ordering, nested links, and aggregates
 - **[Computed Fields](/aql/select/computed)** — inline expressions and sub-selects in a shape.
 - **[Nested Shapes](/aql/select/nested)** — selecting linked types as JSON.
 - **[Aggregates](/aql/select/aggregates)** — `count` and friends.
+- **[Group By & Having](/aql/select/group-by)** — multi-row grouping and aggregate filtering.

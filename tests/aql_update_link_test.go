@@ -24,7 +24,7 @@ func TestUpdateSingleLinkFromSubquery(t *testing.T) {
 	  installation := (select GithubInstallation filter .installation_id = $iid<int64>)
 	};`)
 
-	if !strings.Contains(c.SQL, `installation = (SELECT g.id FROM "github_installation" g WHERE g.installation_id = $1 LIMIT 1)`) {
+	if !strings.Contains(c.SQL, `installation = (SELECT g.id FROM "github_installation" g WHERE g.installation_id = $1::BIGINT LIMIT 1)`) {
 		t.Errorf("link update should set the FK from a subquery:\n%s", c.SQL)
 	}
 }
@@ -39,7 +39,7 @@ func TestUpdateLinkCoalesceKeepsCurrent(t *testing.T) {
 	  installation := (select GithubInstallation filter .installation_id = $iid<int64>?) ?? .installation
 	};`)
 
-	want := `installation = COALESCE((SELECT g.id FROM "github_installation" g WHERE ($1::BIGINT IS NOT NULL AND g.installation_id = $1) LIMIT 1), a.installation)`
+	want := `installation = COALESCE((SELECT g.id FROM "github_installation" g WHERE ($1::BIGINT IS NOT NULL AND g.installation_id = $1::BIGINT) LIMIT 1), a.installation)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("expected coalesce-to-current-FK, want:\n%s\ngot:\n%s", want, c.SQL)
 	}

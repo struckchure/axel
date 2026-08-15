@@ -8,7 +8,8 @@ import (
 )
 
 var aqlStatementKeywords = []string{
-	"with", "multi", "select", "insert", "update", "delete", "filter",
+	"var", "with", "multi", "select", "insert", "update", "delete", "filter",
+	"group", "having",
 	"order", "by", "limit", "offset", "set",
 	"unless", "conflict", "on", "else",
 }
@@ -60,10 +61,10 @@ func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []Completion
 			items = append(items, CompletionItem{Label: "count", Detail: "aggregate", Kind: CompletionKindFunction})
 		}
 		return items
-	// Operand position: a filter condition, either arm of a boolean chain, or an
-	// `order by` term. All take a `.field` path. Checked before insideBraces — a
+	// Operand position: a filter condition, either arm of a boolean chain, a having condition, or an
+	// `order by` / `group by` term. All take a `.field` path. Checked before insideBraces — a
 	// filter can sit inside a shape, in a computed field's sub-select.
-	case pw == "filter" || pw == "and" || pw == "or" || pw == "by":
+	case pw == "filter" || pw == "having" || pw == "and" || pw == "or" || pw == "by":
 		return pathCompletions(text, schema)
 	case insideBraces(text, wStart):
 		return fieldCompletions(text, schema)

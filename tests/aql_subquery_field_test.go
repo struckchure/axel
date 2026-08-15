@@ -27,7 +27,7 @@ func TestSubQueryProjectsField(t *testing.T) {
 	c := compileAQL(t, subqSchema,
 		`multi select Repo { id, x := (select GithubInstallation filter .id = $gid<uuid>).installation_id };`)
 
-	if !strings.Contains(c.SQL, `SELECT g.installation_id FROM "github_installation" g WHERE g.id = $1 LIMIT 1`) {
+	if !strings.Contains(c.SQL, `SELECT g.installation_id FROM "github_installation" g WHERE g.id = $1::UUID LIMIT 1`) {
 		t.Errorf("subquery should project installation_id:\n%s", c.SQL)
 	}
 	// A projected subquery is a scalar, not a json_agg of the row.
@@ -43,7 +43,7 @@ func TestSubQueryFieldInCoalesceAssignment(t *testing.T) {
 	  installation_id := (select GithubInstallation filter .id = $gid<uuid>?).installation_id ?? .installation_id
 	};`)
 
-	want := `installation_id = COALESCE((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NOT NULL AND g.id = $1) LIMIT 1), r.installation_id)`
+	want := `installation_id = COALESCE((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NOT NULL AND g.id = $1::UUID) LIMIT 1), r.installation_id)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("expected coalesce of projected subquery with current value, want:\n%s\ngot:\n%s", want, c.SQL)
 	}
@@ -54,7 +54,7 @@ func TestSubQueryFieldInCoalesceAssignment(t *testing.T) {
 func TestSubQueryProjectionCast(t *testing.T) {
 	c := compileAQL(t, subqSchema,
 		`multi select Repo { id, x := (select GithubInstallation filter .id = $gid<uuid>).installation_id<str> };`)
-	if !strings.Contains(c.SQL, `(SELECT g.installation_id FROM "github_installation" g WHERE g.id = $1 LIMIT 1))::TEXT`) {
+	if !strings.Contains(c.SQL, `(SELECT g.installation_id FROM "github_installation" g WHERE g.id = $1::UUID LIMIT 1))::TEXT`) {
 		t.Errorf("projection cast should wrap the subquery in ::TEXT:\n%s", c.SQL)
 	}
 }
@@ -64,7 +64,7 @@ func TestSubQueryProjectionCastInCoalesce(t *testing.T) {
 	c := compileAQL(t, subqSchema, `update Repo filter .id = $id set {
 	  installation_id := (select GithubInstallation filter .id = $gid<uuid>?).installation_id<str> ?? .installation_id
 	};`)
-	want := `installation_id = COALESCE(((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NOT NULL AND g.id = $1) LIMIT 1))::TEXT, r.installation_id)`
+	want := `installation_id = COALESCE(((SELECT g.installation_id FROM "github_installation" g WHERE ($1::UUID IS NOT NULL AND g.id = $1::UUID) LIMIT 1))::TEXT, r.installation_id)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("expected cast projection inside coalesce, want:\n%s\ngot:\n%s", want, c.SQL)
 	}
@@ -78,7 +78,7 @@ type Org { required id: uuid; status: Status; }
 type Repo { required id: uuid; s: str; }`
 	c := compileAQL(t, schema,
 		`multi select Repo { id, x := (select Org filter .id = $o<uuid>).status<Status> };`)
-	if !strings.Contains(c.SQL, `(SELECT o.status FROM "org" o WHERE o.id = $1 LIMIT 1))::TEXT`) {
+	if !strings.Contains(c.SQL, `(SELECT o.status FROM "org" o WHERE o.id = $1::UUID LIMIT 1))::TEXT`) {
 		t.Errorf("enum cast should resolve to ::TEXT:\n%s", c.SQL)
 	}
 }
@@ -98,7 +98,7 @@ func TestSubQueryProjectsLinkColumn(t *testing.T) {
 		`multi select Repo { id, o := (select Repo filter .id = $rid<uuid>).owner };`)
 	// The inner Repo subquery gets a distinct alias (r1) from the outer Repo (r)
 	// so the two table instances never share an alias.
-	if !strings.Contains(c.SQL, `SELECT r1.owner FROM "repo" r1 WHERE r1.id = $1 LIMIT 1`) {
+	if !strings.Contains(c.SQL, `SELECT r1.owner FROM "repo" r1 WHERE r1.id = $1::UUID LIMIT 1`) {
 		t.Errorf("subquery should project the owner FK column:\n%s", c.SQL)
 	}
 }

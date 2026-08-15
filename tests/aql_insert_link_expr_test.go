@@ -30,7 +30,7 @@ insert GithubInstallation {
   installation_id := $iid<int64>
 };`)
 
-	want := `COALESCE((SELECT o.id FROM "organization" o WHERE ($1::UUID IS NOT NULL AND o.id = $1) LIMIT 1), (SELECT g.organization FROM "github_installation" g WHERE ($2::BIGINT IS NOT NULL AND g.installation_id = $2) LIMIT 1))`
+	want := `COALESCE((SELECT o.id FROM "organization" o WHERE ($1::UUID IS NOT NULL AND o.id = $1::UUID) LIMIT 1), (SELECT g.organization FROM "github_installation" g WHERE ($2::BIGINT IS NOT NULL AND g.installation_id = $2::BIGINT) LIMIT 1))`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("insert link `??` chain should coalesce the two lookups, want:\n%s\ngot:\n%s", want, c.SQL)
 	}
@@ -45,7 +45,7 @@ insert GithubInstallation {
   installation_id := $iid<int64>
 };`)
 
-	want := `(SELECT g.organization FROM "github_installation" g WHERE g.installation_id = $1 LIMIT 1)`
+	want := `(SELECT g.organization FROM "github_installation" g WHERE g.installation_id = $1::BIGINT LIMIT 1)`
 	if !strings.Contains(c.SQL, want) {
 		t.Errorf("projection should select the organization FK, want:\n%s\ngot:\n%s", want, c.SQL)
 	}
@@ -61,7 +61,7 @@ insert GithubInstallation {
   installation_id := $iid<int64>
 };`)
 
-	if !strings.Contains(c.SQL, `($1::UUID IS NOT NULL AND o.id = $1)`) {
+	if !strings.Contains(c.SQL, `($1::UUID IS NOT NULL AND o.id = $1::UUID)`) {
 		t.Errorf("value-subquery optional param should use the IS NOT NULL guard:\n%s", c.SQL)
 	}
 	if strings.Contains(c.SQL, `IS NULL OR o.id`) {

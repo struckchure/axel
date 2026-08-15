@@ -125,6 +125,9 @@ func (f *aqlFmt) statement(stmt *Statement) {
 		f.wf("@%s %s", d.Name, d.Value)
 		f.commit(d.EndPos.Offset)
 	}
+	for _, v := range stmt.Vars {
+		f.varBlock(v)
+	}
 	f.withBlock(stmt.With)
 	switch {
 	case stmt.Select != nil:
@@ -138,7 +141,43 @@ func (f *aqlFmt) statement(stmt *Statement) {
 	}
 }
 
-// withBlock renders `with ( name := expr, … )` with one binding per indented
+// varBlock renders `var ( ... )` or `var $param...;`.
+func (f *aqlFmt) varBlock(v *VarBlock) {
+	if v == nil || len(v.Params) == 0 {
+		return
+	}
+	if len(v.Params) == 1 && v.Pos.Line == v.EndPos.Line {
+		f.leading(v.Pos.Offset)
+		f.w("var ")
+		printParam(&f.cur, v.Params[0])
+		f.w(";")
+		f.clauseBreak(v.EndPos.Offset)
+		return
+	}
+	f.leading(v.Pos.Offset)
+	f.w("var (")
+	first := 1 << 30
+	if len(v.Params) > 0 {
+		first = v.Params[0].Pos.Offset
+	}
+	f.clauseBreak(first)
+	f.indent++
+	for i, p := range v.Params {
+		f.leading(p.Pos.Offset)
+		printParam(&f.cur, p)
+		f.w(";")
+		next := 1 << 30
+		if i+1 < len(v.Params) {
+			next = v.Params[i+1].Pos.Offset
+		}
+		f.clauseBreak(next)
+	}
+	f.indent--
+	f.w(")")
+	f.clauseBreak(v.EndPos.Offset)
+}
+
+// withBlock renders `with ( name := expr; … )` with one binding per indented
 // line. When a binding's value is a solo subquery (the common case), it is
 // rendered with the same clause-per-line treatment as a top-level select,
 // wrapped in indented parens:
@@ -147,7 +186,7 @@ func (f *aqlFmt) statement(stmt *Statement) {
 //	  api_key := (
 //	    multi select ApiKey { id }
 //	    filter .id = $id<uuid>?
-//	  )
+//	  );
 //	)
 //
 // Non-subquery bindings (rare) are rendered inline on the same line as `:=`.
@@ -160,24 +199,22 @@ func (f *aqlFmt) withBlock(w *WithBlock) {
 	if len(w.Bindings) > 0 {
 		first = w.Bindings[0].Pos.Offset
 	}
-	f.commit(first)
+	f.clauseBreak(first)
 	f.indent++
 	for i, b := range w.Bindings {
 		f.leading(b.Pos.Offset)
 		f.wf("%s := ", b.Name)
 		f.withBindingValue(b.Value)
-		if i < len(w.Bindings)-1 {
-			f.w(",")
-		}
+		f.w(";")
 		next := 1 << 30
 		if i+1 < len(w.Bindings) {
 			next = w.Bindings[i+1].Pos.Offset
 		}
-		f.commit(next)
+		f.clauseBreak(next)
 	}
 	f.indent--
 	f.w(")")
-	f.commit(w.EndPos.Offset)
+	f.clauseBreak(w.EndPos.Offset)
 }
 
 // withBindingValue renders the right-hand side of a with-binding. When the
@@ -211,7 +248,7 @@ func (f *aqlFmt) withBindingValue(val *Expr) {
 
 	// Doesn't fit: open paren, then render each clause on its own indented line.
 	f.w("(")
-	f.commit(1 << 30)
+	f.clauseBreak(1 << 30)
 	f.indent++
 
 	// Header: [multi] select TypeName [{ shape }]
@@ -254,7 +291,7 @@ func (f *aqlFmt) withBindingValue(val *Expr) {
 		printExpr(&f.cur, body.Offset)
 	}
 
-	f.commit(1 << 30)
+	f.clauseBreak(1 << 30)
 	f.indent--
 	f.w(")")
 }
@@ -292,6 +329,20 @@ func (f *aqlFmt) selectBody(body *SelectBody) {
 		f.newlineClause()
 		f.w("filter ")
 		f.expr(body.Filter.Expr, true)
+	}
+	for i, g := range body.GroupBy {
+		if i == 0 {
+			f.newlineClause()
+			f.w("group by ")
+		} else {
+			f.w(", ")
+		}
+		printExpr(&f.cur, g.Expr)
+	}
+	if body.Having != nil {
+		f.newlineClause()
+		f.w("having ")
+		f.expr(body.Having.Expr, true)
 	}
 	for i, o := range body.OrderBy {
 		if i == 0 {
@@ -417,14 +468,15 @@ func (f *aqlFmt) cmp(c *Cmp) {
 		f.w(s)
 		return
 	}
+	f.hang = 0
 	f.w("(")
-	f.commit(g.Pos.Offset)
+	f.clauseBreak(g.Pos.Offset)
 	f.indent++
 	f.leading(g.Pos.Offset)
 	f.expr(g, false)
 	// Commit the group's last line while still at the inner indent, so the
 	// closing paren lands back at the parent's.
-	f.commit(g.EndPos.Offset)
+	f.clauseBreak(g.EndPos.Offset)
 	f.indent--
 	f.w(")")
 }
@@ -455,7 +507,7 @@ func (f *aqlFmt) shape(s *Shape) {
 	if len(s.Fields) > 0 {
 		first = s.Fields[0].Pos.Offset
 	}
-	f.commit(first)
+	f.clauseBreak(first)
 	f.indent++
 	for i, fld := range s.Fields {
 		f.leading(fld.Pos.Offset)
@@ -467,7 +519,7 @@ func (f *aqlFmt) shape(s *Shape) {
 		if i+1 < len(s.Fields) {
 			next = s.Fields[i+1].Pos.Offset
 		}
-		f.commit(next)
+		f.clauseBreak(next)
 	}
 	f.indent--
 	f.w("}")
@@ -527,7 +579,7 @@ func (f *aqlFmt) assignmentBlock(as []*Assignment) {
 	if len(as) > 0 {
 		first = as[0].Pos.Offset
 	}
-	f.commit(first)
+	f.clauseBreak(first)
 	f.indent++
 	for i, a := range as {
 		f.leading(a.Pos.Offset)
@@ -540,7 +592,7 @@ func (f *aqlFmt) assignmentBlock(as []*Assignment) {
 		if i+1 < len(as) {
 			next = as[i+1].Pos.Offset
 		}
-		f.commit(next)
+		f.clauseBreak(next)
 	}
 	f.indent--
 }

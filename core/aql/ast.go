@@ -12,6 +12,7 @@ import (
 type Statement struct {
 	Pos        lexer.Position
 	Directives []*Directive `parser:"@@*"`
+	Vars       []*VarBlock  `parser:"@@*"`
 	With       *WithBlock   `parser:"@@?"`
 	Select     *SelectStmt  `parser:"( @@"`
 	Insert     *InsertStmt  `parser:"| @@"`
@@ -20,14 +21,28 @@ type Statement struct {
 	EndPos     lexer.Position
 }
 
-// WithBlock is a leading `with ( name := (select ...), ... )` clause that binds
+// VarBlock is a leading `var ( ... )` or `var $param...;` block that declares
+// named query parameters and their explicit types / optionality.
+//
+//	var (
+//	  $currency<str>?;
+//	  $api_key_id<uuid>?;
+//	)
+//	var $limit<int32>?;
+type VarBlock struct {
+	Pos    lexer.Position
+	Params []*Param `parser:"'var' ( '(' ( @@ ';'? )* ')' ';'? | @@ ';' )"`
+	EndPos lexer.Position
+}
+
+// WithBlock is a leading `with ( name := (select ...); ... )` clause that binds
 // named subqueries for the statement that follows. Each binding lowers to a
 // Postgres CTE, so a sub-select reused at several points in the filter is
 // evaluated once instead of being inlined per use site.
 //
 //	with (
-//	  business := (select Business filter .id = $business_id),
-//	  api_keys := (multi select ApiKey filter .business = $business_id)
+//	  business := (select Business filter .id = $business_id);
+//	  api_keys := (multi select ApiKey filter .business = $business_id);
 //	)
 //	multi select Transaction filter .sender_id in api_keys.id;
 //
@@ -37,7 +52,7 @@ type Statement struct {
 // the block's bindings, which shadow type names of the same spelling.
 type WithBlock struct {
 	Pos      lexer.Position
-	Bindings []*WithBinding `parser:"'with' '(' @@ ( ',' @@ )* ','? ')'"`
+	Bindings []*WithBinding `parser:"'with' '(' ( @@ ( ';' | ',' )? )* ')' ';'? "`
 	EndPos   lexer.Position
 }
 
@@ -94,13 +109,29 @@ type SelectStmt struct {
 type SelectBody struct {
 	// Aggregate: count(TypeName filter expr)
 	AggFunc *AggExpr `parser:"  @@"`
-	// Object: TypeName { shape } filter ... order by ... limit ... offset ...
-	TypeName string   `parser:"| @Ident"`
-	Shape    *Shape   `parser:"@@?"`
-	Filter   *Filter  `parser:"@@?"`
-	OrderBy  []*Order `parser:"( 'order' 'by' @@ ( ',' @@ )* )?"`
-	Limit    *Expr    `parser:"( 'limit' @@ )?"`
-	Offset   *Expr    `parser:"( 'offset' @@ )?"`
+	// Object: TypeName { shape } filter ... group by ... having ... order by ... limit ... offset ...
+	TypeName string     `parser:"| @Ident"`
+	Shape    *Shape     `parser:"@@?"`
+	Filter   *Filter    `parser:"@@?"`
+	GroupBy  []*GroupBy `parser:"( 'group' 'by' @@ ( ',' @@ )* )?"`
+	Having   *Having    `parser:"@@?"`
+	OrderBy  []*Order   `parser:"( 'order' 'by' @@ ( ',' @@ )* )?"`
+	Limit    *Expr      `parser:"( 'limit' @@ )?"`
+	Offset   *Expr      `parser:"( 'offset' @@ )?"`
+}
+
+// GroupBy is one GROUP BY expression.
+type GroupBy struct {
+	Pos    lexer.Position
+	Expr   *Expr `parser:"@@"`
+	EndPos lexer.Position
+}
+
+// Having is a HAVING condition on grouped rows.
+type Having struct {
+	Pos    lexer.Position
+	Expr   *Expr `parser:"'having' @@"`
+	EndPos lexer.Position
 }
 
 // AggExpr: count(TypeName filter expr)

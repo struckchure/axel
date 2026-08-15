@@ -15,6 +15,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/struckchure/axel/core/lsp"
 	"github.com/struckchure/axel/studio/db"
 	"github.com/struckchure/axel/studio/pages"
 )
@@ -58,6 +59,9 @@ func Handler(opts Options) http.Handler {
 	mux.HandleFunc("/query", srv.handleSQL)
 	mux.HandleFunc("/aql", srv.handleAQL)
 	mux.HandleFunc("/mutate", srv.handleMutate)
+	mux.HandleFunc("/lsp/completion", srv.handleCompletion)
+	mux.HandleFunc("/lsp/hover", srv.handleHover)
+	mux.HandleFunc("/lsp/diagnostics", srv.handleDiagnostics)
 	mux.HandleFunc("/", srv.handleStudio)
 
 	log.Printf("axel studio → http://localhost%s  (db: %s, aql: %s)", opts.Addr, srv.store.Name(), srv.aqlStatus())
@@ -132,6 +136,13 @@ func (s *server) handleStudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Tables = tables
+
+	if s.schema != nil && s.schema.IR != nil {
+		v.Enums = make(map[string][]string)
+		for name, enum := range s.schema.IR.EnumTypes {
+			v.Enums[name] = enum.Values
+		}
+	}
 
 	schema, table := q.Get("schema"), q.Get("table")
 	if schema != "" && table != "" {
@@ -212,7 +223,14 @@ func (s *server) handleAQL(w http.ResponseWriter, r *http.Request) {
 	if s.aql == nil {
 		result = db.QueryResult{Err: "no ASL schema loaded — start the studio with -schema <file.asl>"}
 	} else {
-		result = s.aql.Exec(r.Context(), r.FormValue("aql"))
+		r.ParseForm()
+		params := make(map[string]any)
+		for k, v := range r.Form {
+			if len(k) > 6 && k[:6] == "param_" && len(v) > 0 {
+				params[k[6:]] = v[0]
+			}
+		}
+		result = s.aql.Exec(r.Context(), r.FormValue("aql"), params)
 	}
 	render(w, r, pages.QueryResultFragment(result))
 }
@@ -239,6 +257,90 @@ func (s *server) handleMutate(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusUnprocessableEntity
 	}
 	writeJSON(w, status, map[string]any{"applied": res.Applied, "error": res.Err})
+}
+
+type CompletionRequest struct {
+	Text string `json:"text"`
+	Line int    `json:"line"`
+	Char int    `json:"char"`
+}
+
+func (s *server) handleCompletion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req CompletionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	
+	if s.schema == nil || s.schema.IR == nil {
+		writeJSON(w, http.StatusOK, []lsp.CompletionItem{})
+		return
+	}
+
+	offset := lsp.PositionToOffset(req.Text, lsp.Position{Line: req.Line, Char: req.Char})
+	items := lsp.QueryCompletion(req.Text, offset, s.schema.IR)
+	if items == nil {
+		items = []lsp.CompletionItem{}
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+type HoverRequest struct {
+	Text string `json:"text"`
+	Line int    `json:"line"`
+	Char int    `json:"char"`
+}
+
+type DiagnosticsRequest struct {
+	Text string `json:"text"`
+}
+
+func (s *server) handleHover(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req HoverRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	
+	if s.schema == nil || s.schema.IR == nil {
+		writeJSON(w, http.StatusOK, nil)
+		return
+	}
+
+	offset := lsp.PositionToOffset(req.Text, lsp.Position{Line: req.Line, Char: req.Char})
+	hover := lsp.QueryHover(req.Text, offset, s.schema.IR)
+	writeJSON(w, http.StatusOK, hover)
+}
+
+func (s *server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req DiagnosticsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	
+	if s.schema == nil || s.schema.IR == nil {
+		writeJSON(w, http.StatusOK, []lsp.Diagnostic{})
+		return
+	}
+
+	diags := lsp.QueryDiagnostics(req.Text, s.schema.IR)
+	if diags == nil {
+		diags = []lsp.Diagnostic{}
+	}
+	writeJSON(w, http.StatusOK, diags)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

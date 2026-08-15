@@ -10,4 +10,4 @@ and mapped to positional `$N` SQL parameters.
 
 - **[Named](/aql/parameters/named)** — the basics of `$name` parameters.
 - **[Optional](/aql/parameters/optional)** — `$name?` and how it behaves in filters vs `set`.
-- **[Typed](/aql/parameters/typed)** — `$name<type>` annotations and type inference.
+- **[Typed & Declarations](/aql/parameters/typed)** — top-level `var` declarations, `$name<type>` annotations, and type inference.

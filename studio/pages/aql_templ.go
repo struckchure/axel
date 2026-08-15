@@ -10,7 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "fmt"
 
-func aqlView(v StudioView) templ.Component {
+func enumScript(v StudioView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -31,7 +31,38 @@ func aqlView(v StudioView) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex-1 min-h-0 flex flex-col\"><form class=\"p-3 border-b border-border\" hx-post=\"/aql\" hx-target=\"#aql-result\" hx-swap=\"innerHTML\"><div class=\"flex items-center justify-between mb-1.5\"><span class=\"text-[11px] font-semibold uppercase tracking-wider text-muted-foreground\">AQL</span>")
+		if len(v.Enums) > 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script>\n\t\t\twindow.aqlEnums = {\n\t\t\t\tfor name, values := range v.Enums {\n\t\t\t\t\t\"{ name }\": [\n\t\t\t\t\t\tfor i, val := range values {\n\t\t\t\t\t\t\t\"{ val }\"if i < len(values)-1 {\n\t\t\t\t\t\t\t\t,\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t],\n\t\t\t\t}\n\t\t\t};\n\t\t</script>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		return nil
+	})
+}
+
+func aqlView(v StudioView) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var2 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var2 == nil {
+			templ_7745c5c3_Var2 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"flex-1 min-h-0 flex flex-col\"><form class=\"p-3 border-b border-border\" hx-post=\"/aql\" hx-target=\"#aql-result\" hx-swap=\"innerHTML\"><div class=\"flex items-center justify-between mb-1.5\"><span class=\"text-[11px] font-semibold uppercase tracking-wider text-muted-foreground\">AQL</span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -39,55 +70,63 @@ func aqlView(v StudioView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div><textarea name=\"aql\" rows=\"6\" spellcheck=\"false\" placeholder=\"multi select User { id, email } filter .active = true;\" class=\"w-full font-mono text-[13px] p-3 bg-muted border border-input outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><div class=\"flex border border-input min-h-[400px] h-[400px] resize-y overflow-hidden mb-2\"><div class=\"flex-1 min-w-0\" id=\"aql-editor-container\"></div><div class=\"w-1/5 shrink-0 border-l border-border bg-muted/30 p-3 overflow-y-auto hidden\" id=\"aql-params-container\"><div class=\"text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2\">Parameters</div><div id=\"aql-params-list\" class=\"space-y-2\"></div></div></div><input type=\"hidden\" name=\"aql\" id=\"aql-hidden\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(defaultAQL(v))
+		var templ_7745c5c3_Var3 string
+		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(defaultAQL(v))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/aql.templ`, Line: 23, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `aql.templ`, Line: 42, Col: 72}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</textarea><div class=\"flex items-center justify-between mt-2\"><span class=\"text-xs text-muted-foreground\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = enumScript(v).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<script>\n\t\t\t\trequire(['vs/editor/editor.main'], function() {\n\t\t\t\t\tconst container = document.getElementById('aql-editor-container');\n\t\t\t\t\tconst hiddenInput = document.getElementById('aql-hidden');\n\t\t\t\t\tconst paramsContainer = document.getElementById('aql-params-container');\n\t\t\t\t\tconst paramsList = document.getElementById('aql-params-list');\n\t\t\t\t\t\n\t\t\t\t\tconst isDark = document.documentElement.classList.contains(\"dark\");\n\t\t\t\t\tconst editor = monaco.editor.create(container, {\n\t\t\t\t\t\tvalue: hiddenInput.value,\n\t\t\t\t\t\tlanguage: 'sql',\n\t\t\t\t\t\ttheme: isDark ? 'vs-dark' : 'vs',\n\t\t\t\t\t\tminimap: { enabled: false },\n\t\t\t\t\t\tautomaticLayout: true,\n\t\t\t\t\t\tfontSize: 13,\n\t\t\t\t\t\tfontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',\n\t\t\t\t\t\tscrollBeyondLastLine: false,\n\t\t\t\t\t});\n\t\t\t\t\t\n\t\t\t\t\tfunction escapeHTML(str) {\n\t\t\t\t\t\treturn String(str).replace(/[&<>'\"]/g, \n\t\t\t\t\t\t\ttag => ({\n\t\t\t\t\t\t\t\t'&': '&amp;',\n\t\t\t\t\t\t\t\t'<': '&lt;',\n\t\t\t\t\t\t\t\t'>': '&gt;',\n\t\t\t\t\t\t\t\t\"'\": '&#39;',\n\t\t\t\t\t\t\t\t'\"': '&quot;'\n\t\t\t\t\t\t\t}[tag] || tag)\n\t\t\t\t\t\t);\n\t\t\t\t\t}\n\t\t\t\t\t\n\t\t\t\t\tfunction updateParams() {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tconst text = editor.getValue();\n\t\t\t\t\t\t\thiddenInput.value = text;\n\t\t\t\t\t\t\t\n\t\t\t\t\t\t\tconst regex = /\\$([a-zA-Z0-9_]+)(?:<([^>]+)>)?(\\?)?/g;\n\t\t\t\t\t\t\tconst params = new Map();\n\t\t\t\t\t\t\tlet match;\n\t\t\t\t\t\t\twhile ((match = regex.exec(text)) !== null) {\n\t\t\t\t\t\t\t\tif (!params.has(match[1])) {\n\t\t\t\t\t\t\t\t\tparams.set(match[1], { type: match[2] || 'any', optional: match[3] === '?' });\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t\n\t\t\t\t\t\t\tif (params.size === 0) {\n\t\t\t\t\t\t\t\tparamsContainer.classList.add('hidden');\n\t\t\t\t\t\t\t\tparamsList.innerHTML = '';\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\tparamsContainer.classList.remove('hidden');\n\t\t\t\t\t\t\t\tconst currentInputs = {};\n\t\t\t\t\t\t\t\tparamsList.querySelectorAll('input, select').forEach(inp => {\n\t\t\t\t\t\t\t\t\tcurrentInputs[inp.name] = inp.value;\n\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\tlet html = '';\n\t\t\t\t\t\t\t\tparams.forEach((info, name) => {\n\t\t\t\t\t\t\t\t\tconst val = escapeHTML(currentInputs['param_' + name] || '');\n\t\t\t\t\t\t\t\t\tconst typeHtml = escapeHTML(info.type);\n\t\t\t\t\t\t\t\t\tconst reqStar = info.optional ? '' : '<span class=\"text-destructive ml-0.5\">*</span>';\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\tlet inputHtml = '';\n\t\t\t\t\t\t\t\t\tif (window.aqlEnums && window.aqlEnums[info.type]) {\n\t\t\t\t\t\t\t\t\t\tconst options = window.aqlEnums[info.type].map(opt => {\n\t\t\t\t\t\t\t\t\t\t\tconst selected = val === opt ? 'selected' : '';\n\t\t\t\t\t\t\t\t\t\t\treturn `<option value=\"${escapeHTML(opt)}\" ${selected}>${escapeHTML(opt)}</option>`;\n\t\t\t\t\t\t\t\t\t\t}).join('');\n\t\t\t\t\t\t\t\t\t\tinputHtml = `\n\t\t\t\t\t\t\t\t\t\t\t<select name=\"param_${name}\" class=\"w-full h-7 px-1.5 text-xs bg-background border border-input outline-none focus-visible:ring-1 focus-visible:ring-ring/40\">\n\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"\" disabled ${val === '' ? 'selected' : ''}>Select ${typeHtml}...</option>\n\t\t\t\t\t\t\t\t\t\t\t\t${options}\n\t\t\t\t\t\t\t\t\t\t\t</select>\n\t\t\t\t\t\t\t\t\t\t`;\n\t\t\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\t\t\tinputHtml = `<input type=\"text\" name=\"param_${name}\" value=\"${val}\" autocomplete=\"off\" spellcheck=\"false\" class=\"w-full h-7 px-2 text-xs bg-background border border-input outline-none focus-visible:ring-1 focus-visible:ring-ring/40\" />`;\n\t\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\thtml += `\n\t\t\t\t\t\t\t\t\t\t<div class=\"mb-2\">\n\t\t\t\t\t\t\t\t\t\t\t<label class=\"block text-[11px] font-medium text-foreground mb-1 flex items-center justify-between\">\n\t\t\t\t\t\t\t\t\t\t\t\t<span><span class=\"text-primary font-mono\">$${name}</span>${reqStar}</span>\n\t\t\t\t\t\t\t\t\t\t\t\t<span class=\"text-muted-foreground text-[9px] ml-1 truncate max-w-[60px]\" title=\"${typeHtml}\">${typeHtml}</span>\n\t\t\t\t\t\t\t\t\t\t\t</label>\n\t\t\t\t\t\t\t\t\t\t\t${inputHtml}\n\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t`;\n\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t\tparamsList.innerHTML = html;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\tparamsContainer.classList.remove('hidden');\n\t\t\t\t\t\t\tparamsList.innerHTML = '<div class=\"text-xs text-red-500\">' + e.toString() + '</div>';\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\t\n\t\t\t\t\teditor.onDidChangeModelContent(updateParams);\n\t\t\t\t\tupdateParams();\n\t\t\t\t\t\n\t\t\t\t\tif (!window.__aqlLspRegistered) {\n\t\t\t\t\t\twindow.__aqlLspRegistered = true;\n\t\t\t\t\t\t\n\t\t\t\t\t\t// Register LSP Completion Provider\n\t\t\t\t\t\tmonaco.languages.registerCompletionItemProvider('sql', {\n\t\t\t\t\t\t\ttriggerCharacters: ['.', '=', '<', ' '],\n\t\t\t\t\t\t\tprovideCompletionItems: async function(model, position) {\n\t\t\t\t\t\t\t\tconst text = model.getValue();\n\t\t\t\t\t\t\t\tconst req = {\n\t\t\t\t\t\t\t\t\ttext: text,\n\t\t\t\t\t\t\t\t\tline: position.lineNumber - 1,\n\t\t\t\t\t\t\t\t\tchar: position.column - 1\n\t\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\t\t\tconst res = await fetch('/lsp/completion', {\n\t\t\t\t\t\t\t\t\t\tmethod: 'POST',\n\t\t\t\t\t\t\t\t\t\theaders: { 'Content-Type': 'application/json' },\n\t\t\t\t\t\t\t\t\t\tbody: JSON.stringify(req)\n\t\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t\t\tif (!res.ok) return { suggestions: [] };\n\t\t\t\t\t\t\t\t\tconst items = await res.json();\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\t// Map LSP CompletionKind to Monaco CompletionItemKind\n\t\t\t\t\t\t\t\t\tconst kindMap = {\n\t\t\t\t\t\t\t\t\t\t3: monaco.languages.CompletionItemKind.Function,\n\t\t\t\t\t\t\t\t\t\t5: monaco.languages.CompletionItemKind.Field,\n\t\t\t\t\t\t\t\t\t\t6: monaco.languages.CompletionItemKind.Variable,\n\t\t\t\t\t\t\t\t\t\t7: monaco.languages.CompletionItemKind.Class,\n\t\t\t\t\t\t\t\t\t\t13: monaco.languages.CompletionItemKind.Enum,\n\t\t\t\t\t\t\t\t\t\t14: monaco.languages.CompletionItemKind.Keyword,\n\t\t\t\t\t\t\t\t\t\t20: monaco.languages.CompletionItemKind.EnumMember,\n\t\t\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\tconst word = model.getWordUntilPosition(position);\n\t\t\t\t\t\t\t\t\tconst range = {\n\t\t\t\t\t\t\t\t\t\tstartLineNumber: position.lineNumber,\n\t\t\t\t\t\t\t\t\t\tendLineNumber: position.lineNumber,\n\t\t\t\t\t\t\t\t\t\tstartColumn: word.startColumn,\n\t\t\t\t\t\t\t\t\t\tendColumn: word.endColumn\n\t\t\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\tconst suggestions = items.map(item => ({\n\t\t\t\t\t\t\t\t\t\tlabel: item.Label,\n\t\t\t\t\t\t\t\t\t\tkind: kindMap[item.Kind] || monaco.languages.CompletionItemKind.Text,\n\t\t\t\t\t\t\t\t\t\tdetail: item.Detail,\n\t\t\t\t\t\t\t\t\t\tinsertText: item.Label,\n\t\t\t\t\t\t\t\t\t\trange: range\n\t\t\t\t\t\t\t\t\t}));\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\treturn { suggestions: suggestions };\n\t\t\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\t\t\tconsole.error(\"LSP Completion Error:\", e);\n\t\t\t\t\t\t\t\t\treturn { suggestions: [] };\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t});\n\t\t\t\t\t\t\n\t\t\t\t\t\t// Register LSP Hover Provider\n\t\t\t\t\t\tmonaco.languages.registerHoverProvider('sql', {\n\t\t\t\t\t\t\tprovideHover: async function(model, position) {\n\t\t\t\t\t\t\t\tconst text = model.getValue();\n\t\t\t\t\t\t\t\tconst req = {\n\t\t\t\t\t\t\t\t\ttext: text,\n\t\t\t\t\t\t\t\t\tline: position.lineNumber - 1,\n\t\t\t\t\t\t\t\t\tchar: position.column - 1\n\t\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\t\t\tconst res = await fetch('/lsp/hover', {\n\t\t\t\t\t\t\t\t\t\tmethod: 'POST',\n\t\t\t\t\t\t\t\t\t\theaders: { 'Content-Type': 'application/json' },\n\t\t\t\t\t\t\t\t\t\tbody: JSON.stringify(req)\n\t\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t\t\tif (!res.ok) return null;\n\t\t\t\t\t\t\t\t\tconst hover = await res.json();\n\t\t\t\t\t\t\t\t\tif (!hover || !hover.Contents) return null;\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\treturn {\n\t\t\t\t\t\t\t\t\t\trange: {\n\t\t\t\t\t\t\t\t\t\t\tstartLineNumber: hover.Range.Start.Line + 1,\n\t\t\t\t\t\t\t\t\t\t\tstartColumn: hover.Range.Start.Char + 1,\n\t\t\t\t\t\t\t\t\t\t\tendLineNumber: hover.Range.End.Line + 1,\n\t\t\t\t\t\t\t\t\t\t\tendColumn: hover.Range.End.Char + 1\n\t\t\t\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t\t\t\tcontents: [\n\t\t\t\t\t\t\t\t\t\t\t{ value: hover.Contents }\n\t\t\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\t\t\tconsole.error(\"LSP Hover Error:\", e);\n\t\t\t\t\t\t\t\t\treturn null;\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\t\n\t\t\t\t\tlet diagTimeout = null;\n\t\t\t\t\tfunction updateDiagnostics() {\n\t\t\t\t\t\tconst text = editor.getValue();\n\t\t\t\t\t\tif (diagTimeout) clearTimeout(diagTimeout);\n\t\t\t\t\t\tdiagTimeout = setTimeout(async () => {\n\t\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\t\tconst res = await fetch('/lsp/diagnostics', {\n\t\t\t\t\t\t\t\t\tmethod: 'POST',\n\t\t\t\t\t\t\t\t\theaders: { 'Content-Type': 'application/json' },\n\t\t\t\t\t\t\t\t\tbody: JSON.stringify({ text: text })\n\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t\tif (!res.ok) return;\n\t\t\t\t\t\t\t\tconst diags = await res.json();\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\tconst markers = (diags || []).map(d => {\n\t\t\t\t\t\t\t\t\tlet severity = monaco.MarkerSeverity.Error;\n\t\t\t\t\t\t\t\t\tif (d.Severity === 2) severity = monaco.MarkerSeverity.Warning;\n\t\t\t\t\t\t\t\t\telse if (d.Severity === 3) severity = monaco.MarkerSeverity.Info;\n\t\t\t\t\t\t\t\t\telse if (d.Severity === 4) severity = monaco.MarkerSeverity.Hint;\n\t\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\t\treturn {\n\t\t\t\t\t\t\t\t\t\tseverity: severity,\n\t\t\t\t\t\t\t\t\t\tstartLineNumber: d.Range.Start.Line + 1,\n\t\t\t\t\t\t\t\t\t\tstartColumn: d.Range.Start.Char + 1,\n\t\t\t\t\t\t\t\t\t\tendLineNumber: d.Range.End.Line + 1,\n\t\t\t\t\t\t\t\t\t\tendColumn: d.Range.End.Char + 1,\n\t\t\t\t\t\t\t\t\t\tmessage: d.Message\n\t\t\t\t\t\t\t\t\t};\n\t\t\t\t\t\t\t\t});\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t\tmonaco.editor.setModelMarkers(editor.getModel(), 'lsp', markers);\n\t\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\t\tconsole.error(\"LSP Diagnostics Error:\", e);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}, 300);\n\t\t\t\t\t}\n\t\t\t\t\t\n\t\t\t\t\teditor.onDidChangeModelContent(() => {\n\t\t\t\t\t\tupdateParams();\n\t\t\t\t\t\tupdateDiagnostics();\n\t\t\t\t\t});\n\t\t\t\t\tupdateParams();\n\t\t\t\t\tupdateDiagnostics();\n\t\t\t\t\t\n\t\t\t\t\t// Make editor accessible to htmx events if needed\n\t\t\t\t\tcontainer._editor = editor;\n\t\t\t\t});\n\t\t\t</script><div class=\"flex items-center justify-between mt-2\"><span class=\"text-xs text-muted-foreground\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if v.AQLLive {
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Runs read & write AQL against %s.", v.ConnName))
+			var templ_7745c5c3_Var4 string
+			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Runs read & write AQL against %s.", v.ConnName))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/aql.templ`, Line: 27, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `aql.templ`, Line: 290, Col: 68}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if v.HasSchema {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "Compiles AQL to SQL — connect a live database to execute.")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "Compiles AQL to SQL — connect a live database to execute.")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "No schema loaded. Start with <code class=\"font-mono\">-schema &lt;file.asl&gt;</code>.")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "No schema loaded. Start with <code class=\"font-mono\">-schema &lt;file.asl&gt;</code>.")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <button type=\"submit\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span> <button type=\"submit\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !v.HasSchema {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " disabled")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " disabled")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " class=\"inline-flex items-center gap-1.5 h-8 px-3 bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " class=\"inline-flex items-center gap-1.5 h-8 px-3 bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -96,32 +135,32 @@ func aqlView(v StudioView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if v.AQLLive {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "Run")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "Run")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "Compile")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "Compile")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</button></div></form><div id=\"aql-result\" class=\"flex-1 min-h-0 overflow-auto\"><div class=\"h-full flex items-center justify-center text-muted-foreground text-xs\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</button></div></form><div id=\"aql-result\" class=\"flex-1 min-h-0 overflow-auto\"><div class=\"h-full flex items-center justify-center text-muted-foreground text-xs\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if v.HasSchema {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "Run an AQL statement to see results.")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "Run an AQL statement to see results.")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "AQL is axel's typed query language. Load a schema to use it here.")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "AQL is axel's typed query language. Load a schema to use it here.")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -145,23 +184,23 @@ func aqlBadge(v StudioView) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var4 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var4 == nil {
-			templ_7745c5c3_Var4 = templ.NopComponent
+		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var5 == nil {
+			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if v.AQLLive {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"text-[11px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium\">live</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span class=\"text-[11px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium\">live</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if v.HasSchema {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<span class=\"text-[11px] px-1.5 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium\">compile-only</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"text-[11px] px-1.5 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium\">compile-only</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span class=\"text-[11px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium\">no schema</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span class=\"text-[11px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium\">no schema</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

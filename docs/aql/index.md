@@ -21,7 +21,7 @@ The reference is split by feature:
 - **[Update](/aql/update)** — updates and partial updates.
 - **[Delete](/aql/delete)** — deleting rows.
 - **[Expressions](/aql/expressions)** — operators, literals, path expressions, and casts.
-- **[With bindings](/aql/with)** — bind a subquery once with `with (...)` and reuse it across the query.
+- **[With](/aql/with)** — bind a subquery once with `with (...)` and reuse it across the query.
 - **[Directives](/aql/directives)** — `@name` / `@request` / `@response` codegen metadata.
 - **[Grammar reference](/aql/grammar)** — the full AQL grammar.
 

@@ -67,7 +67,7 @@
       }
     },
     "parameters": {
-      "match": "(\\$)([A-Za-z_]\\w*)(?:\\s*(<)\\s*([A-Za-z_]\\w*)\\s*(>))?",
+      "match": "(\\$)([A-Za-z_]\\w*)(?:\\s*(<)\\s*([A-Za-z_]\\w*)\\s*(>))?(\\?)?",
       "captures": {
         "1": {
           "name": "punctuation.definition.variable.aql"
@@ -83,11 +83,14 @@
         },
         "5": {
           "name": "punctuation.definition.typeparameters.end.aql"
+        },
+        "6": {
+          "name": "keyword.operator.optional.aql"
         }
       }
     },
     "keywords": {
-      "match": "\\b(with|multi|select|insert|update|delete|filter|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
+      "match": "\\b(var|with|multi|select|insert|update|delete|filter|group|having|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
       "name": "keyword.control.aql"
     },
     "operator-keywords": {
@@ -142,7 +145,7 @@
       "name": "constant.numeric.aql"
     },
     "operators": {
-      "match": "!=|<=|>=|:=|\\?\\?|=|<|>",
+      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\?",
       "name": "keyword.operator.aql"
     },
     "punctuation": {

@@ -338,6 +338,36 @@
     }
   },
   {
+    "type": "group_by",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "having",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "insert_expression",
     "named": true,
     "fields": {
@@ -593,6 +623,14 @@
           "named": true
         },
         {
+          "type": "group_by",
+          "named": true
+        },
+        {
+          "type": "having",
+          "named": true
+        },
+        {
           "type": "limit_clause",
           "named": true
         },
@@ -706,6 +744,10 @@
           "named": true
         },
         {
+          "type": "var_block",
+          "named": true
+        },
+        {
           "type": "with_block",
           "named": true
         }
@@ -743,6 +785,14 @@
       "types": [
         {
           "type": "filter",
+          "named": true
+        },
+        {
+          "type": "group_by",
+          "named": true
+        },
+        {
+          "type": "having",
           "named": true
         },
         {
@@ -810,6 +860,21 @@
     }
   },
   {
+    "type": "var_block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "parameter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "with_binding",
     "named": true,
     "fields": {
@@ -841,7 +906,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "with_binding",
@@ -972,6 +1037,14 @@
     "named": false
   },
   {
+    "type": "group",
+    "named": false
+  },
+  {
+    "type": "having",
+    "named": false
+  },
+  {
     "type": "identifier",
     "named": true
   },
@@ -1053,6 +1126,10 @@
   },
   {
     "type": "update",
+    "named": false
+  },
+  {
+    "type": "var",
     "named": false
   },
   {

@@ -75,7 +75,7 @@ func TestInMultiSelectHasNoLimit(t *testing.T) {
 	c := compileAQL(t, aliasSchema,
 		`multi select Workflow { * } filter .organization in (multi select Organization { id } filter .owner = $user<uuid>);`)
 
-	if !strings.Contains(c.SQL, `in (SELECT o.id FROM "organization" o WHERE o.owner = $1)`) {
+	if !strings.Contains(c.SQL, `in (SELECT o.id FROM "organization" o WHERE o.owner = $1::UUID)`) {
 		t.Errorf("membership subquery not lowered as expected:\n%s", c.SQL)
 	}
 	if strings.Contains(c.SQL, `$1 LIMIT 1)`) {

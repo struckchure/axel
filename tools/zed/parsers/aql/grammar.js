@@ -36,6 +36,7 @@ module.exports = grammar({
 
     _statement: ($) =>
       seq(
+        repeat($.var_block),
         optional($.with_block),
         choice(
           $.select_statement,
@@ -45,22 +46,35 @@ module.exports = grammar({
         ),
       ),
 
-    // with ( name := (select ...), name := (multi select ...) )
+    var_block: ($) =>
+      seq(
+        "var",
+        choice(
+          seq(
+            "(",
+            repeat(seq($.parameter, optional(";"))),
+            ")",
+            optional(";"),
+          ),
+          seq($.parameter, ";"),
+        ),
+      ),
+
+    // with ( name := (select ...); name := (multi select ...); )
     // Binds named subqueries for the statement that follows; each lowers to a CTE.
     with_block: ($) =>
       seq(
         "with",
         "(",
-        $.with_binding,
-        repeat(seq(",", $.with_binding)),
-        optional(","),
+        repeat(seq($.with_binding, optional(choice(";", ",")))),
         ")",
+        optional(";"),
       ),
 
     with_binding: ($) =>
       seq(field("name", $.identifier), ":=", field("value", $.expression)),
 
-    // select ( count(...) | Type shape? filter? order? limit? offset? ) ;?
+    // select ( count(...) | Type shape? filter? group? having? order? limit? offset? ) ;?
     select_statement: ($) =>
       seq(
         optional("multi"),
@@ -74,6 +88,8 @@ module.exports = grammar({
         field("type", $.type_identifier),
         optional($.shape),
         optional($.filter),
+        optional($.group_by),
+        optional($.having),
         optional($.order_by),
         optional($.limit_clause),
         optional($.offset_clause),
@@ -198,6 +214,11 @@ module.exports = grammar({
       ),
 
     filter: ($) => seq("filter", $.expression),
+
+    group_by: ($) =>
+      seq("group", "by", $.expression, repeat(seq(",", $.expression))),
+
+    having: ($) => seq("having", $.expression),
 
     order_by: ($) =>
       seq("order", "by", $.order_term, repeat(seq(",", $.order_term))),

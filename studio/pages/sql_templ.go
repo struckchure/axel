@@ -35,27 +35,27 @@ func sqlView(v StudioView) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex-1 min-h-0 flex flex-col\"><form class=\"p-3 border-b border-border\" hx-post=\"/query\" hx-target=\"#sql-result\" hx-swap=\"innerHTML\"><textarea name=\"sql\" rows=\"5\" spellcheck=\"false\" placeholder=\"SELECT * FROM ...\" class=\"w-full font-mono text-[13px] p-3 bg-muted border border-input outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex-1 min-h-0 flex flex-col\"><form class=\"p-3 border-b border-border\" hx-post=\"/query\" hx-target=\"#sql-result\" hx-swap=\"innerHTML\"><div class=\"border border-input min-h-[400px] h-[400px] resize-y overflow-hidden mb-2\" id=\"sql-editor-container\"></div><input type=\"hidden\" name=\"sql\" id=\"sql-hidden\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(defaultSQL(v))
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(defaultSQL(v))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 23, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 18, Col: 72}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</textarea><div class=\"flex items-center justify-between mt-2\"><span class=\"text-xs text-muted-foreground\">Read-only queries run against ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><script>\n\t\t\t\trequire(['vs/editor/editor.main'], function() {\n\t\t\t\t\tconst container = document.getElementById('sql-editor-container');\n\t\t\t\t\tconst hiddenInput = document.getElementById('sql-hidden');\n\t\t\t\t\t\n\t\t\t\t\tconst isDark = document.documentElement.classList.contains(\"dark\");\n\t\t\t\t\tconst editor = monaco.editor.create(container, {\n\t\t\t\t\t\tvalue: hiddenInput.value,\n\t\t\t\t\t\tlanguage: 'sql',\n\t\t\t\t\t\ttheme: isDark ? 'vs-dark' : 'vs',\n\t\t\t\t\t\tminimap: { enabled: false },\n\t\t\t\t\t\tautomaticLayout: true,\n\t\t\t\t\t\tfontSize: 13,\n\t\t\t\t\t\tfontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',\n\t\t\t\t\t\tscrollBeyondLastLine: false,\n\t\t\t\t\t});\n\t\t\t\t\t\n\t\t\t\t\teditor.onDidChangeModelContent(function() {\n\t\t\t\t\t\thiddenInput.value = editor.getValue();\n\t\t\t\t\t});\n\t\t\t\t\t\n\t\t\t\t\tcontainer._editor = editor;\n\t\t\t\t});\n\t\t\t</script><div class=\"flex items-center justify-between mt-2\"><span class=\"text-xs text-muted-foreground\">Read-only queries run against ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(v.ConnName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 25, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 44, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -132,7 +132,7 @@ func compiledSQL(r db.QueryResult) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(r.SQL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 62, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 81, Col: 103}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -206,7 +206,7 @@ func queryResult(r db.QueryResult) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(r.Err)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 75, Col: 10}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 94, Col: 10}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -228,7 +228,7 @@ func queryResult(r db.QueryResult) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(r.Command)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 80, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 99, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -246,7 +246,7 @@ func queryResult(r db.QueryResult) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d rows", len(r.Rows)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 82, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 101, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -265,7 +265,7 @@ func queryResult(r db.QueryResult) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(r.Elapsed)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 85, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 104, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -301,7 +301,7 @@ func queryResult(r db.QueryResult) templ.Component {
 					var templ_7745c5c3_Var12 string
 					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(col)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sql.templ`, Line: 94, Col: 117}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `sql.templ`, Line: 113, Col: 117}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 					if templ_7745c5c3_Err != nil {

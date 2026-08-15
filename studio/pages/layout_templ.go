@@ -36,13 +36,13 @@ func Layout(title string) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/layout.templ`, Line: 9, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 9, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"stylesheet\" href=\"/assets/css/output.css\"><script src=\"https://unpkg.com/htmx.org@2.0.4\"></script><script>\n\t\t\t\t(function () {\n\t\t\t\t\tconst t = localStorage.getItem(\"theme\");\n\t\t\t\t\tif (t === \"dark\" || (!t && matchMedia(\"(prefers-color-scheme: dark)\").matches)) {\n\t\t\t\t\t\tdocument.documentElement.classList.add(\"dark\");\n\t\t\t\t\t}\n\t\t\t\t})();\n\t\t\t\tfunction toggleTheme() {\n\t\t\t\t\tconst el = document.documentElement;\n\t\t\t\t\tel.classList.toggle(\"dark\");\n\t\t\t\t\tlocalStorage.setItem(\"theme\", el.classList.contains(\"dark\") ? \"dark\" : \"light\");\n\t\t\t\t}\n\t\t\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"stylesheet\" href=\"/assets/css/output.css\"><script src=\"https://unpkg.com/htmx.org@2.0.4\"></script><script src=\"/assets/monaco/vs/loader.js\"></script><script>\n\t\t\t\trequire.config({ paths: { 'vs': '/assets/monaco/vs' } });\n\t\t\t</script><script>\n\t\t\t\t(function () {\n\t\t\t\t\tconst t = localStorage.getItem(\"theme\");\n\t\t\t\t\tif (t === \"dark\" || (!t && matchMedia(\"(prefers-color-scheme: dark)\").matches)) {\n\t\t\t\t\t\tdocument.documentElement.classList.add(\"dark\");\n\t\t\t\t\t}\n\t\t\t\t})();\n\t\t\t\tfunction toggleTheme() {\n\t\t\t\t\tconst el = document.documentElement;\n\t\t\t\t\tel.classList.toggle(\"dark\");\n\t\t\t\t\tlocalStorage.setItem(\"theme\", el.classList.contains(\"dark\") ? \"dark\" : \"light\");\n\t\t\t\t\tif (window.monaco) {\n\t\t\t\t\t\tmonaco.editor.setTheme(el.classList.contains(\"dark\") ? \"vs-dark\" : \"vs\");\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

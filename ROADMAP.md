@@ -46,8 +46,8 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 
 ### Advanced Query Features
 
-- [ ] Aggregation functions (count, sum, avg, min, max)
-- [ ] Grouping and having clauses
+- [x] Aggregation functions (count, sum, avg, min, max)
+- [x] Grouping and having clauses
 - [x] Subquery support
 - [x] Complex nested selects
 - [ ] Transaction support

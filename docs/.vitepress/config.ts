@@ -143,6 +143,7 @@ export default defineConfig({
               { text: "Computed Fields", link: "/aql/select/computed" },
               { text: "Nested Shapes", link: "/aql/select/nested" },
               { text: "Aggregates", link: "/aql/select/aggregates" },
+              { text: "Group By & Having", link: "/aql/select/group-by" },
             ],
           },
           {
@@ -165,6 +166,7 @@ export default defineConfig({
             ],
           },
           { text: "Delete", link: "/aql/delete" },
+          { text: "With", link: "/aql/with" },
           {
             text: "Expressions",
             link: "/aql/expressions",
@@ -176,7 +178,6 @@ export default defineConfig({
               { text: "Casts & Types", link: "/aql/expressions/casts" },
             ],
           },
-          { text: "With Bindings", link: "/aql/with" },
           { text: "Directives", link: "/aql/directives" },
           { text: "Grammar reference", link: "/aql/grammar" },
         ],

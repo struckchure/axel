@@ -9,6 +9,10 @@ templ Layout(title string) {
 			<title>{ title }</title>
 			<link rel="stylesheet" href="/assets/css/output.css"/>
 			<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+			<script src="/assets/monaco/vs/loader.js"></script>
+			<script>
+				require.config({ paths: { 'vs': '/assets/monaco/vs' } });
+			</script>
 			// Apply the persisted theme before paint to avoid a flash.
 			<script>
 				(function () {
@@ -21,6 +25,9 @@ templ Layout(title string) {
 					const el = document.documentElement;
 					el.classList.toggle("dark");
 					localStorage.setItem("theme", el.classList.contains("dark") ? "dark" : "light");
+					if (window.monaco) {
+						monaco.editor.setTheme(el.classList.contains("dark") ? "vs-dark" : "vs");
+					}
 				}
 			</script>
 			@editorScript()

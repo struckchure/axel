@@ -76,7 +76,7 @@ func TestExecCompileOnly(t *testing.T) {
 		t.Fatal("engine with nil pool should not be live")
 	}
 
-	got := engine.Exec(context.Background(), "multi select User { id, email } filter .active = true;")
+	got := engine.Exec(context.Background(), "multi select User { id, email } filter .active = true;", nil)
 	if got.Err != "" {
 		t.Fatalf("unexpected error: %s", got.Err)
 	}
@@ -88,7 +88,7 @@ func TestExecCompileOnly(t *testing.T) {
 func TestExecReportsParseErrors(t *testing.T) {
 	s := loadFixture(t)
 	engine := NewAQL(s, nil)
-	got := engine.Exec(context.Background(), "this is not aql")
+	got := engine.Exec(context.Background(), "this is not aql", nil)
 	if got.Err == "" {
 		t.Fatal("expected a parse/compile error")
 	}

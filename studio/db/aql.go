@@ -38,7 +38,7 @@ func (a *AQL) Live() bool { return a.run != nil }
 
 // Exec runs an ad-hoc AQL statement for the console. Offline, it returns the
 // compiled SQL instead of executing.
-func (a *AQL) Exec(ctx context.Context, query string) QueryResult {
+func (a *AQL) Exec(ctx context.Context, query string, params map[string]any) QueryResult {
 	start := time.Now()
 
 	stmt, err := aql.ParseString(query)
@@ -57,7 +57,7 @@ func (a *AQL) Exec(ctx context.Context, query string) QueryResult {
 		}
 	}
 
-	res, err := a.run.Run(ctx, query, nil)
+	res, err := a.run.Run(ctx, query, params)
 	if err != nil {
 		return QueryResult{Err: err.Error(), SQL: compiled.SQL, Elapsed: since(start)}
 	}

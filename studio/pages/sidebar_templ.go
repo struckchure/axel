@@ -55,7 +55,7 @@ func sidebar(v StudioView) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(g.Schema)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 27, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 27, Col: 15}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
@@ -85,7 +85,7 @@ func sidebar(v StudioView) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d tables", len(v.Tables)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 38, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 38, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -135,7 +135,7 @@ func tableLink(v StudioView, t db.Table) templ.Component {
 		var templ_7745c5c3_Var6 templ.SafeURL
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(tableURL(t)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 45, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 45, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -148,7 +148,7 @@ func tableLink(v StudioView, t db.Table) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(tableURL(t))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 46, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 46, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -161,7 +161,7 @@ func tableLink(v StudioView, t db.Table) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 50, Col: 21}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 50, Col: 21}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -174,7 +174,7 @@ func tableLink(v StudioView, t db.Table) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var5).String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 1, Col: 0}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 1, Col: 0}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
@@ -195,7 +195,7 @@ func tableLink(v StudioView, t db.Table) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 58, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 58, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -213,7 +213,7 @@ func tableLink(v StudioView, t db.Table) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(comma(t.Rows))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/sidebar.templ`, Line: 60, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `sidebar.templ`, Line: 60, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
