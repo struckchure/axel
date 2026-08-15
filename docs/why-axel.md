@@ -108,12 +108,12 @@ Axel is built specifically for PostgreSQL. It supports advanced PostgreSQL featu
 * **CTE `with` Bindings:** Reusable subquery bindings compiled to `WITH _with_<name> AS (...)`.
 * **Aggregates & Grouping:** Native `group by`, `having`, and per-field conditional filters `sum(.amount)<int64> filter .status = 'Completed'`.
 
-### 5. Multi-Language Code Generation
-Axel provides first-party codegen for Go (`pgx`) and TypeScript, as well as an open plugin architecture for any language:
+### 5. Universal Language Support & Generators
+Because Axel compiles directly to pure SQL, it can be used with **any programming language or runtime**. Axel includes first-party code generators for Go (`pgx`) and TypeScript, and makes it easy to add new languages by writing a generator in Go (or as an external binary plugin):
 
-* Fully typed query parameter structs / interfaces.
-* Fully typed result rows matching your exact projected shapes.
-* Zero boilerplate runtime dependencies.
+* **Type Safety Everywhere:** Fully typed parameter structs/interfaces and exact row response types generated straight from your AQL query shapes.
+* **Write Your Own Generator:** You can implement Axel's generator interface in Go to target any language (e.g. Rust, Python, C#, Java, PHP, Elixir).
+* **Missing Your Language?** If a generator for your language is not yet built-in, please [file an issue on GitHub](https://github.com/struckchure/axel/issues) — we'd love to add official support!
 
 ---
 

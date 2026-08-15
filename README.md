@@ -36,7 +36,8 @@ Axel rethinks database tooling by separating **data modeling and query compilati
 2. **First-Class Relational Modeling:** Define single links (`link author: User`) and many-to-many relationships (`multi link members: User`) directly in ASL. Axel automatically creates and manages junction tables and foreign keys.
 3. **Zero N+1 Query Aggregation:** Fetch deeply nested relational shapes in a single query. Axel compiles nested shapes directly to PostgreSQL's native `json_agg` in one scan — no N+1 query problem, no multiple roundtrips.
 4. **Native PostgreSQL First:** Built-in syntax for PostgreSQL extensions (`extension pgcrypto;`), triggers (`trigger ... do (...)`), row-level security (`policy ... using (...)`), conditional aggregates (`FILTER (WHERE ...)`), top-level CTEs (`with (...)`), and upserts (`unless conflict on ... else (...)`).
-5. **Universal Tooling:** Type-safe code generation for Go and TypeScript, an integrated language server (LSP) for VSCode and Zed, and an interactive database studio.
+5. **Universal Language Support:** Because Axel compiles to pure SQL, it works with any programming language. Axel provides first-party code generators for Go and TypeScript, and you can write a generator for any other language in Go (or as an external plugin). If your language generator is missing, [file an issue](https://github.com/struckchure/axel/issues) to request it!
+6. **Integrated Tooling:** Language server (LSP) for VSCode and Zed, and an interactive database studio (`axel studio`).
 
 ---
 
