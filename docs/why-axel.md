@@ -118,16 +118,7 @@ Because Axel compiles directly to pure SQL, it can be used with **any programmin
 
 ---
 
-## Comparison Matrix
+## Learn More
 
-| Feature | Django ORM | TypeORM | Prisma 6.x | Prisma 7 | Drizzle | Axel |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Architecture** | Runtime ORM | Runtime ORM | Rust Engine Sidecar | TS / WASM Runtime | TypeScript Builder | **AOT Compiler** |
-| **Runtime Driver Overhead** | High | High | Very High (IPC / Cold Starts) | Moderate (WASM / Runtime) | Zero | **Zero (Pure SQL)** |
-| **Relational Shapes** | Lazy / Prefetch | Manual Joins | Nested Roundtrips | Nested Roundtrips | `relations()` helper | **Native `json_agg` in 1 query** |
-| **Insert / Update Conflicts** | Verbose | Awkward | Partial / Raw SQL | Partial / Raw SQL | Supported | **Native `unless conflict`** |
-| **PostgreSQL Extensions** | Manual SQL | Manual SQL | Manual SQL | Manual SQL | Manual SQL | **First-class `extension`** |
-| **Row-Level Security (RLS)** | No | No | No | No | Supported (`pgPolicy`) | **First-class `policy`** |
-| **Database Triggers** | No | Decorators / Hooks | No | No | No | **First-class `trigger`** |
-| **Multi-Language Support** | Python Only | JS/TS Only | Multi (via Rust Engine) | **JS/TS Only** | TS/JS Only | **Any Language (Go, TS, +)** |
-| **Interactive Studio** | Django Admin | None | Prisma Studio | Prisma Studio | Drizzle Studio | **Axel Studio (`axel studio`)** |
+For an in-depth, head-to-head architectural and code breakdown against Prisma (6.x and 7), Drizzle, TypeORM, Django ORM, and sqlc, read the **[Axel vs. Alternatives](/comparison)** guide.
+
