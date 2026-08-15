@@ -21,6 +21,7 @@ export default defineConfig({
         text: "Guide",
         items: [
           { text: "Introduction", link: "/" },
+          { text: "Why Axel?", link: "/why-axel" },
           { text: "Installation", link: "/installation" },
           { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
@@ -66,6 +67,7 @@ export default defineConfig({
         text: "Getting Started",
         items: [
           { text: "Introduction", link: "/" },
+          { text: "Why Axel?", link: "/why-axel" },
           { text: "Installation", link: "/installation" },
           { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
