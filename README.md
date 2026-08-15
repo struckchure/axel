@@ -17,6 +17,29 @@ Axel never wraps a driver or executes queries on your behalf. It generates SQL; 
 
 ---
 
+## Why Axel?
+
+Modern applications rely on PostgreSQL for its power, performance, and advanced capabilities. Yet the tools we use to interact with PostgreSQL often fight against it:
+
+* **Framework-coupled ORMs (Django, Rails Active Record):** Deeply embedded inside specific runtimes. They abstract away the relational model so heavily that complex queries stop feeling like SQL and become impossible to optimize without dropping to raw text.
+* **Fragile relationship models (TypeORM, Sequelize):** Convoluted entity decorators, confusing ownership models, and endless mental gymnastics just to model simple one-to-many or many-to-many relationships.
+* **TypeScript-first query builders (Drizzle, Kysely):** Great for type inference, but relationship definitions and relational queries often feel estranged and bolted-on.
+* **Black-box runtime ORMs (Prisma):** Heavy runtime query engines that introduce latency, generate inefficient queries, and struggle with fundamental SQL features like native insert/update conflict handling (`ON CONFLICT DO UPDATE`) without falling back to raw SQL strings.
+* **Neglected PostgreSQL features:** Good luck defining native PostgreSQL extensions (`pgvector`, `pg_trgm`, `postgis`, `citext`), row-level security (RLS) policies, triggers, custom functions, partial indexes, and conditional aggregates cleanly across any of them.
+* **Enterprise grade:** Traditional ORMs struggle to deliver clean, predictable SQL that database administrators and high-throughput systems demand.
+
+### The Axel Approach
+
+Axel rethinks database tooling by separating **data modeling and query compilation** from **runtime execution**:
+
+1. **Compiler, Not a Runtime ORM:** Axel does not wrap a driver, maintain a connection pool, or execute queries behind your back. It compiles `.asl` schemas into deterministic migration files and `.aql` queries into pure, optimal PostgreSQL queries. You run the SQL using your language's native driver (`pgx`, `node-postgres`, `sqlx`, etc.).
+2. **First-Class Relational Modeling:** Define single links (`link author: User`) and many-to-many relationships (`multi link members: User`) directly in ASL. Axel automatically creates and manages junction tables and foreign keys.
+3. **Zero N+1 Query Aggregation:** Fetch deeply nested relational shapes in a single query. Axel compiles nested shapes directly to PostgreSQL's native `json_agg` in one scan — no N+1 query problem, no multiple roundtrips.
+4. **Native PostgreSQL First:** Built-in syntax for PostgreSQL extensions (`extension pgcrypto;`), triggers (`trigger ... do (...)`), row-level security (`policy ... using (...)`), conditional aggregates (`FILTER (WHERE ...)`), top-level CTEs (`with (...)`), and upserts (`unless conflict on ... else (...)`).
+5. **Universal Tooling:** Type-safe code generation for Go and TypeScript, an integrated language server (LSP) for VSCode and Zed, and an interactive database studio.
+
+---
+
 ## How it works
 
 [X](https://x.com/struckchure/status/2079922001922122004) | [YouTube](https://www.youtube.com/watch?v=79oG_GC8d2A)
