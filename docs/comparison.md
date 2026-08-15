@@ -1,0 +1,162 @@
+# Axel vs. Alternatives
+
+Choosing how to model and query your PostgreSQL database is one of the most critical architectural decisions in your application. This guide offers an in-depth, technical comparison between **Axel** and the most common database tools across the ecosystem.
+
+---
+
+## Architecture at a Glance
+
+| Dimension | Traditional ORMs (Django, TypeORM) | Client Engines (Prisma 6.x / 7) | TS Query Builders (Drizzle) | SQL Codegen (sqlc) | Axel |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Execution Model** | Runtime state tracking & reflection | Client-side runtime / WASM compiler | Runtime SQL builder | Ahead-of-time SQL compiler | **Ahead-of-time AQL/ASL compiler** |
+| **Runtime Footprint** | Heavy (ORM layer in app memory) | Heavy (engine sidecar / WASM runtime) | Zero (lightweight builder) | Zero (pure SQL) | **Zero (pure SQL)** |
+| **Relational Queries** | Lazy-load / `JOIN` Cartesian explosions | Multiple sequential queries | `relations()` helper | Manual flat joins / custom SQL | **Single-scan `json_agg` lateral subqueries** |
+| **Migrations** | Declarative or manual | Declarative (`prisma migrate`) | Declarative (`drizzle-kit`) | Manual SQL files | **Declarative AST diffing (`axel generate`)** |
+| **Language Support** | Single language (Python, TS) | Multi in v6 (Rust), **TS-only in v7** | TS / JS only | Go, Python, TS | **Any language via Go generators** |
+| **Native Postgres** | Lowest common denominator | Restricted / raw SQL workarounds | Partial (e.g. `pgPolicy`) | Full (raw SQL) | **First-class (extensions, RLS, triggers, upserts)** |
+
+---
+
+## Axel vs. Prisma (Prisma 6.x vs. Prisma 7)
+
+Prisma popularised schema-driven data modeling, but its runtime architecture and operational trade-offs have evolved through distinct eras.
+
+### 1. Architecture & Multi-Language Support
+* **Prisma 6.x (Rust Engine Binary):** Shipped a compiled native Rust binary as a sidecar process. While this allowed community clients in Go, Python, and Rust to communicate with the engine via IPC, it introduced high memory overhead, massive Docker/deployment bundles, and severe cold starts in serverless environments.
+* **Prisma 7 (TypeScript / WASM Runtime):** Deprecated and completely removed the Rust query engine in favor of a TypeScript and WebAssembly query compiler. While this resolved native binary bundling issues for Node.js, it **locked Prisma exclusively into the JavaScript/TypeScript ecosystem**, abandoning native multi-language support.
+* **Axel:** Has **zero runtime process, zero WASM overhead, and zero driver wrapping**. Axel compiles at build time into pure SQL. Because Axel's code generators are written in Go (or as external plugins), it natively supports Go (`pgx`), TypeScript, and any other programming language.
+
+### 2. Upsert and Conflict Handling
+* **Prisma:** Prisma's `upsert` operation requires a unique index and only allows basic scalar updates. It cannot handle multi-column expression targets, conditional conflict updates, or complex `DO UPDATE SET` logic without writing raw SQL strings (`$queryRaw`).
+* **Axel:** Supports PostgreSQL's full `ON CONFLICT` semantics natively through `unless conflict`:
+
+::: code-group
+```aql [Axel (AQL)]
+insert User {
+  email := $email,
+  name := $name,
+  login_count := 1
+}
+unless conflict on .email
+else (
+  update User set {
+    name := $name,
+    login_count := .login_count + 1
+  }
+);
+```
+
+```sql [Generated PostgreSQL]
+INSERT INTO "user" (email, name, login_count)
+VALUES ($1::TEXT, $2::TEXT, 1)
+ON CONFLICT (email)
+DO UPDATE SET
+  name = EXCLUDED.name,
+  login_count = "user".login_count + 1;
+```
+:::
+
+### 3. Nested Relational Queries
+* **Prisma:** When fetching nested relations with `include`, Prisma typically executes multiple sequential SQL queries and stitches the objects together in memory in the Node.js/WASM runtime.
+* **Axel:** Compiles nested relational shapes into a single PostgreSQL scan using `json_agg` and `row_to_json`. PostgreSQL does the aggregation directly on the database engine, avoiding network chattiness and runtime CPU overhead.
+
+---
+
+## Axel vs. Drizzle & Kysely
+
+Drizzle and Kysely are modern, TypeScript-first SQL builders that emphasize close-to-SQL syntax and zero runtime overhead.
+
+### 1. Relational Modeling
+* **Drizzle:** Tables are defined with `pgTable()`, but relational queries require a completely separate `relations()` helper file where links and foreign keys must be duplicated. Querying related data across many-to-many junction tables requires manual configuration of junction relations.
+* **Axel:** Single links (`link author: User`) and many-to-many relationships (`multi link members: User`) are declared directly on the type in ASL. Axel automatically creates and manages foreign keys and junction tables.
+
+::: code-group
+```asl [Axel Schema (ASL)]
+type Post {
+  required id: uuid;
+  required title: str;
+  required link author: User;   # FK column
+  multi link tags: Tag;         # Junction table created automatically
+}
+```
+
+```typescript [Drizzle ORM]
+// Schema file
+export const posts = pgTable('posts', {
+  id: uuid('id').primaryKey(),
+  title: text('title').notNull(),
+  authorId: uuid('author_id').references(() => users.id).notNull(),
+});
+
+// Separate relations file
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  author: one(users, { fields: [posts.authorId], references: [users.id] }),
+  postTags: many(postTags),
+}));
+```
+:::
+
+### 2. Query Syntax & Composability
+* **Drizzle:** Relational queries use the `db.query.posts.findMany({ with: { author: true } })` API, while complex filters, aggregates, and CTEs use the separate SQL query builder API (`db.select().from(...)`). Combining the two often requires dropping into raw SQL template strings (`sql`...``).
+* **Axel:** AQL provides a single, unified query language that combines nested shape projections, top-level CTE `with` blocks, boolean filter expressions, conditional aggregates, `group by`, and `having` seamlessly.
+
+### 3. Language Portability
+* **Drizzle / Kysely:** Bound exclusively to TypeScript and JavaScript runtimes.
+* **Axel:** Language-agnostic. Use the same `.asl` schemas and `.aql` queries across your Go backend, TypeScript web app, and microservices.
+
+---
+
+## Axel vs. TypeORM & Sequelize
+
+TypeORM and Sequelize represent traditional object-oriented ORM patterns in Node.js.
+
+### 1. Mental Model & Decorator Fragility
+* **TypeORM:** Relies on heavy TypeScript experimental decorators (`@Entity`, `@ManyToOne`, `@ManyToMany`, `@JoinTable`, `@Column`). A small error in decorator configuration can cause silent data corruption, failed cascades, or unexpected query mutations.
+* **Axel:** Pure, declarative schemas in `.asl` with clear AST semantics and compile-time validation.
+
+### 2. State Tracking and Entity Mutation
+* **TypeORM:** Tracks entity state in memory with an `EntityManager`. Calling `repository.save(entity)` can trigger unintended SQL queries depending on which fields were modified in JavaScript memory.
+* **Axel:** Purely stateless. Axel queries compile to exact, parameterized SQL statements with zero runtime tracking or surprise queries.
+
+---
+
+## Axel vs. Django ORM & Rails Active Record
+
+Django ORM and Rails Active Record are foundational framework ORMs that prioritize developer velocity within monolithic web frameworks.
+
+### 1. Framework Coupling
+* **Django / Rails:** Deeply tied to Python / Ruby and their respective web framework lifecycles. Sharing models with external services or non-Python/Ruby applications is nearly impossible.
+* **Axel:** Independent CLI and compiler. Use Axel in any framework, microservice, or language stack.
+
+### 2. "SQL-Like" vs. Leaky Abstractions
+* **Django:** Querysets abstract SQL so heavily (e.g. `User.objects.filter(post__tags__name__icontains='tech')`) that developers lose visibility into the underlying SQL execution plan. Resolving performance bottlenecks requires learning complex ORM-specific idioms (`select_related`, `prefetch_related`, `F()` expressions, `annotate()`).
+* **Axel:** AQL is designed as a direct, intuitive evolution of SQL. Every AQL clause maps cleanly and predictably to PostgreSQL execution, with zero hidden queries.
+
+---
+
+## Axel vs. sqlc & Raw SQL
+
+`sqlc` compiles raw SQL queries into type-safe Go/TypeScript/Python code.
+
+### 1. Schema & Migration Management
+* **sqlc:** Expects you to write raw PostgreSQL DDL (`CREATE TABLE ...`, `ALTER TABLE ...`) and manually create and manage every migration file. It does not diff schemas or generate migrations.
+* **Axel:** Axel provides full schema diffing and automatic migration generation (`axel generate`), tracking migration execution and checksums in PostgreSQL (`_axel_migrations`).
+
+### 2. Nested Relational Projections
+* **sqlc:** Writing nested relational queries requires manually authoring complex `json_build_object` and `json_agg` lateral joins in raw SQL, which is verbose, error-prone, and difficult to maintain.
+* **Axel:** Nested shapes are declared with intuitive `{ id, author: { id, email }, likes: { id } }` syntax. Axel automatically emits the optimal `json_agg` lateral subqueries for you.
+
+---
+
+## Summary
+
+Axel is built for teams that love PostgreSQL and want the **type safety and developer ergonomics of a modern schema tool** without sacrificing **SQL transparency, performance, or language portability**.
+
+| Use Case | Best Choice |
+| :--- | :--- |
+| You want single-scan nested relational queries with zero N+1 | **Axel** |
+| You want native PostgreSQL extensions, triggers, RLS, and upserts | **Axel** |
+| You want to share schemas and queries across Go, TypeScript, and other languages | **Axel** |
+| You want an interactive database studio built into your workflow | **Axel** |
+| You want a quick TypeScript-only SQL builder with no custom DSL | **Drizzle** |
+| You want to write 100% raw SQL files without schema diffing | **sqlc** |

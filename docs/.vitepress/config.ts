@@ -22,6 +22,7 @@ export default defineConfig({
         items: [
           { text: "Introduction", link: "/" },
           { text: "Why Axel?", link: "/why-axel" },
+          { text: "Axel vs. Alternatives", link: "/comparison" },
           { text: "Installation", link: "/installation" },
           { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
@@ -68,6 +69,7 @@ export default defineConfig({
         items: [
           { text: "Introduction", link: "/" },
           { text: "Why Axel?", link: "/why-axel" },
+          { text: "Axel vs. Alternatives", link: "/comparison" },
           { text: "Installation", link: "/installation" },
           { text: "Tutorial", link: "/tutorial" },
           { text: "Editor setup", link: "/editors" },
