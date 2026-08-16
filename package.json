@@ -4,15 +4,14 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest",
-    "vitepress": "^2.0.0-alpha.17"
+    "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "scripts": {
-    "dev": "bunx vitepress dev docs",
-    "build": "bunx vitepress build docs",
-    "preview": "bunx vitepress preview docs"
+    "dev": "bun --cwd docs dev",
+    "build": "bun --cwd docs build",
+    "preview": "bun --cwd docs preview"
   }
 }

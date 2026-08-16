@@ -40,6 +40,20 @@ func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []Completion
 	pw := prevWord(text, wStart)
 
 	switch {
+	case prev == '@':
+		return []CompletionItem{
+			{Label: "name", Detail: "directive: set query function name", Kind: CompletionKindKeyword},
+			{Label: "request", Detail: "directive: set params type name", Kind: CompletionKindKeyword},
+			{Label: "response", Detail: "directive: set response row type name", Kind: CompletionKindKeyword},
+			{Label: "rel_load_strategy", Detail: "directive: set relation loading strategy (join, query)", Kind: CompletionKindKeyword},
+		}
+	case pw == "rel_load_strategy":
+		return []CompletionItem{
+			{Label: "query", Detail: "correlated json_agg subquery strategy (default)", Kind: CompletionKindKeyword},
+			{Label: "join", Detail: "LEFT JOIN LATERAL relation loading strategy", Kind: CompletionKindKeyword},
+		}
+	case pw == "request" || pw == "response":
+		return typeNameCompletions(schema)
 	case prev == '.':
 		// `EnumName.` completes enum members; otherwise the query type's fields.
 		if items := enumMemberCompletions(text, prevIdx, schema); items != nil {
@@ -80,6 +94,18 @@ func SchemaCompletion(text string, offset int, schema *asl.SchemaIR) []Completio
 	prev, prevIdx := prevSignificant(text, wStart)
 	pw := prevWord(text, wStart)
 
+	if prev == '@' {
+		return []CompletionItem{
+			{Label: "immutable", Detail: "function directive", Kind: CompletionKindKeyword},
+			{Label: "stable", Detail: "function directive", Kind: CompletionKindKeyword},
+			{Label: "volatile", Detail: "function directive", Kind: CompletionKindKeyword},
+			{Label: "strict", Detail: "function directive", Kind: CompletionKindKeyword},
+			{Label: "leakproof", Detail: "function directive", Kind: CompletionKindKeyword},
+			{Label: "parallel", Detail: "function directive (safe | unsafe | restricted)", Kind: CompletionKindKeyword},
+			{Label: "security", Detail: "function directive (definer | invoker)", Kind: CompletionKindKeyword},
+			{Label: "cost", Detail: "function directive", Kind: CompletionKindKeyword},
+		}
+	}
 	// `default := Enum.` (and any `EnumName.` such as a constraint filter RHS)
 	// completes that enum's members.
 	if prev == '.' {

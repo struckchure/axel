@@ -1,0 +1,219 @@
+---
+title: Axel
+description: SQL generation from schema and query languages
+template: splash
+hero:
+  tagline: Write schemas in ASL, queries in AQL. Axel compiles both to PostgreSQL SQL — migrations and parameterized query strings. No ORM, no driver, no magic.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get Started
+      link: /axel/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/struckchure/axel
+      icon: external
+      variant: secondary
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Quick look
+
+<Tabs>
+  <TabItem label="schema.asl">
+```asl
+abstract type Base {
+  required id: uuid { default := gen_uuid(); constraint pk; };
+  required created_at: datetime { default := datetime_current(); };
+}
+
+type User extending Base {
+  required email: str { constraint exclusive; };
+  name: str;
+  required age: int32;
+  active: bool { default := true };
+}
+
+type Post extending Base {
+  required title: str;
+  required link author: User;
+  multi link likes: User;
+}
+```
+  </TabItem>
+  <TabItem label="get_posts.aql">
+```aql
+select Post {
+  id,
+  title,
+  author: {
+    id,
+    email
+  },
+  likes: {
+    id,
+    email
+  }
+}
+filter .author.id = $author_id
+order by .created_at desc
+limit $limit;
+```
+  </TabItem>
+  <TabItem label="compiled output">
+```sql
+-- $1: author_id
+-- $2: limit
+SELECT
+  p.id AS id,
+  p.title AS title,
+  (SELECT row_to_json(u_author_sub)
+   FROM (
+     SELECT u_author.id AS id, u_author.email AS email
+     FROM "user" u_author
+     WHERE u_author.id = p.author_id LIMIT 1
+   ) u_author_sub) AS author,
+  (SELECT COALESCE(json_agg(row_to_json(u_likes_sub)), '[]')
+   FROM (
+     SELECT u_likes.id AS id, u_likes.email AS email
+     FROM "post_likes" jt_likes
+     JOIN "user" u_likes ON u_likes.id = jt_likes.user_id
+     WHERE jt_likes.post_id = p.id
+   ) u_likes_sub) AS likes
+FROM "post" p
+WHERE (SELECT u.id FROM "user" u WHERE u.id = p.author_id LIMIT 1) = $1
+ORDER BY p.created_at DESC
+LIMIT $2;
+```
+  </TabItem>
+</Tabs>
+
+## Core Features & Architecture
+
+<div class="walkthrough-container">
+
+  {/* Row 1: ASL */}
+  <div class="walkthrough-row">
+    <div class="walkthrough-info">
+      <span class="walkthrough-tag">Schema Modeling (ASL)</span>
+      <h3>Declarative Schemas, Zero Decorator Gymnastics</h3>
+      <p>
+        Define your models, single/multi links, indexes, and custom constraints cleanly in <code>.asl</code> files.
+        Axel AST-diffs your schema and generates clean, deterministic PostgreSQL migration SQL automatically with checksum history tracking.
+      </p>
+      <a href="/axel/asl/" class="walkthrough-cta">Explore Schema Language (ASL) &rarr;</a>
+    </div>
+    <div class="walkthrough-visual">
+      <div class="comparison-card">
+        <div class="comparison-header">
+          <span>Schema Modeling Comparison</span>
+          <span style="opacity: 0.7;">Build Time</span>
+        </div>
+        <div class="comparison-body">
+          <div class="comparison-item">
+            <span class="comparison-label axel">&#10003; Axel</span>
+            <span class="comparison-text">First-class relational links (<code>multi link likes: User</code>) automatically create junction tables and foreign keys without boilerplate.</span>
+          </div>
+          <div class="comparison-item">
+            <span class="comparison-label orm">&#10007; Traditional ORMs</span>
+            <span class="comparison-text">Complex entity decorators (<code>@JoinColumn</code>, <code>@ManyToOne</code>) or separate <code>relations()</code> helpers that duplicate column definitions.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Row 2: AQL */}
+  <div class="walkthrough-row reverse">
+    <div class="walkthrough-info">
+      <span class="walkthrough-tag">Query Engine (AQL)</span>
+      <h3>Nested Shapes in a Single Scan</h3>
+      <p>
+        Select deeply nested relational graphs in one intuitive query. Axel compiles nested shapes directly into PostgreSQL lateral subqueries with <code>json_agg</code> and <code>row_to_json</code> — returning typed JSON trees in a single database round-trip.
+      </p>
+      <a href="/axel/aql/" class="walkthrough-cta">Explore Query Language (AQL) &rarr;</a>
+    </div>
+    <div class="walkthrough-visual">
+      <div class="comparison-card">
+        <div class="comparison-header">
+          <span>Relational Query Execution</span>
+          <span style="opacity: 0.7;">Database Engine</span>
+        </div>
+        <div class="comparison-body">
+          <div class="comparison-item">
+            <span class="comparison-label axel">&#10003; Axel</span>
+            <span class="comparison-text">Single database scan. PostgreSQL aggregates JSON shapes directly on the server with <strong>zero N+1 queries</strong>.</span>
+          </div>
+          <div class="comparison-item">
+            <span class="comparison-label orm">&#10007; Prisma / Standard ORMs</span>
+            <span class="comparison-text">Multiple sequential queries stitched together in application memory, or huge Cartesian explosion joins.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Row 3: Zero Runtime */}
+  <div class="walkthrough-row">
+    <div class="walkthrough-info">
+      <span class="walkthrough-tag">Zero Runtime Overhead</span>
+      <h3>Ahead-of-Time Compiler, Not a Heavy Runtime</h3>
+      <p>
+        Axel is a build-time compiler that produces pure, parameterized SQL strings and typed structs/interfaces.
+        There is no query engine sidecar, no connection pooling layer, no WASM runtime overhead, and zero driver wrapping.
+      </p>
+      <a href="/axel/codegen/" class="walkthrough-cta">Explore Code Generation &rarr;</a>
+    </div>
+    <div class="walkthrough-visual">
+      <div class="comparison-card">
+        <div class="comparison-header">
+          <span>Runtime Architecture</span>
+          <span style="opacity: 0.7;">Zero Footprint</span>
+        </div>
+        <div class="comparison-body">
+          <div class="comparison-item">
+            <span class="comparison-label axel">&#10003; Axel</span>
+            <span class="comparison-text">Compiles ahead-of-time to plain SQL text. Zero runtime memory overhead and zero serverless cold starts.</span>
+          </div>
+          <div class="comparison-item">
+            <span class="comparison-label orm">&#10007; Prisma 6 / 7</span>
+            <span class="comparison-text">Rust query engine sidecars (v6) or heavy TypeScript/WASM compilers (v7) locking projects to Node.js runtimes.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Row 4: Postgres Superpowers */}
+  <div class="walkthrough-row reverse">
+    <div class="walkthrough-info">
+      <span class="walkthrough-tag">Native Postgres Superpowers</span>
+      <h3>Extensions, Row-Level Security, Conflicts & Triggers</h3>
+      <p>
+        Axel is purpose-built for PostgreSQL. Declare database extensions (<code>pgvector</code>, <code>pg_trgm</code>), fine-grained Row-Level Security (<code>policy</code>), triggers, and <code>unless conflict</code> upsert semantics directly in your schema and queries.
+      </p>
+      <a href="/axel/asl/policies/" class="walkthrough-cta">Explore Policies & RLS Guide &rarr;</a>
+    </div>
+    <div class="walkthrough-visual">
+      <div class="comparison-card">
+        <div class="comparison-header">
+          <span>Advanced Database Capabilities</span>
+          <span style="opacity: 0.7;">PostgreSQL Native</span>
+        </div>
+        <div class="comparison-body">
+          <div class="comparison-item">
+            <span class="comparison-label axel">&#10003; Axel</span>
+            <span class="comparison-text">Declarative syntax for RLS policies, extensions, and conflict handling with automated migration diffing.</span>
+          </div>
+          <div class="comparison-item">
+            <span class="comparison-label orm">&#10007; Lowest-Common-Denominator ORMs</span>
+            <span class="comparison-text">Forces raw SQL workarounds (<code>$queryRaw</code>) or unmanaged manual migration files to use PostgreSQL features.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

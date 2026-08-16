@@ -38,11 +38,25 @@ External generators (any language):
 		queryGlobs, _ := cmd.Flags().GetStringArray("query")
 		optionPairs, _ := cmd.Flags().GetStringArray("option")
 
+		// Precedence: CLI flag > config.Codegen > error
+		if pluginPath == "" && generatorName == "" && config != nil && config.Codegen != nil {
+			if config.Codegen.Plugin != "" && config.Codegen.Generator != "" {
+				return fmt.Errorf("plugin and generator are mutually exclusive in codegen config")
+			}
+			pluginPath = config.Codegen.Plugin
+			generatorName = config.Codegen.Generator
+		}
+
 		if pluginPath == "" && generatorName == "" {
 			return fmt.Errorf("one of --plugin or --generator is required")
 		}
 		if pluginPath != "" && generatorName != "" {
 			return fmt.Errorf("--plugin and --generator are mutually exclusive")
+		}
+
+		// --- Output directory precedence: CLI flag (if explicitly changed) > config.Codegen > default "." ---
+		if !cmd.Flags().Changed("out-dir") && config != nil && config.Codegen != nil && config.Codegen.OutDir != "" {
+			outDir = config.Codegen.OutDir
 		}
 
 		// --- Load schema ---
@@ -73,7 +87,8 @@ External generators (any language):
 		// Sources, in priority order:
 		//   1. -q flag values (glob patterns, expanded by axel)
 		//   2. Positional args (shell-expanded globs land here)
-		//   3. Auto-discovery: all *.aql files under --dir when nothing else given
+		//   3. Config codegen.queries (if -q and args are empty)
+		//   4. Auto-discovery: all *.aql files under --dir when nothing else given
 		var queryPaths []string
 
 		// -q patterns (axel expands these, so quoting works: -q '**/*.aql')
@@ -88,6 +103,17 @@ External generators (any language):
 		// Positional args — shell glob expansion delivers extra files here
 		queryPaths = append(queryPaths, args...)
 
+		// Config queries if no CLI query globs or positional args were provided
+		if len(queryPaths) == 0 && config != nil && config.Codegen != nil && len(config.Codegen.Queries) > 0 {
+			for _, glob := range config.Codegen.Queries {
+				matches, err := expandGlob(glob)
+				if err != nil {
+					return fmt.Errorf("expanding config codegen.queries %q: %w", glob, err)
+				}
+				queryPaths = append(queryPaths, matches...)
+			}
+		}
+
 		// Auto-discover when nothing was provided and --dir is explicitly set
 		if len(queryPaths) == 0 && cmd.Flags().Changed("dir") {
 			discovered, err := findAQLFiles(projectDir)
@@ -101,6 +127,11 @@ External generators (any language):
 		queryPaths = dedupe(queryPaths)
 
 		// --- Compile AQL queries ---
+		var compileOpts compiler.CompileOptions
+		if config != nil {
+			compileOpts.RelLoadStrategy = config.RelLoadStrategy
+		}
+
 		var queries []codegen.QueryDescriptor
 		for _, path := range queryPaths {
 			src, err := os.ReadFile(path)
@@ -111,7 +142,7 @@ External generators (any language):
 			if err != nil {
 				return fmt.Errorf("parsing AQL %q: %w", path, err)
 			}
-			compiled, err := compiler.Compile(stmt, ir)
+			compiled, err := compiler.CompileWithOptions(stmt, ir, compileOpts)
 			if err != nil {
 				return fmt.Errorf("compiling %q: %w", path, err)
 			}
@@ -138,8 +169,13 @@ External generators (any language):
 			}
 		}
 
-		// --- Parse options ---
+		// --- Parse options (config base overlaid with CLI --option flags) ---
 		options := map[string]string{}
+		if config != nil && config.Codegen != nil && config.Codegen.Options != nil {
+			for k, v := range config.Codegen.Options {
+				options[k] = v
+			}
+		}
 		for _, pair := range optionPairs {
 			k, v, found := strings.Cut(pair, "=")
 			if !found {

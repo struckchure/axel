@@ -58,6 +58,13 @@ func validateDirectives(schema SchemaDescriptor, queries []QueryDescriptor) erro
 				return err
 			}
 		}
+		// @rel_load_strategy — must be 'query' or 'join'.
+		if strat, ok := q.Directive("rel_load_strategy"); ok && strat != "" {
+			s := strings.ToLower(strat)
+			if s != "query" && s != "join" {
+				return fmt.Errorf("%s: invalid rel_load_strategy %q: must be 'query' or 'join'", src, strat)
+			}
+		}
 	}
 	return nil
 }

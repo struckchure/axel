@@ -87,6 +87,28 @@ func TestSchemaCompletionEnumMembersInDefault(t *testing.T) {
 	}
 }
 
+func TestQueryCompletionDirectives(t *testing.T) {
+	schema := schemaFor(t, enumSchema)
+	text := `@`
+	got := labels(QueryCompletion(text, len(text), schema))
+	for _, want := range []string{"name", "request", "response", "rel_load_strategy"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("missing directive %q after @; got %v", want, keys(got))
+		}
+	}
+}
+
+func TestQueryCompletionRelLoadStrategyOptions(t *testing.T) {
+	schema := schemaFor(t, enumSchema)
+	text := `@rel_load_strategy `
+	got := labels(QueryCompletion(text, len(text), schema))
+	for _, want := range []string{"query", "join"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("missing strategy option %q; got %v", want, keys(got))
+		}
+	}
+}
+
 func keys(m map[string]CompletionItem) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -94,3 +116,4 @@ func keys(m map[string]CompletionItem) []string {
 	}
 	return out
 }
+

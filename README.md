@@ -46,7 +46,7 @@ Axel rethinks database tooling by separating **data modeling and query compilati
 [X](https://x.com/struckchure/status/2079922001922122004) | [YouTube](https://www.youtube.com/watch?v=79oG_GC8d2A)
 
 ```
-schema.asl  ──► axel generate ──► migration.sql ──► axel up ──► PostgreSQL
+schema.asl  ──► axel diff ──► migration.sql ──► axel up ──► PostgreSQL
 query.aql   ──► axel compile  ──► parameterized SQL (you execute this)
 ```
 
@@ -76,7 +76,7 @@ type Post extending Base {
 }
 ```
 
-Run `axel generate -n "initial schema"` to diff against the last migration and produce a `.sql` file. Run `axel up` to apply it.
+Run `axel diff -n "initial schema"` to diff against the last migration and produce a `.sql` file. Run `axel up` to apply it.
 
 Full reference: [docs/asl.md](docs/asl.md)
 
@@ -153,10 +153,17 @@ Discovery order inside `--dir`:
 Or use an explicit config file:
 
 ```yaml
-# axel.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/struckchure/axel/main/schema.json
 database-url: postgres://user:pass@localhost:5432/mydb
 schema-path: ./schema.asl
 migrations-dir: ./migrations
+rel-load-strategy: query # query | join
+
+codegen:
+  generator: go # go | ts
+  out-dir: ./db/generated
+  queries:
+    - ./queries/*.aql
 ```
 
 ```sh
@@ -167,14 +174,19 @@ axel -c axel.yaml <command>
 
 | Command         | Description                                |
 | --------------- | ------------------------------------------ |
+| `axel init`     | Scaffold a new Axel project (config, schema, migrations) |
 | `axel validate` | Parse and validate a `.asl` schema file    |
 | `axel compile`  | Compile an AQL query to parameterized SQL  |
-| `axel generate` | Diff schema and write a new migration file |
+| `axel codegen`  | Generate type-safe Go or TypeScript code   |
+| `axel diff`     | Diff schema and write a new migration file |
 | `axel up`       | Apply all pending migrations               |
 | `axel down <n>` | Roll back the last N migrations            |
 | `axel status`   | Show migration state                       |
 
 ```sh
+# Initialize project
+axel init
+
 # Validate schema
 axel -d . validate
 
@@ -183,7 +195,7 @@ axel -d . compile --aql 'select User { id, email } filter .id = $id;'
 axel -d . compile --file queries/get_user.aql --out queries/get_user.sql
 
 # Migrations
-axel -d . generate -n "add posts table"
+axel -d . diff -n "add posts table"
 axel -d . up
 axel -d . down 1
 axel -d . status
@@ -203,7 +215,7 @@ vim schema.asl
 axel -d . validate
 
 # 3. Generate a migration
-axel -d . generate -n "initial schema"
+axel -d . diff -n "initial schema"
 
 # 4. Apply it
 axel -d . up

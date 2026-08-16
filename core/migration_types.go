@@ -84,13 +84,24 @@ type MigrationPlan struct {
 	DownSQL string
 }
 
+// CodegenConfig holds configuration for code generation operations
+type CodegenConfig struct {
+	Generator string            `json:"generator,omitempty" yaml:"generator,omitempty"` // Built-in generator name (e.g. "go", "typescript")
+	Plugin    string            `json:"plugin,omitempty" yaml:"plugin,omitempty"`       // Path to external generator binary
+	OutDir    string            `json:"out-dir,omitempty" yaml:"out-dir,omitempty"`     // Output directory for generated files
+	Queries   []string          `json:"queries,omitempty" yaml:"queries,omitempty"`     // AQL query files or globs
+	Options   map[string]string `json:"options,omitempty" yaml:"options,omitempty"`     // Options forwarded to the generator
+}
+
 // MigrationConfig holds configuration for migration operations
 type MigrationConfig struct {
-	PackageName   string `json:"package-name" yaml:"package-name"`     // Default: "./ax"
-	ClientDir     string `json:"client-dir" yaml:"client-dir"`         // Default: "./axel/client"
-	MigrationsDir string `json:"migrations-dir" yaml:"migrations-dir"` // Default: "./migrations"
-	SchemaPath    string `json:"schema-path" yaml:"schema-path"`       // Path to .axel schema file
-	DatabaseURL   string `json:"database-url" yaml:"database-url" `    // PostgreSQL connection string
+	PackageName     string         `json:"package-name" yaml:"package-name"`                         // Default: "./ax"
+	ClientDir       string         `json:"client-dir" yaml:"client-dir"`                             // Default: "./axel/client"
+	MigrationsDir   string         `json:"migrations-dir" yaml:"migrations-dir"`                     // Default: "./migrations"
+	SchemaPath      string         `json:"schema-path" yaml:"schema-path"`                           // Path to .axel schema file
+	DatabaseURL     string         `json:"database-url" yaml:"database-url"`                         // PostgreSQL connection string
+	RelLoadStrategy string         `json:"rel-load-strategy,omitempty" yaml:"rel-load-strategy,omitempty"` // Default: "query" (options: "query", "join")
+	Codegen         *CodegenConfig `json:"codegen,omitempty" yaml:"codegen,omitempty"`               // Codegen settings
 }
 
 // MigrationStatus represents the current state of migrations

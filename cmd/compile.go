@@ -129,7 +129,11 @@ func compileSrc(src string, ir *asl.SchemaIR) (*compiler.CompiledSQL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing AQL: %w", err)
 	}
-	result, err := compiler.Compile(stmt, ir)
+	var opts compiler.CompileOptions
+	if config != nil {
+		opts.RelLoadStrategy = config.RelLoadStrategy
+	}
+	result, err := compiler.CompileWithOptions(stmt, ir, opts)
 	if err != nil {
 		return nil, fmt.Errorf("compiling: %w", err)
 	}

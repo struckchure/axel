@@ -47,10 +47,19 @@ type User extending Base {
 
 // starterConfig is the default axel.yaml written by `axel init`. Kept as a
 // commented template so the generated file is self-documenting.
-const starterConfig = `# Axel project configuration.
+const starterConfig = `# yaml-language-server: $schema=https://raw.githubusercontent.com/struckchure/axel/main/schema.json
 schema-path: %s
 migrations-dir: %s
 database-url: %q
+# rel-load-strategy: query # query | join
+
+# codegen:
+#   generator: go # go | typescript
+#   out-dir: ./db/generated
+#   queries:
+#     - ./queries/*.aql
+#   options:
+#     package: generated
 `
 
 var initCmd = &cobra.Command{

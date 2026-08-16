@@ -125,6 +125,9 @@ func (f *aqlFmt) statement(stmt *Statement) {
 		f.wf("@%s %s", d.Name, d.Value)
 		f.commit(d.EndPos.Offset)
 	}
+	if len(stmt.Directives) > 0 {
+		f.out.WriteByte('\n')
+	}
 	for _, v := range stmt.Vars {
 		f.varBlock(v)
 	}

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/struckchure/axel/main/schema.json",
+  "title": "AxelConfig",
+  "description": "Configuration schema for Axel (axel.yaml)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference URI"
+    },
+    "schema-path": {
+      "type": "string",
+      "description": "Path to .asl schema file (default: axel/schema.asl)"
+    },
+    "database-url": {
+      "type": "string",
+      "description": "PostgreSQL database connection URL (supports $env.VAR or ${env.VAR})"
+    },
+    "migrations-dir": {
+      "type": "string",
+      "description": "Directory for migration files (default: ./migrations)"
+    },
+    "package-name": {
+      "type": "string",
+      "description": "Package name for generated Go code (default: ./ax)"
+    },
+    "client-dir": {
+      "type": "string",
+      "description": "Client directory (default: ./axel/client)"
+    },
+    "rel-load-strategy": {
+      "type": "string",
+      "enum": ["query", "join"],
+      "default": "query",
+      "description": "Default relation loading strategy for AQL queries ('query' for correlated json_agg subqueries, 'join' for LEFT JOIN LATERAL)"
+    },
+    "codegen": {
+      "type": "object",
+      "description": "Code generation configuration",
+      "properties": {
+        "generator": {
+          "type": "string",
+          "description": "Built-in generator name (e.g. 'go', 'typescript')"
+        },
+        "plugin": {
+          "type": "string",
+          "description": "Path to external generator binary"
+        },
+        "out-dir": {
+          "type": "string",
+          "default": ".",
+          "description": "Output directory for generated files"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of AQL query file paths or glob patterns"
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Key-value options forwarded to the code generator"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

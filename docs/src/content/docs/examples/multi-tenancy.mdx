@@ -1,0 +1,74 @@
+---
+title: "Multi-tenant row ownership — Examples"
+description: "Scope every row to the current user with a global and an RLS policy"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Multi-tenant row ownership
+
+Give each row an `owner` and let PostgreSQL enforce that users only see and write
+their own rows. The authenticated id flows in through a [global](/asl/globals),
+and a [policy](/asl/policies) compares it to `.owner`:
+
+```asl
+global current_user: uuid;
+
+type Article extending Base {
+  required title: str;
+  required owner: uuid;
+
+  policy owner_writes for all to app_user
+    using ( .owner = global current_user )
+    with check ( .owner = global current_user );
+}
+```
+
+This lowers to a `CREATE POLICY` that reads the current user from a session
+setting:
+
+```sql
+CREATE POLICY "owner_writes" ON "article" FOR ALL TO app_user
+  USING (owner = current_setting('app.current_user', true)::UUID)
+  WITH CHECK (owner = current_setting('app.current_user', true)::UUID);
+```
+
+- `using` filters which existing rows are visible to `SELECT`/`UPDATE`/`DELETE`.
+- `with check` rejects inserts/updates that would set `owner` to anyone else.
+- Your app must connect as a **non-owner role** (here `app_user`) for the policy
+  to apply — the table owner bypasses RLS.
+
+## Setting the current user from the client
+
+`axel codegen` emits helpers that push the id into the session before running your
+queries (inside a transaction, so it's safe under connection pooling):
+
+<Tabs>
+  <TabItem label="TypeScript">
+```ts
+// scope a block of queries through the Runner
+await runner.withCurrentUser(userId, async (q) => {
+  return q.listArticles();
+});
+
+// or a single standalone call
+const article = await createArticle(db, params, { currentUser: userId });
+```
+  </TabItem>
+  <TabItem label="Go">
+```go
+// scope a block of queries through the Runner
+err := runner.WithCurrentUser(ctx, userID, func(q *gen.Queries) error {
+    _, err := q.ListArticles(ctx)
+    return err
+})
+
+// or a single standalone call
+article, err := gen.CreateArticle(ctx, db, params, gen.WithCurrentUser(userID))
+```
+  </TabItem>
+</Tabs>
+
+With the setting in place, `list Articles` returns only the caller's rows, and an
+insert whose `owner` isn't the current user is rejected. See
+[Globals](/asl/globals) for optional vs `required` semantics.

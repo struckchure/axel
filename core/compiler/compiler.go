@@ -61,9 +61,37 @@ func returningColumns(rt *asl.ResolvedType) string {
 	return strings.Join(cols, ", ")
 }
 
-// Compile compiles a parsed AQL statement against a SchemaIR into SQL.
+// CompileOptions configures query compilation.
+type CompileOptions struct {
+	RelLoadStrategy string // "query" (default, correlated subqueries) or "join" (LEFT JOIN LATERAL)
+}
+
+// Compile compiles a parsed AQL statement against a SchemaIR into SQL using default options.
 func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
-	c := &compiler{schema: schema, params: newParamCollector()}
+	return CompileWithOptions(stmt, schema, CompileOptions{})
+}
+
+// CompileWithOptions compiles a parsed AQL statement against a SchemaIR with custom options.
+func CompileWithOptions(stmt *aql.Statement, schema *asl.SchemaIR, opts CompileOptions) (*CompiledSQL, error) {
+	strategy := opts.RelLoadStrategy
+	if stmt != nil {
+		if v, ok := stmt.DirectiveMap()["rel_load_strategy"]; ok && v != "" {
+			strategy = v
+		}
+	}
+	if strategy == "" {
+		strategy = "query"
+	}
+	strategy = strings.ToLower(strategy)
+	if strategy != "query" && strategy != "join" {
+		return nil, fmt.Errorf("invalid rel_load_strategy %q: must be 'query' or 'join'", strategy)
+	}
+
+	c := &compiler{
+		schema:          schema,
+		params:          newParamCollector(),
+		relLoadStrategy: strategy,
+	}
 
 	// Variables are declared first so they receive initial positional slots
 	// and explicit types/optionality ahead of use sites.
@@ -108,8 +136,9 @@ func Compile(stmt *aql.Statement, schema *asl.SchemaIR) (*CompiledSQL, error) {
 }
 
 type compiler struct {
-	schema *asl.SchemaIR
-	params *paramCollector
+	schema          *asl.SchemaIR
+	params          *paramCollector
+	relLoadStrategy string
 	// aliasCounts tracks how many times each base alias letter has been handed
 	// out within this compile so every table instance gets a distinct alias: the
 	// first use of a letter keeps the bare form ("w"), later uses are suffixed
@@ -201,7 +230,7 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 	var laterals []string
 
 	if body.Shape != nil {
-		cols, err = c.compileShapeCols(body.Shape, rt, alias)
+		cols, laterals, err = c.compileShapeCols(body.Shape, rt, alias)
 		if err != nil {
 			return "", err
 		}
@@ -224,7 +253,7 @@ func (c *compiler) compileSelect(stmt *aql.SelectStmt) (string, error) {
 
 	// Append lateral subqueries (for nested link shapes).
 	for _, lat := range laterals {
-		sb.WriteString(",\n")
+		sb.WriteString("\n")
 		sb.WriteString(lat)
 	}
 
@@ -451,12 +480,12 @@ func (c *compiler) compileAggField(f *aql.ShapeField, rt *asl.ResolvedType, alia
 }
 
 // compileShapeCols compiles every field of a shape against a type/alias into a
-// flat list of SELECT column expressions. `*` expands to scalar properties plus
-// single-link FK columns (skipping any name selected explicitly elsewhere in the
-// shape). Because it delegates non-star fields to compileShapeField, nested
-// links, computed fields, and splats all work at any depth — the top-level shape
-// and a link's sub-shape share this one code path.
-func (c *compiler) compileShapeCols(shape *aql.Shape, rt *asl.ResolvedType, alias string) ([]string, error) {
+// flat list of SELECT column expressions and any associated lateral JOIN clauses.
+// `*` expands to scalar properties plus single-link FK columns (skipping any name
+// selected explicitly elsewhere in the shape). Because it delegates non-star
+// fields to compileShapeField, nested links, computed fields, and splats all work
+// at any depth — the top-level shape and a link's sub-shape share this one code path.
+func (c *compiler) compileShapeCols(shape *aql.Shape, rt *asl.ResolvedType, alias string) ([]string, []string, error) {
 	// Collect explicitly-named fields so a `*` splat can skip them (explicit
 	// selections win over the splat expansion).
 	explicit := make(map[string]bool)
@@ -467,6 +496,7 @@ func (c *compiler) compileShapeCols(shape *aql.Shape, rt *asl.ResolvedType, alia
 	}
 
 	var cols []string
+	var laterals []string
 	for _, f := range shape.Fields {
 		if f.Star {
 			for _, prop := range sortedProps(rt) {
@@ -481,13 +511,16 @@ func (c *compiler) compileShapeCols(shape *aql.Shape, rt *asl.ResolvedType, alia
 			}
 			continue
 		}
-		col, _, err := c.compileShapeField(f, rt, alias)
+		col, lat, err := c.compileShapeField(f, rt, alias)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		cols = append(cols, col)
+		if lat != "" {
+			laterals = append(laterals, lat)
+		}
 	}
-	return cols, nil
+	return cols, laterals, nil
 }
 
 func (c *compiler) validateGroupByShape(shape *aql.Shape, groupBy []*aql.GroupBy, rt *asl.ResolvedType) error {
@@ -565,8 +598,9 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 	// fields, and `*` splats resolve just like a top-level shape — the nested
 	// link's own correlated subquery becomes one column of this subquery's row.
 	var subCols []string
+	var subLaterals []string
 	if f.SubShape != nil {
-		subCols, err = c.compileShapeCols(f.SubShape, targetType, tAlias)
+		subCols, subLaterals, err = c.compileShapeCols(f.SubShape, targetType, tAlias)
 		if err != nil {
 			return "", "", err
 		}
@@ -576,11 +610,13 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 		}
 	}
 
+	var subLatClause string
+	if len(subLaterals) > 0 {
+		subLatClause = " " + strings.Join(subLaterals, " ")
+	}
+
 	if link.IsMulti {
-		// Multi-link → a correlated json_agg scalar subquery. The junction table
-		// has one FK column per side named after the referenced table (see
-		// generateJunctionTable): targetType.Table (e.g. "user") and
-		// parentType.Table (e.g. "project"). No LATERAL is needed.
+		// Multi-link → a correlated json_agg scalar subquery or LEFT JOIN LATERAL.
 		var inner string
 		if link.JunctionTable != "" {
 			jAlias := "jt_" + f.Name
@@ -589,21 +625,33 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 				joinField = "id"
 			}
 			inner = fmt.Sprintf(
-				"SELECT %s FROM \"%s\" %s JOIN \"%s\" %s ON %s.%s = %s.%s WHERE %s.%s = %s.id",
+				"SELECT %s FROM \"%s\" %s JOIN \"%s\" %s ON %s.%s = %s.%s%s WHERE %s.%s = %s.id",
 				strings.Join(subCols, ", "),
 				link.JunctionTable, jAlias,
 				targetType.Table, tAlias,
 				tAlias, joinField, jAlias, targetType.Table,
+				subLatClause,
 				jAlias, parentType.Table, parentAlias,
 			)
 		} else {
 			// Direct FK on the target side (rare for multi).
 			inner = fmt.Sprintf(
-				"SELECT %s FROM \"%s\" %s WHERE %s.%s = %s.id",
+				"SELECT %s FROM \"%s\" %s%s WHERE %s.%s = %s.id",
 				strings.Join(subCols, ", "),
 				targetType.Table, tAlias,
+				subLatClause,
 				tAlias, link.JoinColumn, parentAlias,
 			)
+		}
+
+		if c.relLoadStrategy == "join" {
+			latAlias := tAlias + "_lat"
+			lat := fmt.Sprintf(
+				"LEFT JOIN LATERAL (SELECT COALESCE(json_agg(row_to_json(%s_sub)), '[]') AS %s FROM (%s) %s_sub) %s ON true",
+				tAlias, f.Name, inner, tAlias, latAlias,
+			)
+			col := fmt.Sprintf("COALESCE(%s.%s, '[]') AS %s", latAlias, f.Name, f.Name)
+			return col, lat, nil
 		}
 
 		col := fmt.Sprintf(
@@ -613,15 +661,30 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 		return col, "", nil
 	}
 
-	// Single link → correlated scalar subquery.
+	// Single link → correlated scalar subquery or LEFT JOIN LATERAL.
 	joinCond := fmt.Sprintf("%s.id = %s.%s", tAlias, parentAlias, link.JoinColumn)
-
-	col := fmt.Sprintf(
-		"(SELECT row_to_json(%s_sub) FROM (SELECT %s FROM \"%s\" %s WHERE %s LIMIT 1) %s_sub) AS %s",
-		tAlias,
+	inner := fmt.Sprintf(
+		"SELECT %s FROM \"%s\" %s%s WHERE %s LIMIT 1",
 		strings.Join(subCols, ", "),
 		targetType.Table, tAlias,
+		subLatClause,
 		joinCond,
+	)
+
+	if c.relLoadStrategy == "join" {
+		latAlias := tAlias + "_lat"
+		lat := fmt.Sprintf(
+			"LEFT JOIN LATERAL (SELECT row_to_json(%s_sub) AS %s FROM (%s) %s_sub) %s ON true",
+			tAlias, f.Name, inner, tAlias, latAlias,
+		)
+		col := fmt.Sprintf("%s.%s AS %s", latAlias, f.Name, f.Name)
+		return col, lat, nil
+	}
+
+	col := fmt.Sprintf(
+		"(SELECT row_to_json(%s_sub) FROM (%s) %s_sub) AS %s",
+		tAlias,
+		inner,
 		tAlias,
 		f.Name,
 	)
@@ -646,13 +709,11 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 
 		// Build inner SELECT columns.
 		var innerCols []string
+		var innerLaterals []string
 		if sq.Shape != nil {
-			for _, sf := range sq.Shape.Fields {
-				col, _, err := c.compileShapeField(sf, sqRT, sqAlias)
-				if err != nil {
-					return "", "", err
-				}
-				innerCols = append(innerCols, col)
+			innerCols, innerLaterals, err = c.compileShapeCols(sq.Shape, sqRT, sqAlias)
+			if err != nil {
+				return "", "", err
 			}
 		} else {
 			propNames := make([]string, 0, len(sqRT.Properties))
@@ -675,19 +736,34 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 		}
 
 		innerSQL := fmt.Sprintf(`SELECT %s FROM "%s" %s`, strings.Join(innerCols, ", "), sqRT.Table, sqAlias)
+		if len(innerLaterals) > 0 {
+			innerSQL += " " + strings.Join(innerLaterals, " ")
+		}
 		if where != "" {
 			innerSQL += " WHERE " + where
 		}
 
 		sub := sqAlias + "_" + f.Name + "_sub"
-		var col string
 		if multi {
+			if c.relLoadStrategy == "join" {
+				latAlias := sqAlias + "_" + f.Name + "_lat"
+				lat := fmt.Sprintf(`LEFT JOIN LATERAL (SELECT COALESCE(json_agg(row_to_json(%s)), '[]') AS %s FROM (%s) %s) %s ON true`, sub, f.Name, innerSQL, sub, latAlias)
+				col := fmt.Sprintf(`COALESCE(%s.%s, '[]') AS %s`, latAlias, f.Name, f.Name)
+				return col, lat, nil
+			}
 			// multi select → JSON array (empty array, not null, when nothing matches).
-			col = fmt.Sprintf(`(SELECT COALESCE(json_agg(row_to_json(%s)), '[]') FROM (%s) %s) AS %s`, sub, innerSQL, sub, f.Name)
-		} else {
-			// select → single JSON object (null when nothing matches).
-			col = fmt.Sprintf(`(SELECT row_to_json(%s) FROM (%s LIMIT 1) %s) AS %s`, sub, innerSQL, sub, f.Name)
+			col := fmt.Sprintf(`(SELECT COALESCE(json_agg(row_to_json(%s)), '[]') FROM (%s) %s) AS %s`, sub, innerSQL, sub, f.Name)
+			return col, "", nil
 		}
+
+		if c.relLoadStrategy == "join" {
+			latAlias := sqAlias + "_" + f.Name + "_lat"
+			lat := fmt.Sprintf(`LEFT JOIN LATERAL (SELECT row_to_json(%s) AS %s FROM (%s LIMIT 1) %s) %s ON true`, sub, f.Name, innerSQL, sub, latAlias)
+			col := fmt.Sprintf(`%s.%s AS %s`, latAlias, f.Name, f.Name)
+			return col, lat, nil
+		}
+		// select → single JSON object (null when nothing matches).
+		col := fmt.Sprintf(`(SELECT row_to_json(%s) FROM (%s LIMIT 1) %s) AS %s`, sub, innerSQL, sub, f.Name)
 		return col, "", nil
 	}
 

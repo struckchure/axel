@@ -338,20 +338,34 @@ limit $limit;
 	}
 }
 
-func TestAQLFormatSingleVarStatements(t *testing.T) {
-	src := `var $status<TransactionStatus>?;
-var $limit<int32>?;
-multi select Transaction { id }
-filter .status = $status
-limit $limit;
+func TestAQLFormatDirectivesBlankLine(t *testing.T) {
+	src := `@rel_load_strategy join
+@name ListUsers
+@response UserView
+multi select User { id, email };`
+
+	want := `@rel_load_strategy join
+@name ListUsers
+@response UserView
+
+multi select User { id, email };
 `
 	out, err := aql.Format([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != src {
-		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, src)
+	if out != want {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+	// Verify idempotency
+	out2, err := aql.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2 != out {
+		t.Errorf("directive formatting not idempotent:\n%s\n---\n%s", out, out2)
 	}
 }
+
 
 

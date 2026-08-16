@@ -16,6 +16,9 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 	for _, d := range stmt.Directives {
 		fmt.Fprintf(b, "@%s %s\n", d.Name, d.Value)
 	}
+	if len(stmt.Directives) > 0 {
+		b.WriteString("\n")
+	}
 	for _, v := range stmt.Vars {
 		printVar(b, v)
 	}

@@ -40,6 +40,18 @@ func expandConfigEnv(c *axel.MigrationConfig) {
 	c.MigrationsDir = expandEnvRefs(c.MigrationsDir)
 	c.ClientDir = expandEnvRefs(c.ClientDir)
 	c.PackageName = expandEnvRefs(c.PackageName)
+	c.RelLoadStrategy = expandEnvRefs(c.RelLoadStrategy)
+	if c.Codegen != nil {
+		c.Codegen.Generator = expandEnvRefs(c.Codegen.Generator)
+		c.Codegen.Plugin = expandEnvRefs(c.Codegen.Plugin)
+		c.Codegen.OutDir = expandEnvRefs(c.Codegen.OutDir)
+		for i, q := range c.Codegen.Queries {
+			c.Codegen.Queries[i] = expandEnvRefs(q)
+		}
+		for k, v := range c.Codegen.Options {
+			c.Codegen.Options[k] = expandEnvRefs(v)
+		}
+	}
 }
 
 var (

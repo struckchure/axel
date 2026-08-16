@@ -1,0 +1,91 @@
+---
+title: "Job queue with a single claim — Examples"
+description: "Enforce \"one pending job per key\" with a partial unique constraint"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Job queue with a single claim
+
+A worker queue often needs an invariant like *"at most one **pending** job per
+(name, actor)"* — while still allowing many finished rows with the same key. A
+[partial unique constraint](/asl/schema/constraints#partial-filtered-unique-constraints)
+expresses exactly that: uniqueness that only applies to rows matching a filter.
+
+```asl
+enum QueueStatus { Pending, Running, Failed, Processed }
+
+type Job {
+  required name: str;
+  required actor: str;
+  payload: json;
+  status: QueueStatus { default := QueueStatus.Pending };
+  claimed_at: datetime;
+  processed_at: datetime;
+
+  # Uniqueness only among Pending rows — Running/Failed/Processed are unconstrained.
+  constraint exclusive on (.name, .actor) filter .status = QueueStatus.Pending;
+}
+```
+
+Postgres can't attach a `WHERE` to a table `UNIQUE`, so this lowers to a
+**partial unique index**:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_job_name_actor"
+  ON "job" ("name", "actor")
+  WHERE (status = 'Pending');
+```
+
+## Enqueue is guarded
+
+A second `Pending` job for the same `(name, actor)` now raises a unique-violation
+at insert time — the database refuses the duplicate:
+
+```aql
+insert Job { name := $name, actor := $actor, payload := $payload };
+```
+
+Catch that error in your worker and treat it as "already queued".
+
+:::caution[`unless conflict` and partial indexes]
+`unless conflict on (.name, .actor)` won't silently absorb the duplicate here:
+Postgres can only infer a **partial** index as the `ON CONFLICT` arbiter when the
+conflict clause repeats the index predicate, which the `unless conflict` form
+doesn't emit. Rely on the raised error instead, or use a full (non-partial)
+`constraint exclusive on (.name, .actor)` if you want [upsert](/examples/upsert)
+semantics across every status.
+:::
+
+## Claiming a job frees the key
+
+Moving a job off `Pending` (to `Running`) drops it out of the partial index — so
+the same key can be enqueued again while the first one is still in flight:
+
+```aql
+update Job
+  filter .id = $id<uuid>
+  set { status := QueueStatus.Running, claimed_at := now() };
+```
+
+## From generated code
+
+<Tabs>
+  <TabItem label="TypeScript">
+```ts
+await runner.query.enqueueJob({ name, actor, payload }); // no-op if a Pending twin exists
+await runner.query.claimJob({ id });                     // status → Running
+```
+  </TabItem>
+  <TabItem label="Go">
+```go
+_, err := runner.Query.EnqueueJob(ctx, gen.EnqueueJobParams{Name: name, Actor: actor, Payload: payload})
+_, err = runner.Query.ClaimJob(ctx, gen.ClaimJobParams{ID: id})
+```
+  </TabItem>
+</Tabs>
+
+:::tip[The enum value in the filter (`QueueStatus.Pending`) is compiled to its stored]
+text (`'Pending'`) — see [Enums](/asl/data-types/enums). Enum members also
+autocomplete in your editor after `EnumName.`; see [Editor setup](/editors).
+:::
