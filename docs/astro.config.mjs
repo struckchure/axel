@@ -32,6 +32,77 @@ export default defineConfig({
         },
       ],
       customCss: ["./src/styles/custom.css"],
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            name: "keywords",
+            content:
+              "PostgreSQL, AOT, SQL compiler, database modeling, ASL, AQL, SQL generator, ORM alternative, database migrations, type-safety, zero-runtime, Golang, TypeScript",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "author",
+            content: "Axel Authors",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "theme-color",
+            content: "#09090b",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://struckchure.github.io/axel/logo.svg",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:card",
+            content: "summary",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://struckchure.github.io/axel/logo.svg",
+          },
+        },
+        {
+          tag: "script",
+          attrs: {
+            type: "application/ld+json",
+          },
+          content: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "Axel",
+            operatingSystem: "All",
+            applicationCategory: "DeveloperApplication",
+            description:
+              "Ahead-of-Time Schema & Query Compiler for PostgreSQL",
+            url: "https://struckchure.github.io/axel/",
+            offers: {
+              "@type": "Offer",
+              price: "0",
+              priceCurrency: "USD",
+            },
+            author: {
+              "@type": "Organization",
+              name: "Axel",
+              url: "https://github.com/struckchure/axel",
+            },
+          }),
+        },
+      ],
       expressiveCode: {
         shiki: {
           langs: [asl, aql],

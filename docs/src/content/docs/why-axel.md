@@ -1,5 +1,6 @@
 ---
 title: "Why Axel?"
+description: "Discover why Axel was created: ahead-of-time SQL compilation, zero runtime overhead, native PostgreSQL powers, and robust relational queries."
 ---
 
 # Why Axel?
