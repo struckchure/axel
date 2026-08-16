@@ -1,6 +1,6 @@
 ---
 title: "Nested shapes (links) — AQL"
-description: "Selecting linked types as JSON, with no N+1"
+description: "Selecting linked types as JSON, with no N+1. Configurable between correlated subquery (json_agg) and LEFT JOIN LATERAL strategies."
 ---
 
 # Nested shapes (links)
@@ -95,3 +95,66 @@ multi select Application {
 filter .project.organization.owner = $user<uuid>
    and .project.organization.id = $organization<uuid>?;
 ```
+
+## Loading strategies
+
+By default Axel compiles nested shapes using **correlated subqueries** in the `SELECT` projection (the `query` strategy). You can switch to **`LEFT JOIN LATERAL`** instead — either globally in `axel.yaml` or per-query with a directive.
+
+### `query` — correlated subqueries (default)
+
+Each nested link becomes a correlated scalar subquery inside the `SELECT` list:
+
+- Single links → `row_to_json(...)`
+- Multi links → `COALESCE(json_agg(...), '[]')`
+
+Best for most workloads. Keeps the outer query simple and lets the planner evaluate each subquery only for the rows it needs.
+
+### `join` — LEFT JOIN LATERAL
+
+Each nested link becomes a `LEFT JOIN LATERAL` in the `FROM` clause:
+
+```aql
+@rel_load_strategy join
+
+select Post {
+  id,
+  title,
+  author: { id, email },
+  likes: { id, email }
+};
+```
+
+```sql
+SELECT p.id, p.title, author.author, likes.likes
+FROM "post" p
+LEFT JOIN LATERAL (
+  SELECT row_to_json(u_sub) AS author
+  FROM (SELECT id, email FROM "user" WHERE id = p.author_id LIMIT 1) u_sub
+) author ON true
+LEFT JOIN LATERAL (
+  SELECT COALESCE(json_agg(row_to_json(u_sub)), '[]') AS likes
+  FROM (
+    SELECT u.id, u.email FROM "post_likes" jt
+    JOIN "user" u ON u.id = jt.user_id
+    WHERE jt.post_id = p.id
+  ) u_sub
+) likes ON true;
+```
+
+Prefer `join` when the planner benefits from seeing all lateral joins together — for instance, when you filter or order by columns from nested relations, or when your PostgreSQL version handles lateral joins more efficiently for your data shape.
+
+### Configuring the strategy
+
+**Per-query** — use the `@rel_load_strategy` directive at the top of the `.aql` file:
+
+```aql
+@rel_load_strategy join
+```
+
+**Globally** — set it in `axel.yaml` so all queries in the project use it:
+
+```yaml
+rel-load-strategy: join
+```
+
+The per-query directive takes precedence over the global setting. See [Directives](/aql/directives) for the full list of query-level options.
