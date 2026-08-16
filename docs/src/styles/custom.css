@@ -279,6 +279,7 @@ header .right-group {
   padding: 1.25rem 0.85rem;
 }
 
+/* Top-Level Group Header (e.g. "Getting Started", "Schema Language (ASL)") */
 .sidebar-content .top-level > li > details > summary,
 .sidebar-content .top-level > li > .group-label {
   font-size: 0.75rem;
@@ -301,18 +302,67 @@ header .right-group {
   font-weight: 500 !important;
 }
 
-.sidebar-content details details summary,
-.sidebar-content details details summary span,
-.sidebar-content details details summary .group-label span {
-  font-weight: 400 !important;
-  color: var(--sl-color-gray-3);
-  font-size: 0.85rem;
-  padding: 0.35rem 0.65rem;
+/* Reset 2nd-level dropdown margin to sit on the EXACT SAME LEVEL as sibling links */
+.sidebar-content details details {
+  margin-inline-start: 0 !important;
+  margin-left: 0 !important;
+  padding-inline-start: 0 !important;
 }
 
-.sidebar-content details details summary:hover,
-.sidebar-content details details summary:hover span {
-  color: var(--sl-color-white);
+/* 2nd-level dropdown summary (e.g. Schema, Data Types, Fields) */
+.sidebar-content details details > summary {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  border-radius: 6px !important;
+  padding: 0.4rem 0.75rem !important;
+  font-size: 0.85rem !important;
+  font-weight: 400 !important;
+  color: var(--sl-color-gray-3) !important;
+  cursor: pointer !important;
+  margin: 1px 0 !important;
+  border: 1px solid transparent !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.sidebar-content details details > summary:hover {
+  color: var(--sl-color-white) !important;
+  background-color: var(--sl-color-bg-inline-code) !important;
+}
+
+.sidebar-content details details > summary .group-label,
+.sidebar-content details details > summary .group-label span,
+.sidebar-content details details > summary .large {
+  font-size: 0.85rem !important;
+  font-weight: 400 !important;
+  color: inherit !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.sidebar-content details details > summary svg.caret {
+  width: 0.9rem !important;
+  height: 0.9rem !important;
+  color: var(--sl-color-gray-4) !important;
+  transition: transform 0.2s ease !important;
+}
+
+.sidebar-content details details[open] > summary svg.caret {
+  transform: rotate(90deg) !important;
+}
+
+/* Only the children inside the 2nd-level dropdown drop to a deeper level */
+.sidebar-content details details > ul {
+  padding-inline-start: 0.75rem !important;
+  margin-inline-start: 0.65rem !important;
+  border-inline-start: 1px solid var(--sl-color-hairline) !important;
+  margin-top: 2px !important;
+  margin-bottom: 2px !important;
+}
+
+.sidebar-content details details > ul a {
+  padding: 0.35rem 0.65rem !important;
+  font-size: 0.825rem !important;
 }
 
 /* Sidebar Links */
