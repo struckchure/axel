@@ -44,7 +44,7 @@ export default function LandingPage() {
           Write schemas in <strong className="text-orange-600 dark:text-orange-400 font-semibold">ASL</strong>, queries in <strong className="text-orange-600 dark:text-orange-400 font-semibold">AQL</strong>. Axel compiles both to clean PostgreSQL SQL — migrations and parameterized query strings. <span className="text-zinc-800 dark:text-slate-300">No ORM, no driver, no runtime magic.</span>
         </p>
 
-        <div className="flex flex-wrap items-center justify-center gap-4 mt-2 mb-16 sm:mb-20">
+        <div className="flex flex-wrap items-center justify-center gap-4 mt-2 mb-12 sm:mb-16">
           <a
             href="/axel/installation/"
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-base font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 h-11 px-7 bg-orange-600 !text-white hover:!text-white visited:!text-white shadow-md shadow-orange-600/30 hover:bg-orange-500 hover:shadow-lg hover:shadow-orange-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer no-underline [&_svg]:size-4"
@@ -68,7 +68,7 @@ export default function LandingPage() {
         </div>
 
         {/* Interactive App Window Mockup Frame */}
-        <div className="relative w-full">
+        <div className="relative w-full mt-4 sm:mt-6">
           <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-600/10 blur-3xl -z-10 rounded-3xl" />
           
           <div className="rounded-xl border border-zinc-200 bg-white shadow-xl overflow-hidden dark:border-[#232738] dark:bg-[#0b0c10] dark:shadow-2xl text-left">
@@ -179,8 +179,10 @@ export default function LandingPage() {
       </section>
 
       {/* 2. Value Proof Divider */}
-      <div className="w-full text-center py-6 sm:py-8 border-y border-zinc-200 dark:border-[#181b26] text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed max-w-4xl mx-auto">
-        Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
+      <div className="w-full border-y border-zinc-200 dark:border-[#181b26] py-6 sm:py-8">
+        <div className="w-full max-w-3xl mx-auto text-center text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed px-4">
+          Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
+        </div>
       </div>
 
       {/* 3. Feature Showcase Rows (docs.page style with corner notches) */}
