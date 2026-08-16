@@ -25,7 +25,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="not-content w-full max-w-[1140px] mx-auto px-4 py-8 text-zinc-900 dark:text-slate-100 font-sans flex flex-col gap-24 sm:gap-36">
+    <div className="not-content w-full max-w-[1140px] mx-auto px-4 py-8 text-zinc-900 dark:text-slate-100 font-sans flex flex-col gap-12 sm:gap-16">
       {/* 1. Hero & Interactive Window Preview */}
       <section className="flex flex-col items-center text-center pt-6">
         <Badge variant="default" className="mb-6 px-4 py-1 text-xs cursor-pointer gap-2">
@@ -44,7 +44,7 @@ export default function LandingPage() {
           Write schemas in <strong className="text-orange-600 dark:text-orange-400 font-semibold">ASL</strong>, queries in <strong className="text-orange-600 dark:text-orange-400 font-semibold">AQL</strong>. Axel compiles both to clean PostgreSQL SQL — migrations and parameterized query strings. <span className="text-zinc-800 dark:text-slate-300">No ORM, no driver, no runtime magic.</span>
         </p>
 
-        <div className="flex flex-wrap items-center justify-center gap-4 mb-14">
+        <div className="flex flex-wrap items-center justify-center gap-4 mt-2 mb-16 sm:mb-20">
           <a
             href="/axel/installation/"
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-base font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 h-11 px-7 bg-orange-600 !text-white hover:!text-white visited:!text-white shadow-md shadow-orange-600/30 hover:bg-orange-500 hover:shadow-lg hover:shadow-orange-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer no-underline [&_svg]:size-4"
@@ -179,7 +179,7 @@ export default function LandingPage() {
       </section>
 
       {/* 2. Value Proof Divider */}
-      <div className="w-full text-center py-12 sm:py-16 border-y border-zinc-200 dark:border-[#181b26] text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed max-w-4xl mx-auto">
+      <div className="w-full text-center py-6 sm:py-8 border-y border-zinc-200 dark:border-[#181b26] text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed max-w-4xl mx-auto">
         Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
       </div>
 
