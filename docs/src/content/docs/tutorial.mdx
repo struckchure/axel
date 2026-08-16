@@ -61,9 +61,13 @@ When you run any command with `-d .` (short for `--dir .`), Axel discovers this
 [Global flags](./cli#global-flags) for the discovery rules.
 
 :::tip[Keep the URL out of the file]
-You can drop `database-url` from `axel.yaml` and instead export
-`DATABASE_URL=postgres://…` in your shell — Axel reads it as the default
-connection URL.
+To avoid hardcoding connection credentials, reference your environment variable in `axel.yaml`:
+
+```yaml
+database-url: "$env.DATABASE_URL"
+```
+
+And export `DATABASE_URL=postgres://…` in your shell or `.env` file.
 :::
 
 ---
