@@ -109,9 +109,8 @@
   --sl-shadow-lg: 0 14px 24px -4px rgb(0 0 0 / 0.8), 0 4px 8px -4px rgb(0 0 0 / 0.5);
 }
 
-/* Hide default Starlight hero & title and center landing page */
+/* Hide default Starlight hero component, pagination, and footer on landing page */
 [data-has-hero] .hero,
-[data-has-hero] .content-panel:first-of-type,
 [data-has-hero] h1#_top,
 [data-has-hero] .pagination-links,
 [data-has-hero] footer.sl-flex {
