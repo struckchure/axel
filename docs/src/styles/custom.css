@@ -200,6 +200,15 @@ header.header {
   background-color: rgba(255, 255, 255, 0.85);
 }
 
+header .header {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  gap: 1rem !important;
+}
+
 /* Site Title / Brand */
 .site-title {
   font-weight: 700;
@@ -209,13 +218,30 @@ header.header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  justify-self: start;
 }
 
-/* Search button in header */
+/* Center Search in header */
+header .header > .print\:hidden:has(site-search),
+header site-search {
+  justify-self: center !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  max-width: 420px !important;
+}
+
 site-search button {
+  width: 100% !important;
+  max-width: 320px !important;
+  justify-content: space-between !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
   border-radius: 9999px !important;
-  padding: 0.35rem 0.85rem !important;
-  font-size: 0.8rem !important;
+  padding: 0.38rem 1rem !important;
+  font-size: 0.825rem !important;
   transition: all 0.2s ease !important;
   border: 1px solid var(--sl-color-hairline) !important;
   background-color: var(--sl-color-bg-inline-code) !important;
@@ -234,6 +260,10 @@ site-search kbd {
   font-size: 0.7rem;
   padding: 0.1rem 0.35rem;
   border: 1px solid var(--sl-color-hairline);
+}
+
+header .right-group {
+  justify-self: end;
 }
 
 /* ==========================================================================
