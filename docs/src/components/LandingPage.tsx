@@ -28,7 +28,7 @@ export default function LandingPage() {
     <div className="not-content w-full max-w-[1140px] mx-auto px-4 py-8 text-zinc-900 dark:text-slate-100 font-sans flex flex-col gap-12 sm:gap-16">
       {/* 1. Hero & Interactive Window Preview */}
       <section className="flex flex-col items-center text-center pt-6">
-        <div className="flex flex-col items-center text-center max-w-3xl mx-auto pb-10 sm:pb-14">
+        <div className="flex flex-col items-center text-center max-w-3xl mx-auto" style={{ paddingBottom: "3.5rem" }}>
           <Badge variant="default" className="mb-6 px-4 py-1 text-xs cursor-pointer gap-2">
             <Sparkles className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400" />
             <span>Announcing Axel — Ahead-of-Time PostgreSQL Compiler</span>
@@ -70,7 +70,7 @@ export default function LandingPage() {
         </div>
 
         {/* Interactive App Window Mockup Frame */}
-        <div className="relative w-full mt-2 sm:mt-4">
+        <div className="relative w-full" style={{ marginTop: "2.5rem" }}>
           <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-600/10 blur-3xl -z-10 rounded-3xl" />
           
           <div className="rounded-xl border border-zinc-200 bg-white shadow-xl overflow-hidden dark:border-[#232738] dark:bg-[#0b0c10] dark:shadow-2xl text-left">
