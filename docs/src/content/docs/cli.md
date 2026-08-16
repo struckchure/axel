@@ -303,20 +303,20 @@ axel -d ./myproject codegen --plugin ./my-generator -o ./gen
 vim schema.asl
 
 # 2. Validate it
-axel -d . validate
+axel validate
 
 # 3. Generate and apply a migration
-axel -d . diff -n "initial schema"
-axel -d . up
+axel diff -n "initial schema"
+axel up
 
 # 4. Write queries
 vim queries/list_posts.aql
 
 # 5. Generate typed code
-axel -d . codegen -g go -o ./gen
+axel codegen -g go -o ./gen
 
 # 6. Compile queries to SQL (optional — codegen does this internally)
-axel -d . compile --output-dir ./sql
+axel compile --output-dir ./sql
 
 # 7. Use the generated code in your application
 ```

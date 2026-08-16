@@ -63,14 +63,20 @@ schema-path: ./schema.asl
 migrations-dir: ./migrations
 ```
 
-Or pass the project directory with `--dir` and Axel discovers config automatically:
+Run commands directly in your project folder:
 
 ```sh
-axel -d . validate
-axel -d . up
+axel validate
+axel up
 ```
 
-Discovery order inside `--dir`:
+If your project is in a different directory, pass `--dir` (or `-d`):
+
+```sh
+axel -d ./myproject validate
+```
+
+Discovery order inside project directory:
 
 1. `axel.yaml` — loaded as the full config if found
 2. `schema.asl` — used as the schema if no `axel.yaml`

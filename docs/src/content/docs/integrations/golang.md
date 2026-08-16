@@ -90,10 +90,10 @@ single row (`*GetUserRow`).
 ## 5. Generate the client
 
 ```sh
-axel -d . codegen -g go -o ./gen --option package=gen
+axel codegen -g go -o ./gen --option package=gen
 ```
 
-With `-d` set, Axel auto-discovers every `*.aql` file under the project directory
+Axel auto-discovers every `*.aql` file under the project directory
 and emits a `gen/` package (`runner.go`, `models.go`, one file per query). A
 query's filename becomes a **PascalCase** method: `list_post.aql` →
 `runner.Query.ListPost(ctx)`. The package is named `generated` unless you override

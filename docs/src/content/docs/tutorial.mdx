@@ -56,9 +56,8 @@ schema-path: ./schema.asl
 migrations-dir: ./migrations
 ```
 
-When you run any command with `-d .` (short for `--dir .`), Axel discovers this
-`axel.yaml` automatically and uses it as the full config. See
-[Global flags](./cli#global-flags) for the discovery rules.
+When `axel.yaml` is in the current directory, Axel discovers it automatically.
+You can run `axel <command>` directly from your project root. (You only need `-d <path>` or `--dir <path>` if your config lives in a different folder).
 
 :::tip[Keep the URL out of the file]
 To avoid hardcoding connection credentials, reference your environment variable in `axel.yaml`:
@@ -133,7 +132,7 @@ A few things worth noticing, each covered in the [ASL reference](/asl/):
 Before touching the database, check the schema parses and type-checks:
 
 ```sh
-axel -d . validate
+axel validate
 ```
 
 ```
@@ -174,7 +173,7 @@ docker compose up -d
 one. On a fresh project that diff is "create everything":
 
 ```sh
-axel -d . diff -n "initial schema"
+axel diff -n "initial schema"
 ```
 
 This writes a versioned migration folder:
@@ -219,14 +218,14 @@ CREATE TABLE "post" (
 Apply it:
 
 ```sh
-axel -d . up
+axel up
 ```
 
 Axel records applied migrations in a `_axel_migrations` table it creates on first
 run. Check the state any time with:
 
 ```sh
-axel -d . status
+axel status
 ```
 
 ```
@@ -234,7 +233,7 @@ axel -d . status
 ```
 
 :::tip[Rolling back]
-`axel -d . down 1` reverts the last migration using its `down.sql`. Edit the
+`axel down 1` reverts the last migration using its `down.sql`. Edit the
 schema and re-run `diff` to produce `0002`, and so on.
 :::
 
@@ -278,7 +277,7 @@ Before generating code, you can inspect exactly what a query compiles to. `axel
 compile` needs no database:
 
 ```sh
-axel -d . compile --file queries/list_users_with_post.aql
+axel compile --file queries/list_users_with_post.aql
 ```
 
 ```sql
@@ -302,12 +301,12 @@ file and emits a typed client:
 <Tabs>
   <TabItem label="TypeScript">
 ```sh
-axel -d . codegen -g ts -o ./gen
+axel codegen -g ts -o ./gen
 ```
   </TabItem>
   <TabItem label="Go">
 ```sh
-axel -d . codegen -g go -o ./gen --option package=generated
+axel codegen -g go -o ./gen --option package=generated
 ```
   </TabItem>
 </Tabs>

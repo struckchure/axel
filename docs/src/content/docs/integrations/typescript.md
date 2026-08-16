@@ -90,10 +90,10 @@ single row (`GetUserRow | null`).
 ## 5. Generate the client
 
 ```sh
-axel -d . codegen -g ts -o ./gen
+axel codegen -g ts -o ./gen
 ```
 
-With `-d` set, Axel auto-discovers every `*.aql` file under the project directory
+Axel auto-discovers every `*.aql` file under the project directory
 and emits a `gen/` folder (`runner.ts`, `models.ts`, one file per query). A query's
 filename becomes a **camelCase** method: `list_post.aql` →
 `runner.query.listPost()`. (Or name files explicitly: `-q 'queries/*.aql'`.)
