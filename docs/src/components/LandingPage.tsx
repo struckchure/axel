@@ -233,10 +233,17 @@ export default function LandingPage() {
               Nested Shapes in a Single Database Scan
             </h2>
             <p className="text-zinc-600 dark:text-slate-400 leading-relaxed mb-6">
-              Select deeply nested relational graphs in one intuitive query. Axel compiles nested shapes directly into PostgreSQL lateral subqueries with <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">json_agg</code> and <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">row_to_json</code> — returning typed JSON trees in a single database round-trip with <strong>zero N+1 queries</strong>.
+              Select deeply nested relational graphs in one intuitive query. Axel compiles nested shapes into a single PostgreSQL round-trip — zero N+1 queries. Choose between two loading strategies:
             </p>
-            <a href="/axel/aql/" className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition-colors">
-              Explore Query Language (AQL) <ArrowRight className="w-4 h-4" />
+            <ul className="text-zinc-600 dark:text-slate-400 text-sm leading-relaxed mb-6 space-y-2">
+              <li><code className="text-orange-600 dark:text-orange-400 font-mono text-xs">query</code> <span className="text-zinc-500 dark:text-slate-500">(default)</span> — correlated subqueries with <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">json_agg</code> and <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">row_to_json</code> in the <code className="font-mono text-xs">SELECT</code> projection.</li>
+              <li><code className="text-orange-600 dark:text-orange-400 font-mono text-xs">join</code> — <code className="font-mono text-xs">LEFT JOIN LATERAL</code> in the <code className="font-mono text-xs">FROM</code> clause, ideal when the planner benefits from seeing all joins together.</li>
+            </ul>
+            <p className="text-zinc-600 dark:text-slate-400 text-sm leading-relaxed mb-6">
+              Set globally in <code className="font-mono text-xs">axel.yaml</code> or override per-query with <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">@rel_load_strategy</code>.
+            </p>
+            <a href="/axel/aql/select/nested/" className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition-colors">
+              Explore Nested Shapes <ArrowRight className="w-4 h-4" />
             </a>
           </div>
 
@@ -249,15 +256,40 @@ export default function LandingPage() {
               <span className="text-[0.7rem] text-zinc-500 dark:text-slate-500 font-mono">AQL Query</span>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs font-mono text-zinc-800 dark:text-slate-300 leading-relaxed overflow-x-auto">
-                <span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Article</span> {"{"}
-                {"\n"}  id,
-                {"\n"}  title,
-                {"\n"}  author: {"{"} id, email {"}"},
-                {"\n"}  tags: {"{"} id, name {"}"}
-                {"\n"}{"}"}
-                {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .slug = <span className="text-orange-600 dark:text-orange-400">$slug</span>;
-              </pre>
+              <Tabs defaultValue="query" className="w-full">
+                <TabsList className="mb-3">
+                  <TabsTrigger value="query">query (default)</TabsTrigger>
+                  <TabsTrigger value="join">join (lateral)</TabsTrigger>
+                </TabsList>
+                <TabsContent value="query">
+                  <pre className="text-xs font-mono text-zinc-800 dark:text-slate-300 leading-relaxed overflow-x-auto">
+                    <span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Article</span> {"{"}
+                    {"\n"}  id,
+                    {"\n"}  title,
+                    {"\n"}  author: {"{"} id, email {"}"},
+                    {"\n"}  tags: {"{"} id, name {"}"}
+                    {"\n"}{"}"}
+                    {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .slug = <span className="text-orange-600 dark:text-orange-400">$slug</span>;
+                    {"\n"}
+                    {"\n"}<span className="text-zinc-400 dark:text-slate-500">{"-- compiles to json_agg + row_to_json subqueries"}</span>
+                  </pre>
+                </TabsContent>
+                <TabsContent value="join">
+                  <pre className="text-xs font-mono text-zinc-800 dark:text-slate-300 leading-relaxed overflow-x-auto">
+                    <span className="text-orange-600 dark:text-orange-400">@rel_load_strategy</span> <span className="text-blue-600 dark:text-blue-400">join</span>
+                    {"\n"}
+                    {"\n"}<span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Article</span> {"{"}
+                    {"\n"}  id,
+                    {"\n"}  title,
+                    {"\n"}  author: {"{"} id, email {"}"},
+                    {"\n"}  tags: {"{"} id, name {"}"}
+                    {"\n"}{"}"}
+                    {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .slug = <span className="text-orange-600 dark:text-orange-400">$slug</span>;
+                    {"\n"}
+                    {"\n"}<span className="text-zinc-400 dark:text-slate-500">{"-- compiles to LEFT JOIN LATERAL"}</span>
+                  </pre>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </div>
