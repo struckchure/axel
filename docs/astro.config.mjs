@@ -3,8 +3,44 @@ import starlight from "@astrojs/starlight";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import astroExpressiveCode from "astro-expressive-code";
+import { definePlugin } from "@expressive-code/core";
 import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 import { aql, asl } from "./src/languages/index.ts";
+
+const nonCodeLangs = new Set([
+  "",
+  "text",
+  "plaintext",
+  "txt",
+  "tree",
+  "sh",
+  "bash",
+  "zsh",
+  "shell",
+  "shellscript",
+  "powershell",
+  "ps",
+  "ps1",
+  "console",
+  "terminal",
+]);
+
+function selectiveLineNumbersPlugin() {
+  return definePlugin({
+    name: "Selective Line Numbers",
+    hooks: {
+      preprocessMetadata: ({ codeBlock }) => {
+        const lang = (codeBlock.language || "").toLowerCase();
+        if (
+          nonCodeLangs.has(lang) &&
+          codeBlock.metaOptions.getBoolean("showLineNumbers") === undefined
+        ) {
+          codeBlock.props.showLineNumbers = false;
+        }
+      },
+    },
+  });
+}
 
 // https://astro.build/config
 export default defineConfig({
@@ -15,7 +51,7 @@ export default defineConfig({
   },
   integrations: [
     astroExpressiveCode({
-      plugins: [pluginLineNumbers()],
+      plugins: [selectiveLineNumbersPlugin(), pluginLineNumbers()],
       defaultProps: {
         showLineNumbers: true,
       },
