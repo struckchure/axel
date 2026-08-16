@@ -178,14 +178,14 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
 
-      {/* 2. Value Proof Divider */}
-      <div className="w-full border-y border-zinc-200 dark:border-[#181b26] py-6 sm:py-8 flex items-center justify-center">
-        <div style={{ textAlign: "center" }} className="w-full text-center text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed px-4">
-          Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
+        {/* Value Proof — figure caption directly below window */}
+        <div className="w-full border-y border-zinc-200 dark:border-[#181b26] flex items-center justify-center" style={{ marginTop: "1.5rem", paddingTop: "1rem", paddingBottom: "1rem" }}>
+          <div style={{ textAlign: "center" }} className="w-full text-center text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed px-4">
+            Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* 3. Feature Showcase Rows (docs.page style with corner notches) */}
       <section className="flex flex-col gap-12 sm:gap-16">
