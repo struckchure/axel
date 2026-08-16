@@ -178,22 +178,22 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Value Proof */}
-      <div className="text-center py-6 border-y border-zinc-200 dark:border-[#181b26] mb-20 text-zinc-600 dark:text-slate-400 text-sm">
-        Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400">zero runtime overhead</strong>.
+      {/* Value Proof Divider */}
+      <div className="text-center py-10 sm:py-14 border-y border-zinc-200 dark:border-[#181b26] my-24 sm:my-36 text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed max-w-4xl mx-auto">
+        Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
       </div>
 
       {/* Feature Showcase Rows (docs.page style with corner notches) */}
-      <div className="flex flex-col gap-16 mb-24">
+      <div className="flex flex-col gap-24 sm:gap-32 mb-32 sm:mb-44">
         {/* Row 1: ASL */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
-            <Badge variant="tag" className="mb-3">Schema Language (ASL)</Badge>
+            <Badge variant="tag" className="mb-4">Schema Language (ASL)</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
               Declarative Schemas, Zero Decorator Gymnastics
             </h2>
             <p className="text-zinc-600 dark:text-slate-400 leading-relaxed mb-6">
-              Define your models, single/multi links, indexes, and custom constraints cleanly in <code className="text-orange-600 dark:text-orange-400">.asl</code> files. Axel AST-diffs your schema and generates clean, deterministic PostgreSQL migration SQL automatically.
+              Define your models, single/multi links, indexes, and custom constraints cleanly in <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">.asl</code> files. Axel AST-diffs your schema and generates clean, deterministic PostgreSQL migration SQL automatically.
             </p>
             <a href="/axel/asl/" className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition-colors">
               Explore Schema Language (ASL) <ArrowRight className="w-4 h-4" />
@@ -222,14 +222,14 @@ export default function LandingPage() {
         </div>
 
         {/* Row 2: AQL */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="lg:order-2">
-            <Badge variant="tag" className="mb-3">Query Compiler (AQL)</Badge>
+            <Badge variant="tag" className="mb-4">Query Compiler (AQL)</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
               Nested Shapes in a Single Database Scan
             </h2>
             <p className="text-zinc-600 dark:text-slate-400 leading-relaxed mb-6">
-              Select deeply nested relational graphs in one intuitive query. Axel compiles nested shapes directly into PostgreSQL lateral subqueries with <code className="text-orange-600 dark:text-orange-400">json_agg</code> and <code className="text-orange-600 dark:text-orange-400">row_to_json</code> — returning typed JSON trees in a single database round-trip with <strong>zero N+1 queries</strong>.
+              Select deeply nested relational graphs in one intuitive query. Axel compiles nested shapes directly into PostgreSQL lateral subqueries with <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">json_agg</code> and <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">row_to_json</code> — returning typed JSON trees in a single database round-trip with <strong>zero N+1 queries</strong>.
             </p>
             <a href="/axel/aql/" className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition-colors">
               Explore Query Language (AQL) <ArrowRight className="w-4 h-4" />
@@ -259,9 +259,9 @@ export default function LandingPage() {
         </div>
 
         {/* Row 3: AOT Zero Runtime */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
-            <Badge variant="tag" className="mb-3">Ahead-of-Time Architecture</Badge>
+            <Badge variant="tag" className="mb-4">Ahead-of-Time Architecture</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
               Ahead-of-Time Compiler, Zero Runtime Overhead
             </h2>
@@ -295,14 +295,14 @@ export default function LandingPage() {
         </div>
 
         {/* Row 4: Native Postgres */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="lg:order-2">
-            <Badge variant="tag" className="mb-3">PostgreSQL Superpowers</Badge>
+            <Badge variant="tag" className="mb-4">PostgreSQL Superpowers</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
               Extensions, Row-Level Security, Conflicts & Triggers
             </h2>
             <p className="text-zinc-600 dark:text-slate-400 leading-relaxed mb-6">
-              Axel is purpose-built for PostgreSQL. Declare database extensions (<code className="text-orange-600 dark:text-orange-400">pgvector</code>, <code className="text-orange-600 dark:text-orange-400">pg_trgm</code>), fine-grained Row-Level Security (<code className="text-orange-600 dark:text-orange-400">policy</code>), triggers, and <code className="text-orange-600 dark:text-orange-400">unless conflict</code> upsert semantics directly in your schema and queries.
+              Axel is purpose-built for PostgreSQL. Declare database extensions (<code className="text-orange-600 dark:text-orange-400 font-mono text-xs">pgvector</code>, <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">pg_trgm</code>), fine-grained Row-Level Security (<code className="text-orange-600 dark:text-orange-400 font-mono text-xs">policy</code>), triggers, and <code className="text-orange-600 dark:text-orange-400 font-mono text-xs">unless conflict</code> upsert semantics directly in your schema and queries.
             </p>
             <a href="/axel/asl/policies/" className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition-colors">
               Explore Policies & RLS Guide <ArrowRight className="w-4 h-4" />
@@ -328,13 +328,13 @@ export default function LandingPage() {
       </div>
 
       {/* Bottom CTA Banner (Image 2 style) */}
-      <div className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-orange-50/50 to-amber-50/60 p-8 sm:p-12 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden shadow-lg dark:border-[#232738] dark:bg-gradient-to-r dark:from-[#0c0e14] dark:via-[#10131d] dark:to-[#1a1310] dark:shadow-xl">
+      <div className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-orange-50/50 to-amber-50/60 p-8 sm:p-14 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden shadow-lg dark:border-[#232738] dark:bg-gradient-to-r dark:from-[#0c0e14] dark:via-[#10131d] dark:to-[#1a1310] dark:shadow-xl mt-16 sm:mt-24 mb-16 sm:mb-24">
         <div className="max-w-xl text-center md:text-left">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-zinc-950 dark:text-white tracking-tight mb-4">
             Bring your database <br />
             into the <span className="bg-gradient-to-r from-orange-600 to-amber-500 dark:from-orange-400 dark:to-amber-300 bg-clip-text text-transparent">AOT age</span>
           </h2>
-          <p className="text-zinc-600 dark:text-slate-400 text-sm mb-6">
+          <p className="text-zinc-600 dark:text-slate-400 text-sm sm:text-base mb-8 leading-relaxed">
             Get started in seconds with Axel's CLI, schema modeling, and zero-runtime query compiler.
           </p>
           <a
