@@ -2,6 +2,8 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
+import astroExpressiveCode from "astro-expressive-code";
+import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 import { aql, asl } from "./src/languages/index.ts";
 
 // https://astro.build/config
@@ -12,6 +14,16 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   integrations: [
+    astroExpressiveCode({
+      plugins: [pluginLineNumbers()],
+      defaultProps: {
+        showLineNumbers: true,
+      },
+      shiki: {
+        langs: [asl, aql],
+      },
+      themes: ["github-dark", "github-light"],
+    }),
     react(),
     starlight({
       title: "Axel",
@@ -104,6 +116,7 @@ export default defineConfig({
         },
       ],
       expressiveCode: {
+        plugins: [pluginLineNumbers()],
         defaultProps: {
           showLineNumbers: true,
         },

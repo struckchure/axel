@@ -15,19 +15,6 @@ import {
   FileCode,
 } from "lucide-react";
 
-function CodePreview({ lines, children }: { lines: number; children: React.ReactNode }) {
-  return (
-    <div className="flex font-mono text-xs overflow-x-auto p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 leading-relaxed">
-      <div className="select-none pr-3 text-right text-zinc-400 dark:text-zinc-600 border-r border-zinc-200 dark:border-zinc-800 mr-3 flex flex-col shrink-0 font-mono text-[0.75rem] leading-relaxed">
-        {Array.from({ length: lines }, (_, i) => (
-          <span key={i + 1}>{i + 1}</span>
-        ))}
-      </div>
-      <pre className="overflow-x-auto flex-1 font-mono text-xs leading-relaxed m-0 p-0 bg-transparent border-0">{children}</pre>
-    </div>
-  );
-}
-
 export default function LandingPage() {
   const [copied, setCopied] = useState(false);
 
@@ -139,7 +126,7 @@ export default function LandingPage() {
                 </TabsList>
 
                 <TabsContent value="schema">
-                  <CodePreview lines={12}>
+                  <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
                     <span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">User</span> {"{"}
                     {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> id: <span className="text-blue-600 dark:text-blue-400">uuid</span> {"{"} <span className="text-pink-600 dark:text-pink-400">default</span> := <span className="text-blue-600 dark:text-blue-400">gen_uuid</span>(); <span className="text-pink-600 dark:text-pink-400">constraint</span> pk; {"}"};
                     {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> email: <span className="text-blue-600 dark:text-blue-400">str</span> {"{"} <span className="text-pink-600 dark:text-pink-400">constraint</span> exclusive; {"}"};
@@ -150,11 +137,11 @@ export default function LandingPage() {
                     {"\n"}  <span className="text-pink-600 dark:text-pink-400">required link</span> author: <span className="text-purple-600 dark:text-purple-400">User</span>;
                     {"\n"}  <span className="text-pink-600 dark:text-pink-400">multi link</span> likes: <span className="text-purple-600 dark:text-purple-400">User</span>;
                     {"\n"}{"}"}
-                  </CodePreview>
+                  </pre>
                 </TabsContent>
 
                 <TabsContent value="query">
-                  <CodePreview lines={9}>
+                  <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
                     <span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Post</span> {"{"}
                     {"\n"}  id,
                     {"\n"}  title,
@@ -163,17 +150,17 @@ export default function LandingPage() {
                     {"\n"}{"}"}
                     {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .author.id = <span className="text-orange-600 dark:text-orange-400">$author_id</span>
                     {"\n"}<span className="text-pink-600 dark:text-pink-400">order by</span> .created_at <span className="text-pink-600 dark:text-pink-400">desc</span>;
-                  </CodePreview>
+                  </pre>
                 </TabsContent>
 
                 <TabsContent value="sql">
-                  <CodePreview lines={7}>
+                  <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
                     <span className="text-pink-600 dark:text-pink-400">SELECT</span> p.id, p.title,
                     {"\n"}  (<span className="text-pink-600 dark:text-pink-400">SELECT</span> row_to_json(u) <span className="text-pink-600 dark:text-pink-400">FROM</span> "user" u <span className="text-pink-600 dark:text-pink-400">WHERE</span> u.id = p.author_id) <span className="text-pink-600 dark:text-pink-400">AS</span> author,
                     {"\n"}  (<span className="text-pink-600 dark:text-pink-400">SELECT</span> COALESCE(json_agg(l), '[]') <span className="text-pink-600 dark:text-pink-400">FROM</span> "post_likes" pl
                     {"\n"}   <span className="text-pink-600 dark:text-pink-400">JOIN</span> "user" l <span className="text-pink-600 dark:text-pink-400">ON</span> l.id = pl.user_id <span className="text-pink-600 dark:text-pink-400">WHERE</span> pl.post_id = p.id) <span className="text-pink-600 dark:text-pink-400">AS</span> likes
                     {"\n"}<span className="text-pink-600 dark:text-pink-400">FROM</span> "post" p <span className="text-pink-600 dark:text-pink-400">WHERE</span> p.author_id = <span className="text-blue-600 dark:text-blue-400">$1</span> <span className="text-pink-600 dark:text-pink-400">ORDER BY</span> p.created_at <span className="text-pink-600 dark:text-pink-400">DESC</span>;
-                  </CodePreview>
+                  </pre>
                 </TabsContent>
               </Tabs>
             </div>
@@ -221,14 +208,14 @@ export default function LandingPage() {
               <span className="text-[0.7rem] text-zinc-500 dark:text-slate-500 font-mono">ASL Model</span>
             </CardHeader>
             <CardContent>
-              <CodePreview lines={7}>
+              <pre className="text-xs font-mono text-zinc-800 dark:text-slate-300 leading-relaxed overflow-x-auto">
                 <span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">Article</span> <span className="text-pink-600 dark:text-pink-400">extending</span> <span className="text-purple-600 dark:text-purple-400">Base</span> {"{"}
                 {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> title: <span className="text-blue-600 dark:text-blue-400">str</span>;
                 {"\n"}  slug: <span className="text-blue-600 dark:text-blue-400">str</span> {"{"} <span className="text-pink-600 dark:text-pink-400">constraint</span> exclusive; {"}"};
                 {"\n"}  <span className="text-pink-600 dark:text-pink-400">required link</span> author: <span className="text-purple-600 dark:text-purple-400">User</span>;
                 {"\n"}  <span className="text-pink-600 dark:text-pink-400">multi link</span> tags: <span className="text-purple-600 dark:text-purple-400">Tag</span>;
                 {"\n"}{"}"}
-              </CodePreview>
+              </pre>
             </CardContent>
           </Card>
         </div>
@@ -257,7 +244,7 @@ export default function LandingPage() {
               <span className="text-[0.7rem] text-zinc-500 dark:text-slate-500 font-mono">AQL Query</span>
             </CardHeader>
             <CardContent>
-              <CodePreview lines={8}>
+              <pre className="text-xs font-mono text-zinc-800 dark:text-slate-300 leading-relaxed overflow-x-auto">
                 <span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Article</span> {"{"}
                 {"\n"}  id,
                 {"\n"}  title,
@@ -265,7 +252,7 @@ export default function LandingPage() {
                 {"\n"}  tags: {"{"} id, name {"}"}
                 {"\n"}{"}"}
                 {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .slug = <span className="text-orange-600 dark:text-orange-400">$slug</span>;
-              </CodePreview>
+              </pre>
             </CardContent>
           </Card>
         </div>
@@ -330,10 +317,10 @@ export default function LandingPage() {
               <span className="text-[0.7rem] text-zinc-500 dark:text-slate-500 font-mono">PostgreSQL Native</span>
             </CardHeader>
             <CardContent>
-              <CodePreview lines={2}>
+              <pre className="text-xs font-mono text-zinc-800 dark:text-slate-300 leading-relaxed overflow-x-auto">
                 <span className="text-pink-600 dark:text-pink-400">policy</span> tenant_isolation <span className="text-pink-600 dark:text-pink-400">on</span> <span className="text-purple-600 dark:text-purple-400">Organization</span>
                 {"\n"}  <span className="text-pink-600 dark:text-pink-400">for all using</span> (.id = <span className="text-blue-600 dark:text-blue-400">global</span>.current_org_id);
-              </CodePreview>
+              </pre>
             </CardContent>
           </Card>
         </div>

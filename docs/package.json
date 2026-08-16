@@ -27,6 +27,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@expressive-code/plugin-line-numbers": "^0.44.1",
     "@shikijs/types": "^2.0.0",
     "typescript": "^5.0.0"
   }
