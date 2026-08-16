@@ -25,9 +25,9 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="not-content w-full max-w-[1140px] mx-auto px-4 py-8 text-zinc-900 dark:text-slate-100 font-sans">
-      {/* Hero Section */}
-      <section className="flex flex-col items-center text-center pt-8 pb-12">
+    <div className="not-content w-full max-w-[1140px] mx-auto px-4 py-8 text-zinc-900 dark:text-slate-100 font-sans flex flex-col gap-24 sm:gap-36">
+      {/* 1. Hero & Interactive Window Preview */}
+      <section className="flex flex-col items-center text-center pt-6">
         <Badge variant="default" className="mb-6 px-4 py-1 text-xs cursor-pointer gap-2">
           <Sparkles className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400" />
           <span>Announcing Axel — Ahead-of-Time PostgreSQL Compiler</span>
@@ -66,125 +66,125 @@ export default function LandingPage() {
             )}
           </button>
         </div>
-      </section>
 
-      {/* Interactive App Window Mockup Frame */}
-      <div className="relative mb-20">
-        <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-600/10 blur-3xl -z-10 rounded-3xl" />
-        
-        <div className="rounded-xl border border-zinc-200 bg-white shadow-xl overflow-hidden dark:border-[#232738] dark:bg-[#0b0c10] dark:shadow-2xl">
-          {/* Window Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-zinc-100 border-b border-zinc-200 dark:bg-[#10121a] dark:border-[#1e2230]">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500/80" />
-              <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-              <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-            </div>
-
-            <div className="flex items-center gap-1 bg-zinc-200/70 p-1 rounded-full border border-zinc-300/80 dark:bg-[#090a0f] dark:border-[#1a1e2b]">
-              <span className="px-3 py-0.5 rounded-full text-xs font-medium bg-white text-zinc-900 shadow-sm dark:bg-[#1e2230] dark:text-white">Documentation</span>
-              <span className="px-3 py-0.5 rounded-full text-xs font-medium text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer">Schema (ASL)</span>
-              <span className="px-3 py-0.5 rounded-full text-xs font-medium text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer">Queries (AQL)</span>
-              <span className="px-3 py-0.5 rounded-full text-xs font-medium text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer">Reference</span>
-            </div>
-
-            <div className="text-xs text-zinc-500 dark:text-slate-500 font-mono">v1.0</div>
-          </div>
-
-          {/* Window Layout Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-[220px_1fr_200px] min-h-[380px] text-sm">
-            {/* Sidebar */}
-            <div className="hidden md:flex flex-col gap-1 p-4 bg-zinc-50 border-r border-zinc-200 text-zinc-600 dark:bg-[#090a0f] dark:border-[#1a1e2b] dark:text-slate-400">
-              <span className="text-[0.7rem] uppercase tracking-wider font-semibold text-zinc-400 dark:text-slate-500 px-2 mb-1">Getting Started</span>
-              <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Introduction</div>
-              <div className="px-3 py-1.5 rounded-lg bg-zinc-200/80 text-zinc-950 border border-zinc-300 font-medium text-xs dark:bg-[#1c1f2b] dark:text-white dark:border-[#282c3f]">Quick look</div>
-              <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Why Axel?</div>
-              <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Installation</div>
-
-              <span className="text-[0.7rem] uppercase tracking-wider font-semibold text-zinc-400 dark:text-slate-500 px-2 mt-4 mb-1">Schema Language</span>
-              <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Types & Links</div>
-              <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Indexes & Policies</div>
-            </div>
-
-            {/* Main Mockup Content */}
-            <div className="p-6 bg-white dark:bg-[#0b0c10]">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">Quick look</h2>
-                <Badge variant="secondary" className="text-[0.7rem] gap-1 cursor-pointer">
-                  <span>Copy code</span>
-                </Badge>
+        {/* Interactive App Window Mockup Frame */}
+        <div className="relative w-full">
+          <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-600/10 blur-3xl -z-10 rounded-3xl" />
+          
+          <div className="rounded-xl border border-zinc-200 bg-white shadow-xl overflow-hidden dark:border-[#232738] dark:bg-[#0b0c10] dark:shadow-2xl text-left">
+            {/* Window Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-zinc-100 border-b border-zinc-200 dark:bg-[#10121a] dark:border-[#1e2230]">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
               </div>
-              <p className="text-xs text-zinc-600 dark:text-slate-400 mb-4 leading-relaxed">
-                Define models in ASL, query shapes in AQL, and get optimal single-scan PostgreSQL queries.
-              </p>
 
-              <Tabs defaultValue="schema" className="w-full">
-                <TabsList className="mb-3">
-                  <TabsTrigger value="schema">schema.asl</TabsTrigger>
-                  <TabsTrigger value="query">get_posts.aql</TabsTrigger>
-                  <TabsTrigger value="sql">compiled.sql</TabsTrigger>
-                </TabsList>
+              <div className="flex items-center gap-1 bg-zinc-200/70 p-1 rounded-full border border-zinc-300/80 dark:bg-[#090a0f] dark:border-[#1a1e2b]">
+                <span className="px-3 py-0.5 rounded-full text-xs font-medium bg-white text-zinc-900 shadow-sm dark:bg-[#1e2230] dark:text-white">Documentation</span>
+                <span className="px-3 py-0.5 rounded-full text-xs font-medium text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer">Schema (ASL)</span>
+                <span className="px-3 py-0.5 rounded-full text-xs font-medium text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer">Queries (AQL)</span>
+                <span className="px-3 py-0.5 rounded-full text-xs font-medium text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer">Reference</span>
+              </div>
 
-                <TabsContent value="schema">
-                  <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
-                    <span className="text-pink-600 dark:text-pink-400">use extension</span> <span className="text-emerald-600 dark:text-emerald-400">'pgcrypto'</span>;
-                    {"\n\n"}<span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">User</span> {"{"}
-                    {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> id: <span className="text-blue-600 dark:text-blue-400">uuid</span> {"{"} <span className="text-pink-600 dark:text-pink-400">default</span> := <span className="text-blue-600 dark:text-blue-400">gen_uuid</span>(); <span className="text-pink-600 dark:text-pink-400">constraint</span> pk; {"}"};
-                    {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> email: <span className="text-blue-600 dark:text-blue-400">str</span> {"{"} <span className="text-pink-600 dark:text-pink-400">constraint</span> exclusive; {"}"};
-                    {"\n"}  name: <span className="text-blue-600 dark:text-blue-400">str</span>;
-                    {"\n"}{"}"}
-                    {"\n\n"}<span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">Post</span> {"{"}
-                    {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> title: <span className="text-blue-600 dark:text-blue-400">str</span>;
-                    {"\n"}  <span className="text-pink-600 dark:text-pink-400">required link</span> author: <span className="text-purple-600 dark:text-purple-400">User</span>;
-                    {"\n"}  <span className="text-pink-600 dark:text-pink-400">multi link</span> likes: <span className="text-purple-600 dark:text-purple-400">User</span>;
-                    {"\n"}{"}"}
-                  </pre>
-                </TabsContent>
-
-                <TabsContent value="query">
-                  <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
-                    <span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Post</span> {"{"}
-                    {"\n"}  id,
-                    {"\n"}  title,
-                    {"\n"}  author: {"{"} id, email {"}"},
-                    {"\n"}  likes: {"{"} id, email {"}"}
-                    {"\n"}{"}"}
-                    {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .author.id = <span className="text-orange-600 dark:text-orange-400">$author_id</span>
-                    {"\n"}<span className="text-pink-600 dark:text-pink-400">order by</span> .created_at <span className="text-pink-600 dark:text-pink-400">desc</span>;
-                  </pre>
-                </TabsContent>
-
-                <TabsContent value="sql">
-                  <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
-                    <span className="text-pink-600 dark:text-pink-400">SELECT</span> p.id, p.title,
-                    {"\n"}  (<span className="text-pink-600 dark:text-pink-400">SELECT</span> row_to_json(u) <span className="text-pink-600 dark:text-pink-400">FROM</span> "user" u <span className="text-pink-600 dark:text-pink-400">WHERE</span> u.id = p.author_id) <span className="text-pink-600 dark:text-pink-400">AS</span> author,
-                    {"\n"}  (<span className="text-pink-600 dark:text-pink-400">SELECT</span> COALESCE(json_agg(l), '[]') <span className="text-pink-600 dark:text-pink-400">FROM</span> "post_likes" pl
-                    {"\n"}   <span className="text-pink-600 dark:text-pink-400">JOIN</span> "user" l <span className="text-pink-600 dark:text-pink-400">ON</span> l.id = pl.user_id <span className="text-pink-600 dark:text-pink-400">WHERE</span> pl.post_id = p.id) <span className="text-pink-600 dark:text-pink-400">AS</span> likes
-                    {"\n"}<span className="text-pink-600 dark:text-pink-400">FROM</span> "post" p <span className="text-pink-600 dark:text-pink-400">WHERE</span> p.author_id = <span className="text-blue-600 dark:text-blue-400">$1</span> <span className="text-pink-600 dark:text-pink-400">ORDER BY</span> p.created_at <span className="text-pink-600 dark:text-pink-400">DESC</span>;
-                  </pre>
-                </TabsContent>
-              </Tabs>
+              <div className="text-xs text-zinc-500 dark:text-slate-500 font-mono">v1.0</div>
             </div>
 
-            {/* Right TOC */}
-            <div className="hidden md:flex flex-col gap-2 p-4 bg-zinc-50 border-l border-zinc-200 text-xs text-zinc-600 dark:bg-[#090a0f] dark:border-[#1a1e2b] dark:text-slate-400">
-              <span className="font-semibold text-zinc-900 dark:text-white mb-1">On this page</span>
-              <div className="border-l-2 border-orange-500 text-orange-600 dark:text-orange-400 pl-2 font-medium">Quick look</div>
-              <div className="pl-2.5 text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">Schema definition</div>
-              <div className="pl-2.5 text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">AQL compilation</div>
-              <div className="pl-2.5 text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">PostgreSQL output</div>
+            {/* Window Layout Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-[220px_1fr_200px] min-h-[380px] text-sm">
+              {/* Sidebar */}
+              <div className="hidden md:flex flex-col gap-1 p-4 bg-zinc-50 border-r border-zinc-200 text-zinc-600 dark:bg-[#090a0f] dark:border-[#1a1e2b] dark:text-slate-400">
+                <span className="text-[0.7rem] uppercase tracking-wider font-semibold text-zinc-400 dark:text-slate-500 px-2 mb-1">Getting Started</span>
+                <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Introduction</div>
+                <div className="px-3 py-1.5 rounded-lg bg-zinc-200/80 text-zinc-950 border border-zinc-300 font-medium text-xs dark:bg-[#1c1f2b] dark:text-white dark:border-[#282c3f]">Quick look</div>
+                <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Why Axel?</div>
+                <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Installation</div>
+
+                <span className="text-[0.7rem] uppercase tracking-wider font-semibold text-zinc-400 dark:text-slate-500 px-2 mt-4 mb-1">Schema Language</span>
+                <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Types & Links</div>
+                <div className="px-3 py-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-slate-400 dark:hover:text-white cursor-pointer text-xs">Indexes & Policies</div>
+              </div>
+
+              {/* Main Mockup Content */}
+              <div className="p-6 bg-white dark:bg-[#0b0c10]">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">Quick look</h2>
+                  <Badge variant="secondary" className="text-[0.7rem] gap-1 cursor-pointer">
+                    <span>Copy code</span>
+                  </Badge>
+                </div>
+                <p className="text-xs text-zinc-600 dark:text-slate-400 mb-4 leading-relaxed">
+                  Define models in ASL, query shapes in AQL, and get optimal single-scan PostgreSQL queries.
+                </p>
+
+                <Tabs defaultValue="schema" className="w-full">
+                  <TabsList className="mb-3">
+                    <TabsTrigger value="schema">schema.asl</TabsTrigger>
+                    <TabsTrigger value="query">get_posts.aql</TabsTrigger>
+                    <TabsTrigger value="sql">compiled.sql</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="schema">
+                    <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
+                      <span className="text-pink-600 dark:text-pink-400">use extension</span> <span className="text-emerald-600 dark:text-emerald-400">'pgcrypto'</span>;
+                      {"\n\n"}<span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">User</span> {"{"}
+                      {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> id: <span className="text-blue-600 dark:text-blue-400">uuid</span> {"{"} <span className="text-pink-600 dark:text-pink-400">default</span> := <span className="text-blue-600 dark:text-blue-400">gen_uuid</span>(); <span className="text-pink-600 dark:text-pink-400">constraint</span> pk; {"}"};
+                      {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> email: <span className="text-blue-600 dark:text-blue-400">str</span> {"{"} <span className="text-pink-600 dark:text-pink-400">constraint</span> exclusive; {"}"};
+                      {"\n"}  name: <span className="text-blue-600 dark:text-blue-400">str</span>;
+                      {"\n"}{"}"}
+                      {"\n\n"}<span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">Post</span> {"{"}
+                      {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> title: <span className="text-blue-600 dark:text-blue-400">str</span>;
+                      {"\n"}  <span className="text-pink-600 dark:text-pink-400">required link</span> author: <span className="text-purple-600 dark:text-purple-400">User</span>;
+                      {"\n"}  <span className="text-pink-600 dark:text-pink-400">multi link</span> likes: <span className="text-purple-600 dark:text-purple-400">User</span>;
+                      {"\n"}{"}"}
+                    </pre>
+                  </TabsContent>
+
+                  <TabsContent value="query">
+                    <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
+                      <span className="text-pink-600 dark:text-pink-400">select</span> <span className="text-purple-600 dark:text-purple-400">Post</span> {"{"}
+                      {"\n"}  id,
+                      {"\n"}  title,
+                      {"\n"}  author: {"{"} id, email {"}"},
+                      {"\n"}  likes: {"{"} id, email {"}"}
+                      {"\n"}{"}"}
+                      {"\n"}<span className="text-pink-600 dark:text-pink-400">filter</span> .author.id = <span className="text-orange-600 dark:text-orange-400">$author_id</span>
+                      {"\n"}<span className="text-pink-600 dark:text-pink-400">order by</span> .created_at <span className="text-pink-600 dark:text-pink-400">desc</span>;
+                    </pre>
+                  </TabsContent>
+
+                  <TabsContent value="sql">
+                    <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
+                      <span className="text-pink-600 dark:text-pink-400">SELECT</span> p.id, p.title,
+                      {"\n"}  (<span className="text-pink-600 dark:text-pink-400">SELECT</span> row_to_json(u) <span className="text-pink-600 dark:text-pink-400">FROM</span> "user" u <span className="text-pink-600 dark:text-pink-400">WHERE</span> u.id = p.author_id) <span className="text-pink-600 dark:text-pink-400">AS</span> author,
+                      {"\n"}  (<span className="text-pink-600 dark:text-pink-400">SELECT</span> COALESCE(json_agg(l), '[]') <span className="text-pink-600 dark:text-pink-400">FROM</span> "post_likes" pl
+                      {"\n"}   <span className="text-pink-600 dark:text-pink-400">JOIN</span> "user" l <span className="text-pink-600 dark:text-pink-400">ON</span> l.id = pl.user_id <span className="text-pink-600 dark:text-pink-400">WHERE</span> pl.post_id = p.id) <span className="text-pink-600 dark:text-pink-400">AS</span> likes
+                      {"\n"}<span className="text-pink-600 dark:text-pink-400">FROM</span> "post" p <span className="text-pink-600 dark:text-pink-400">WHERE</span> p.author_id = <span className="text-blue-600 dark:text-blue-400">$1</span> <span className="text-pink-600 dark:text-pink-400">ORDER BY</span> p.created_at <span className="text-pink-600 dark:text-pink-400">DESC</span>;
+                    </pre>
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* Right TOC */}
+              <div className="hidden md:flex flex-col gap-2 p-4 bg-zinc-50 border-l border-zinc-200 text-xs text-zinc-600 dark:bg-[#090a0f] dark:border-[#1a1e2b] dark:text-slate-400">
+                <span className="font-semibold text-zinc-900 dark:text-white mb-1">On this page</span>
+                <div className="border-l-2 border-orange-500 text-orange-600 dark:text-orange-400 pl-2 font-medium">Quick look</div>
+                <div className="pl-2.5 text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">Schema definition</div>
+                <div className="pl-2.5 text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">AQL compilation</div>
+                <div className="pl-2.5 text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300 cursor-pointer">PostgreSQL output</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Value Proof Divider */}
-      <div className="text-center py-10 sm:py-14 border-y border-zinc-200 dark:border-[#181b26] my-24 sm:my-36 text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed max-w-4xl mx-auto">
+      {/* 2. Value Proof Divider */}
+      <div className="w-full text-center py-12 sm:py-16 border-y border-zinc-200 dark:border-[#181b26] text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed max-w-4xl mx-auto">
         Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
       </div>
 
-      {/* Feature Showcase Rows (docs.page style with corner notches) */}
-      <div className="flex flex-col gap-24 sm:gap-32 mb-32 sm:mb-44">
+      {/* 3. Feature Showcase Rows (docs.page style with corner notches) */}
+      <section className="flex flex-col gap-28 sm:gap-36">
         {/* Row 1: ASL */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -325,10 +325,10 @@ export default function LandingPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+      </section>
 
-      {/* Bottom CTA Banner (Image 2 style) */}
-      <div className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-orange-50/50 to-amber-50/60 p-8 sm:p-14 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden shadow-lg dark:border-[#232738] dark:bg-gradient-to-r dark:from-[#0c0e14] dark:via-[#10131d] dark:to-[#1a1310] dark:shadow-xl mt-16 sm:mt-24 mb-16 sm:mb-24">
+      {/* 4. Bottom CTA Banner (Image 2 style) */}
+      <section className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-orange-50/50 to-amber-50/60 p-8 sm:p-14 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden shadow-lg dark:border-[#232738] dark:bg-gradient-to-r dark:from-[#0c0e14] dark:via-[#10131d] dark:to-[#1a1310] dark:shadow-xl">
         <div className="max-w-xl text-center md:text-left">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-zinc-950 dark:text-white tracking-tight mb-4">
             Bring your database <br />
@@ -352,7 +352,7 @@ export default function LandingPage() {
             <path d="M14 18 L18 18" className="stroke-zinc-100 dark:stroke-[#141721]" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
