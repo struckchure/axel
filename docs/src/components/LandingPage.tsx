@@ -45,11 +45,12 @@ export default function LandingPage() {
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-4 mb-14">
-          <Button size="lg" asChild className="cursor-pointer">
-            <a href="/axel/installation/" className="flex items-center gap-2">
-              Get Started <ArrowRight className="w-4 h-4" />
-            </a>
-          </Button>
+          <a
+            href="/axel/installation/"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-base font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 h-11 px-7 bg-orange-600 !text-white hover:!text-white visited:!text-white shadow-md shadow-orange-600/30 hover:bg-orange-500 hover:shadow-lg hover:shadow-orange-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer no-underline [&_svg]:size-4"
+          >
+            Get Started <ArrowRight className="w-4 h-4 text-white" />
+          </a>
 
           <button
             onClick={copyInstall}
@@ -335,11 +336,12 @@ export default function LandingPage() {
           <p className="text-zinc-600 dark:text-slate-400 text-sm mb-6">
             Get started in seconds with Axel's CLI, schema modeling, and zero-runtime query compiler.
           </p>
-          <Button size="lg" asChild className="cursor-pointer">
-            <a href="/axel/installation/">
-              Get Started <ArrowRight className="w-4 h-4" />
-            </a>
-          </Button>
+          <a
+            href="/axel/installation/"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-base font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 h-11 px-7 bg-orange-600 !text-white hover:!text-white visited:!text-white shadow-md shadow-orange-600/30 hover:bg-orange-500 hover:shadow-lg hover:shadow-orange-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer no-underline [&_svg]:size-4"
+          >
+            Get Started <ArrowRight className="w-4 h-4 text-white" />
+          </a>
         </div>
 
         <div className="shrink-0 flex items-center justify-center filter drop-shadow-[0_0_35px_rgba(249,115,22,0.4)]">

@@ -396,8 +396,11 @@ starlight-toc a[aria-current="true"] {
   color: var(--sl-color-gray-2);
 }
 
-/* Inline links */
-.content-panel a:not(.sl-link-button):not(.walkthrough-cta) {
+/* Inline links in markdown documentation */
+.sl-markdown-content > p a:not(.sl-link-button):not(.walkthrough-cta),
+.sl-markdown-content > ul a:not(.sl-link-button):not(.walkthrough-cta),
+.sl-markdown-content > ol a:not(.sl-link-button):not(.walkthrough-cta),
+.sl-markdown-content table a {
   color: var(--sl-color-white);
   text-decoration: underline;
   text-decoration-color: rgba(249, 115, 22, 0.5);
@@ -405,7 +408,10 @@ starlight-toc a[aria-current="true"] {
   transition: all 0.15s ease;
 }
 
-.content-panel a:not(.sl-link-button):not(.walkthrough-cta):hover {
+.sl-markdown-content > p a:not(.sl-link-button):not(.walkthrough-cta):hover,
+.sl-markdown-content > ul a:not(.sl-link-button):not(.walkthrough-cta):hover,
+.sl-markdown-content > ol a:not(.sl-link-button):not(.walkthrough-cta):hover,
+.sl-markdown-content table a:hover {
   color: var(--sl-color-accent);
   text-decoration-color: var(--sl-color-accent);
 }
