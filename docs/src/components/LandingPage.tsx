@@ -127,7 +127,8 @@ export default function LandingPage() {
 
                 <TabsContent value="schema">
                   <pre className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 dark:bg-[#07080b] dark:border-[#1d202d] dark:text-slate-300 overflow-x-auto leading-relaxed">
-                    <span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">User</span> {"{"}
+                    <span className="text-pink-600 dark:text-pink-400">use extension</span> <span className="text-emerald-600 dark:text-emerald-400">'pgcrypto'</span>;
+                    {"\n\n"}<span className="text-pink-600 dark:text-pink-400">type</span> <span className="text-purple-600 dark:text-purple-400">User</span> {"{"}
                     {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> id: <span className="text-blue-600 dark:text-blue-400">uuid</span> {"{"} <span className="text-pink-600 dark:text-pink-400">default</span> := <span className="text-blue-600 dark:text-blue-400">gen_uuid</span>(); <span className="text-pink-600 dark:text-pink-400">constraint</span> pk; {"}"};
                     {"\n"}  <span className="text-pink-600 dark:text-pink-400">required</span> email: <span className="text-blue-600 dark:text-blue-400">str</span> {"{"} <span className="text-pink-600 dark:text-pink-400">constraint</span> exclusive; {"}"};
                     {"\n"}  name: <span className="text-blue-600 dark:text-blue-400">str</span>;

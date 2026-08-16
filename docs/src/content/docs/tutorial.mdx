@@ -77,6 +77,8 @@ Put this in `schema.asl`. It defines an abstract `Base` type (shared columns),
 then `User`, `Post`, and `Comment` that extend it:
 
 ```asl [schema.asl]
+use extension 'pgcrypto';
+
 abstract type Base {
   required id: uuid {
     default := gen_uuid();
@@ -118,6 +120,7 @@ type Comment extending Base {
 
 A few things worth noticing, each covered in the [ASL reference](/asl/):
 
+- **`use extension 'pgcrypto';`** enables the `pgcrypto` PostgreSQL extension, which provides cryptographic functions like `gen_random_uuid()` (or `gen_uuid()`).
 - **`abstract type Base`** is never a table on its own; its fields are inlined
   into every type that `extending`s it.
 - **`constraint`s** (`exclusive`, `pk`, `min_length`) compile to SQL

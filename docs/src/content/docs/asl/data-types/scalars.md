@@ -21,3 +21,19 @@ description: "Built-in scalar types and their PostgreSQL mappings"
 | `json`     | `JSONB`            |
 | `bytes`    | `BYTEA`            |
 | `decimal`  | `NUMERIC`          |
+
+## Using `uuid` with `pgcrypto`
+
+To generate UUIDs automatically (e.g. `default := gen_random_uuid();` or `gen_uuid()`), enable the `pgcrypto` PostgreSQL extension in your schema:
+
+```asl
+use extension 'pgcrypto';
+
+type User {
+  required id: uuid {
+    default := gen_random_uuid();
+    constraint pk;
+  };
+  required email: str;
+}
+```
