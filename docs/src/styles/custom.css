@@ -351,18 +351,18 @@ header .right-group {
   transform: rotate(90deg) !important;
 }
 
-/* Only the children inside the 2nd-level dropdown drop to a deeper level */
+/* Only the children inside the 2nd-level dropdown drop to a single level */
 .sidebar-content details details > ul {
-  padding-inline-start: 0.75rem !important;
-  margin-inline-start: 0.65rem !important;
-  border-inline-start: 1px solid var(--sl-color-hairline) !important;
-  margin-top: 2px !important;
-  margin-bottom: 2px !important;
+  padding-inline-start: 0.5rem !important;
+  margin-inline-start: 0 !important;
+  border-inline-start: none !important;
+  margin-top: 1px !important;
+  margin-bottom: 1px !important;
 }
 
 .sidebar-content details details > ul a {
-  padding: 0.35rem 0.65rem !important;
-  font-size: 0.825rem !important;
+  padding: 0.35rem 0.75rem !important;
+  font-size: 0.85rem !important;
 }
 
 /* Sidebar Links */
