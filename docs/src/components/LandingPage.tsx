@@ -184,9 +184,9 @@ export default function LandingPage() {
       </div>
 
       {/* 3. Feature Showcase Rows (docs.page style with corner notches) */}
-      <section className="flex flex-col gap-28 sm:gap-36">
+      <section className="flex flex-col gap-12 sm:gap-16">
         {/* Row 1: ASL */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div>
             <Badge variant="tag" className="mb-4">Schema Language (ASL)</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
@@ -222,7 +222,7 @@ export default function LandingPage() {
         </div>
 
         {/* Row 2: AQL */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div className="lg:order-2">
             <Badge variant="tag" className="mb-4">Query Compiler (AQL)</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
@@ -259,7 +259,7 @@ export default function LandingPage() {
         </div>
 
         {/* Row 3: AOT Zero Runtime */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div>
             <Badge variant="tag" className="mb-4">Ahead-of-Time Architecture</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
@@ -295,7 +295,7 @@ export default function LandingPage() {
         </div>
 
         {/* Row 4: Native Postgres */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div className="lg:order-2">
             <Badge variant="tag" className="mb-4">PostgreSQL Superpowers</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-zinc-950 dark:text-white tracking-tight mb-4">
