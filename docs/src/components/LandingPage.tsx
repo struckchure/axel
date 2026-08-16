@@ -35,7 +35,7 @@ export default function LandingPage() {
       <section className="flex flex-col items-center text-center pt-8 pb-12">
         <Badge variant="default" className="mb-6 px-4 py-1 text-xs cursor-pointer gap-2">
           <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-          <span>Announcing Axel — Ahead-of-Time PostgreSQL Engine</span>
+          <span>Announcing Axel — Ahead-of-Time PostgreSQL Compiler</span>
         </Badge>
 
         <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white leading-[1.08] mb-6">
@@ -227,7 +227,7 @@ export default function LandingPage() {
         {/* Row 2: AQL */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div className="lg:order-2">
-            <Badge variant="tag" className="mb-3">Query Engine (AQL)</Badge>
+            <Badge variant="tag" className="mb-3">Query Compiler (AQL)</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-4">
               Nested Shapes in a Single Database Scan
             </h2>
@@ -266,7 +266,7 @@ export default function LandingPage() {
           <div>
             <Badge variant="tag" className="mb-3">Ahead-of-Time Architecture</Badge>
             <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-4">
-              Ahead-of-Time Compiler, Not a Heavy Runtime Engine
+              Ahead-of-Time Compiler, Zero Runtime Overhead
             </h2>
             <p className="text-slate-400 leading-relaxed mb-6">
               Axel is a build-time compiler producing pure parameterized SQL strings and typed structs/interfaces. There is no query engine sidecar, no connection pooling layer, and zero driver wrapping.

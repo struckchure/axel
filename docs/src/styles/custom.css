@@ -109,7 +109,8 @@
   --sl-shadow-lg: 0 14px 24px -4px rgb(0 0 0 / 0.8), 0 4px 8px -4px rgb(0 0 0 / 0.5);
 }
 
-/* Hide default Starlight title and expand landing page on splash template */
+/* Hide default Starlight hero & title and center landing page */
+[data-has-hero] .hero,
 [data-has-hero] .content-panel:first-of-type,
 [data-has-hero] h1#_top,
 [data-has-hero] .pagination-links,
@@ -117,26 +118,71 @@
   display: none !important;
 }
 
-[data-has-hero] .main-pane {
-  max-width: 100% !important;
+[data-has-hero] .page {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
   width: 100% !important;
+}
+
+[data-has-hero] .main-frame {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+[data-has-hero] .lg\:sl-flex {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+[data-has-hero] .main-pane {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+}
+
+[data-has-hero] main {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  margin: 0 auto !important;
 }
 
 [data-has-hero] .content-panel {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
   padding: 0 !important;
-  border-top: none !important;
+  border: none !important;
 }
 
 [data-has-hero] .sl-container {
-  max-width: 100% !important;
   width: 100% !important;
-  margin: 0 !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
   padding: 0 !important;
+  display: flex !important;
+  justify-content: center !important;
 }
 
 [data-has-hero] .sl-markdown-content {
-  max-width: 100% !important;
   width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  display: flex !important;
+  justify-content: center !important;
 }
 
 /* ==========================================================================
