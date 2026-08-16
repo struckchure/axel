@@ -28,47 +28,49 @@ export default function LandingPage() {
     <div className="not-content w-full max-w-[1140px] mx-auto px-4 py-8 text-zinc-900 dark:text-slate-100 font-sans flex flex-col gap-12 sm:gap-16">
       {/* 1. Hero & Interactive Window Preview */}
       <section className="flex flex-col items-center text-center pt-6">
-        <Badge variant="default" className="mb-6 px-4 py-1 text-xs cursor-pointer gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400" />
-          <span>Announcing Axel — Ahead-of-Time PostgreSQL Compiler</span>
-        </Badge>
+        <div className="flex flex-col items-center text-center max-w-3xl mx-auto pb-10 sm:pb-14">
+          <Badge variant="default" className="mb-6 px-4 py-1 text-xs cursor-pointer gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400" />
+            <span>Announcing Axel — Ahead-of-Time PostgreSQL Compiler</span>
+          </Badge>
 
-        <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-zinc-950 dark:text-white leading-[1.08] mb-6">
-          SQL generation for <br className="hidden sm:inline" />
-          <span className="bg-gradient-to-r from-zinc-900 via-orange-600 to-amber-500 dark:from-white dark:via-orange-300 dark:to-orange-500 bg-clip-text text-transparent">
-            schemas + queries
-          </span>
-        </h1>
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-zinc-950 dark:text-white leading-[1.08] mb-6">
+            SQL generation for <br className="hidden sm:inline" />
+            <span className="bg-gradient-to-r from-zinc-900 via-orange-600 to-amber-500 dark:from-white dark:via-orange-300 dark:to-orange-500 bg-clip-text text-transparent">
+              schemas + queries
+            </span>
+          </h1>
 
-        <p className="max-w-2xl text-base sm:text-xl text-zinc-600 dark:text-slate-400 leading-relaxed mb-8">
-          Write schemas in <strong className="text-orange-600 dark:text-orange-400 font-semibold">ASL</strong>, queries in <strong className="text-orange-600 dark:text-orange-400 font-semibold">AQL</strong>. Axel compiles both to clean PostgreSQL SQL — migrations and parameterized query strings. <span className="text-zinc-800 dark:text-slate-300">No ORM, no driver, no runtime magic.</span>
-        </p>
+          <p className="max-w-2xl text-base sm:text-xl text-zinc-600 dark:text-slate-400 leading-relaxed mb-8">
+            Write schemas in <strong className="text-orange-600 dark:text-orange-400 font-semibold">ASL</strong>, queries in <strong className="text-orange-600 dark:text-orange-400 font-semibold">AQL</strong>. Axel compiles both to clean PostgreSQL SQL — migrations and parameterized query strings. <span className="text-zinc-800 dark:text-slate-300">No ORM, no driver, no runtime magic.</span>
+          </p>
 
-        <div className="flex flex-wrap items-center justify-center gap-4 mt-2 mb-12 sm:mb-16">
-          <a
-            href="/axel/installation/"
-            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-base font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 h-11 px-7 bg-orange-600 !text-white hover:!text-white visited:!text-white shadow-md shadow-orange-600/30 hover:bg-orange-500 hover:shadow-lg hover:shadow-orange-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer no-underline [&_svg]:size-4"
-          >
-            Get Started <ArrowRight className="w-4 h-4 text-white" />
-          </a>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <a
+              href="/axel/installation/"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-base font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 h-11 px-7 bg-orange-600 !text-white hover:!text-white visited:!text-white shadow-md shadow-orange-600/30 hover:bg-orange-500 hover:shadow-lg hover:shadow-orange-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer no-underline [&_svg]:size-4"
+            >
+              Get Started <ArrowRight className="w-4 h-4 text-white" />
+            </a>
 
-          <button
-            onClick={copyInstall}
-            type="button"
-            className="inline-flex items-center gap-3 px-5 py-2.5 rounded-full bg-zinc-100 border border-zinc-300 text-zinc-800 font-mono text-sm shadow-sm hover:border-orange-500/50 hover:bg-zinc-200 dark:bg-[#12141c] dark:border-[#232738] dark:text-slate-300 dark:hover:bg-[#181b26] transition-all cursor-pointer"
-          >
-            <Terminal className="w-4 h-4 text-orange-500 dark:text-orange-400" />
-            <span>axel init</span>
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            ) : (
-              <Copy className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-600 dark:text-slate-500 dark:hover:text-slate-300" />
-            )}
-          </button>
+            <button
+              onClick={copyInstall}
+              type="button"
+              className="inline-flex items-center gap-3 px-5 py-2.5 rounded-full bg-zinc-100 border border-zinc-300 text-zinc-800 font-mono text-sm shadow-sm hover:border-orange-500/50 hover:bg-zinc-200 dark:bg-[#12141c] dark:border-[#232738] dark:text-slate-300 dark:hover:bg-[#181b26] transition-all cursor-pointer"
+            >
+              <Terminal className="w-4 h-4 text-orange-500 dark:text-orange-400" />
+              <span>axel init</span>
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-600 dark:text-slate-500 dark:hover:text-slate-300" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Interactive App Window Mockup Frame */}
-        <div className="relative w-full mt-4 sm:mt-6">
+        <div className="relative w-full mt-2 sm:mt-4">
           <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/15 to-orange-600/10 blur-3xl -z-10 rounded-3xl" />
           
           <div className="rounded-xl border border-zinc-200 bg-white shadow-xl overflow-hidden dark:border-[#232738] dark:bg-[#0b0c10] dark:shadow-2xl text-left">
@@ -179,8 +181,8 @@ export default function LandingPage() {
       </section>
 
       {/* 2. Value Proof Divider */}
-      <div className="w-full border-y border-zinc-200 dark:border-[#181b26] py-6 sm:py-8">
-        <div className="w-full max-w-3xl mx-auto text-center text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed px-4">
+      <div className="w-full border-y border-zinc-200 dark:border-[#181b26] py-6 sm:py-8 flex items-center justify-center">
+        <div style={{ textAlign: "center" }} className="w-full text-center text-zinc-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed px-4">
           Built for teams creating modern, high-performance <strong className="text-zinc-950 dark:text-white font-semibold">PostgreSQL</strong> applications with <strong className="text-orange-600 dark:text-orange-400 font-semibold">zero runtime overhead</strong>.
         </div>
       </div>
