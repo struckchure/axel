@@ -104,6 +104,9 @@ export default defineConfig({
         },
       ],
       expressiveCode: {
+        defaultProps: {
+          showLineNumbers: true,
+        },
         shiki: {
           langs: [asl, aql],
         },
