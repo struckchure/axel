@@ -1,12 +1,18 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import react from "@astrojs/react";
+import tailwindcss from "@tailwindcss/vite";
 import { aql, asl } from "./src/languages/index.ts";
 
 // https://astro.build/config
 export default defineConfig({
   base: "/axel/",
   site: "https://struckchure.github.io",
+  vite: {
+    plugins: [tailwindcss()],
+  },
   integrations: [
+    react(),
     starlight({
       title: "Axel",
       description: "Schema and query language tool for PostgreSQL",
