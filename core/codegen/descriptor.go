@@ -606,6 +606,14 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 			Values: e.Values,
 		}
 	}
+	for _, g := range sd.Globals {
+		ir.Globals = append(ir.Globals, &asl.ResolvedGlobal{
+			Name:     g.Name,
+			AQLType:  g.AQLType,
+			SQLType:  g.SQLType,
+			Required: g.Required,
+		})
+	}
 	for _, t := range sd.Types {
 		rt := &asl.ResolvedType{
 			Name:       t.Name,

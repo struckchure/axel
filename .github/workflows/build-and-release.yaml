@@ -1,24 +1,39 @@
 name: Build and Release
 
 on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, reopened, synchronize]
   push:
     # Tag pushes always run and publish a release. Path filters are ignored for
     # tag pushes, so a tag on a docs/branding commit still releases.
     tags:
       - v*
-    # Branch pushes only build (no release) and only when Go sources or the build
-    # config change — docs/branding/tooling changes don't trigger a binary build.
+    # Main pushes run the test gate and a snapshot build (but do not release).
     branches:
       - main
-    paths:
-      - "**/*.go"
-      - go.mod
-      - go.sum
-      - .goreleaser.yaml
-      - .github/workflows/build-and-release.yaml
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run test suite
+        run: go test ./...
+
   release:
+    if: github.event_name != 'pull_request'
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
