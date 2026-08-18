@@ -241,15 +241,40 @@ A Zed extension provides syntax highlighting for `.asl` and `.aql` files.
 
 To install it, open the command palette in Zed, run **`zed: install dev extension`**, and select the [`tools/zed`](tools/zed) directory.
 
+A VS Code extension is in [`tools/vscode`](tools/vscode). Both run the `axel` CLI as their language
+server (`axel lsp`), so diagnostics, hover, go-to-definition and completion need `axel` on your
+`PATH`.
+
 See [tools/zed/README.md](tools/zed/README.md) for details.
+
+---
+
+## Coding agents
+
+[`tools/agent`](tools/agent) is a drop-in guide that teaches any coding agent ASL, AQL, and the
+`axel` workflow:
+
+```sh
+npx skills add struckchure/axel
+```
+
+That covers Claude Code, Codex, Cursor, OpenCode, Copilot and 70-odd others. It is plain Markdown,
+so you can also copy it by hand — see [tools/agent/README.md](tools/agent/README.md).
 
 ---
 
 ## Documentation
 
-- [docs/asl.md](docs/asl.md) — Axel Schema Language reference
-- [docs/aql.md](docs/aql.md) — Axel Query Language reference
-- [docs/cli.md](docs/cli.md) — CLI commands and flags
+Full documentation: **https://struckchure.github.io/axel**
+
+- [Schema language (ASL)](https://struckchure.github.io/axel/asl) — types, links, constraints, triggers, policies
+- [Query language (AQL)](https://struckchure.github.io/axel/aql) — selects, shapes, inserts, upserts
+- [CLI reference](https://struckchure.github.io/axel/cli) — commands, flags, and `axel.yaml`
+- [AI tooling](https://struckchure.github.io/axel/ai) — `llms.txt` and the [agent guide](tools/agent)
+
+The docs are also published for machines as
+[llms.txt](https://struckchure.github.io/axel/llms.txt) (page index) and
+[llms-full.txt](https://struckchure.github.io/axel/llms-full.txt) (everything, one file).
 
 ---
 

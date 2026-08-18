@@ -171,6 +171,7 @@ export default defineConfig({
             { label: "Installation", slug: "installation" },
             { label: "Tutorial", slug: "tutorial" },
             { label: "Editor setup", slug: "editors" },
+            { label: "AI tooling", slug: "ai" },
             { label: "Studio", slug: "studio" },
             { label: "Code Generation", slug: "codegen" },
           ],
@@ -214,6 +215,7 @@ export default defineConfig({
             { label: "Policies", slug: "asl/policies" },
             { label: "Globals", slug: "asl/globals" },
             { label: "Extensions", slug: "asl/extensions" },
+            { label: "Splitting a Schema", slug: "asl/splitting" },
           ],
         },
         {
