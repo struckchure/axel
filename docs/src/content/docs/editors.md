@@ -81,3 +81,7 @@ More detail: `tools/vscode/README.md`.
 
 Query files are resolved against your schema via `axel.yaml` (`schema-path`) in the workspace
 root, so completion and cross-file diagnostics know your types.
+
+When `schema-path` is a directory or a glob, the language server merges the whole
+[split schema](/asl/splitting) before resolving it: a type declared in one file is known in every
+other, and a problem is reported against the file that owns it.

@@ -67,18 +67,9 @@ External generators (any language):
 		if sp == "" {
 			sp = "axel/schema.asl"
 		}
-		schemaSrc, err := os.ReadFile(sp)
+		ir, _, err := asl.LoadIR(sp)
 		if err != nil {
-			return fmt.Errorf("reading schema %q: %w", sp, err)
-		}
-		sf, err := asl.Parse(schemaSrc)
-		if err != nil {
-			return fmt.Errorf("parsing schema: %w", err)
-		}
-		r := &asl.Resolver{}
-		ir, err := r.Resolve(sf)
-		if err != nil {
-			return fmt.Errorf("resolving schema: %w", err)
+			return err
 		}
 
 		schema := codegen.FromSchemaIR(ir)
@@ -203,7 +194,7 @@ func init() {
 	codegenCmd.Flags().StringP("plugin", "p", "", "Path to external generator binary")
 	codegenCmd.Flags().StringP("generator", "g", "", "Built-in generator name (e.g. go)")
 	codegenCmd.Flags().StringP("out-dir", "o", ".", "Output directory for generated files")
-	codegenCmd.Flags().String("schema-path", "", "Path to .asl schema (default: from config or axel/schema.asl)")
+	codegenCmd.Flags().String("schema-path", "", "Schema file, directory or glob (.asl) (default: from config or axel/schema.asl)")
 	codegenCmd.Flags().StringArrayP("query", "q", nil, "AQL query file or glob (repeatable)")
 	codegenCmd.Flags().StringArray("option", nil, "key=value option forwarded to the generator (repeatable)")
 	RootCmd.AddCommand(codegenCmd)

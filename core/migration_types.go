@@ -98,7 +98,7 @@ type MigrationConfig struct {
 	PackageName     string         `json:"package-name" yaml:"package-name"`                         // Default: "./ax"
 	ClientDir       string         `json:"client-dir" yaml:"client-dir"`                             // Default: "./axel/client"
 	MigrationsDir   string         `json:"migrations-dir" yaml:"migrations-dir"`                     // Default: "./migrations"
-	SchemaPath      string         `json:"schema-path" yaml:"schema-path"`                           // Path to .axel schema file
+	SchemaPath      string         `json:"schema-path" yaml:"schema-path"`                           // Path to the .asl schema: a file, a directory, or a glob (e.g. schema/*.asl)
 	DatabaseURL     string         `json:"database-url" yaml:"database-url"`                         // PostgreSQL connection string
 	RelLoadStrategy string         `json:"rel-load-strategy,omitempty" yaml:"rel-load-strategy,omitempty"` // Default: "query" (options: "query", "join")
 	Codegen         *CodegenConfig `json:"codegen,omitempty" yaml:"codegen,omitempty"`               // Codegen settings

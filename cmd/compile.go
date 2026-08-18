@@ -107,21 +107,11 @@ var compileCmd = &cobra.Command{
 	},
 }
 
+// loadSchemaIR loads the schema named by schemaPath, which may be a single
+// file, a directory, or a glob matching several .asl files (see asl.Load).
 func loadSchemaIR(schemaPath string) (*asl.SchemaIR, error) {
-	schemaSrc, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("reading schema %q: %w", schemaPath, err)
-	}
-	sf, err := asl.Parse(schemaSrc)
-	if err != nil {
-		return nil, fmt.Errorf("parsing schema: %w", err)
-	}
-	r := &asl.Resolver{}
-	ir, err := r.Resolve(sf)
-	if err != nil {
-		return nil, fmt.Errorf("resolving schema: %w", err)
-	}
-	return ir, nil
+	ir, _, err := asl.LoadIR(schemaPath)
+	return ir, err
 }
 
 func compileSrc(src string, ir *asl.SchemaIR) (*compiler.CompiledSQL, error) {
@@ -164,6 +154,6 @@ func init() {
 	compileCmd.Flags().StringP("file", "f", "", "Path to .aql file")
 	compileCmd.Flags().StringP("out", "o", "", "Output .sql file (single-file mode, default: stdout)")
 	compileCmd.Flags().String("output-dir", "", "Output directory for compiled .sql files")
-	compileCmd.Flags().String("schema-path", "", "Path to .asl schema file (default: axel/schema.asl)")
+	compileCmd.Flags().String("schema-path", "", "Schema file, directory or glob (.asl) (default: axel/schema.asl)")
 	RootCmd.AddCommand(compileCmd)
 }

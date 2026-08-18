@@ -18,10 +18,10 @@ These flags are accepted by all commands.
 
 | Flag               | Short | Description                                                                     |
 |--------------------|-------|---------------------------------------------------------------------------------|
-| `--dir`            | `-d`  | Project directory — auto-discovers `axel.yaml`, `schema.asl`, or `default.asl` |
+| `--dir`            | `-d`  | Project directory — auto-discovers `axel.yaml`, `schema.asl`, `default.asl`, or `schema/` |
 | `--config`         | `-c`  | Explicit config file path (overrides `--dir`)                                   |
 | `--url`            | `-u`  | PostgreSQL connection URL                                                       |
-| `--schema-path`    |       | Explicit schema file path (overrides `--dir`)                                   |
+| `--schema-path`    |       | Explicit schema: a file, a directory, or a glob such as `schema/*.asl` (overrides `--dir`) |
 | `--migrations-dir` |       | Migrations directory (overrides `--dir`)                                        |
 
 ### Project directory (`--dir`)
@@ -40,6 +40,7 @@ Discovery order inside `--dir`:
 1. `axel.yaml` — if found, loaded as the full config
 2. `schema.asl` — used as the schema if no `axel.yaml`
 3. `default.asl` — fallback schema name
+4. `schema/` — a directory of `.asl` files, [merged into one schema](/asl/splitting)
 
 ### Config file (`--config`)
 
@@ -48,7 +49,7 @@ For explicit control, or when the config lives outside the project directory:
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/struckchure/axel/main/schema.json
 database-url: postgres://user:pass@localhost:5432/mydb
-schema-path: ./schema/main.asl
+schema-path: ./schema/main.asl # or a glob: ./schema/*.asl
 migrations-dir: ./migrations
 rel-load-strategy: query # query | join
 
@@ -82,7 +83,7 @@ axel init --dir ./myproject --url postgres://localhost:5432/mydb
 |--------------------|-------|-------------------------------------------|
 | `--dir`            | `-d`  | Target directory to initialize in         |
 | `--url`            | `-u`  | Database connection URL to put in config  |
-| `--schema-path`    |       | Custom schema file path (default: `axel/schema.asl`) |
+| `--schema-path`    |       | Custom schema — file, directory, or glob (default: `axel/schema.asl`) |
 | `--migrations-dir` |       | Custom migrations directory (default: `migrations`) |
 
 ---
@@ -175,7 +176,7 @@ axel validate --schema axel/schema.asl
 
 | Flag       | Short | Default           | Description             |
 |------------|-------|-------------------|-------------------------|
-| `--schema` | `-s`  | `axel/schema.asl` | Path to the `.asl` file |
+| `--schema` | `-s`  | `axel/schema.asl` | The `.asl` schema — a file, a directory, or a glob such as `schema/*.asl` |
 
 On success:
 
@@ -230,7 +231,7 @@ axel -d ./myproject compile --output-dir ./sql
 | `--file`        | `-f`  |                   | Path to a `.aql` file                                               |
 | `--out`         | `-o`  | stdout            | Output `.sql` file (single-query mode)                              |
 | `--output-dir`  |       |                   | Output directory for compiled `.sql` files (batch or single mode)   |
-| `--schema-path` |       | `axel/schema.asl` | Schema to compile against                                           |
+| `--schema-path` |       | `axel/schema.asl` | Schema to compile against — file, directory, or glob                |
 
 Example output:
 
@@ -291,7 +292,7 @@ axel -d ./myproject codegen --plugin ./my-generator -o ./gen
 | `--plugin`      | `-p`  |         | Path to external generator binary                        |
 | `--out-dir`     | `-o`  | `.`     | Directory to write generated files into                  |
 | `--query`       | `-q`  |         | AQL file or glob pattern — repeatable                    |
-| `--schema-path` |       |         | Schema file (default: from config or `axel/schema.asl`)  |
+| `--schema-path` |       |         | Schema file, directory or glob (default: from config or `axel/schema.asl`) |
 | `--option`      |       |         | `key=value` forwarded to the generator — repeatable      |
 
 ---

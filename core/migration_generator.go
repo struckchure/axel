@@ -2,7 +2,6 @@ package axel
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/struckchure/axel/core/asl"
 )
@@ -19,22 +18,11 @@ func NewMigrationGenerator(manager *MigrationManager) *MigrationGenerator {
 
 // GenerateMigration generates a new migration based on schema changes.
 func (g *MigrationGenerator) GenerateMigration(name string) error {
-	schemaCode, err := os.ReadFile(g.manager.config.SchemaPath)
+	// SchemaPath may be a file, a directory, or a glob matching several .asl
+	// files; asl.LoadIR reads, parses and merges them all.
+	ir, _, err := asl.LoadIR(g.manager.config.SchemaPath)
 	if err != nil {
-		return fmt.Errorf("failed to read schema file: %w", err)
-	}
-
-	// Parse with the ASL parser.
-	src, err := asl.Parse(schemaCode)
-	if err != nil {
-		return fmt.Errorf("failed to parse schema: %w", err)
-	}
-
-	// Resolve to SchemaIR.
-	resolver := &asl.Resolver{}
-	ir, err := resolver.Resolve(src)
-	if err != nil {
-		return fmt.Errorf("failed to resolve schema: %w", err)
+		return fmt.Errorf("failed to load schema: %w", err)
 	}
 
 	// Validate.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -25,20 +24,9 @@ var validateCmd = &cobra.Command{
 			sp = "axel/schema.asl"
 		}
 
-		src, err := os.ReadFile(sp)
+		ir, files, err := asl.LoadIR(sp)
 		if err != nil {
-			return fmt.Errorf("reading schema %q: %w", sp, err)
-		}
-
-		sf, err := asl.Parse(src)
-		if err != nil {
-			return fmt.Errorf("parse error: %w", err)
-		}
-
-		r := &asl.Resolver{}
-		ir, err := r.Resolve(sf)
-		if err != nil {
-			return fmt.Errorf("resolve error: %w", err)
+			return err
 		}
 
 		errs := asl.Validate(ir)
@@ -54,7 +42,11 @@ var validateCmd = &cobra.Command{
 			return fmt.Errorf("schema validation failed:\n%s", strings.Join(msgs, "\n"))
 		}
 
-		fmt.Printf("schema %q is valid (%d types)\n", sp, len(ir.ObjectTypes))
+		if len(files) > 1 {
+			fmt.Printf("schema %q is valid (%d files, %d types)\n", sp, len(files), len(ir.ObjectTypes))
+		} else {
+			fmt.Printf("schema %q is valid (%d types)\n", sp, len(ir.ObjectTypes))
+		}
 		return nil
 	},
 }
@@ -80,6 +72,6 @@ func validateInlineAQL(ir *asl.SchemaIR) []error {
 }
 
 func init() {
-	validateCmd.Flags().StringP("schema", "s", "", "Path to .asl schema file (default: axel/schema.asl)")
+	validateCmd.Flags().StringP("schema", "s", "", "Schema file, directory or glob (.asl) (default: axel/schema.asl)")
 	RootCmd.AddCommand(validateCmd)
 }

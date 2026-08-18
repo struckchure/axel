@@ -20,13 +20,18 @@ import (
 
 const lspName = "axel"
 
-// lspServer holds the open-document store and the cached workspace schema.
+// lspServer holds the open-document store and the cached workspace schema. The
+// schema may be split across several .asl files (schema-path can be a glob), in
+// which case schemaFiles lists them all and schema is resolved from their merge.
+// schemaURI/schemaText still point at the first of them, which is what
+// go-to-definition can currently jump into.
 type lspServer struct {
-	mu         sync.RWMutex
-	docs       map[protocol.DocumentUri]string
-	schema     *asl.SchemaIR
-	schemaURI  protocol.DocumentUri
-	schemaText string
+	mu          sync.RWMutex
+	docs        map[protocol.DocumentUri]string
+	schema      *asl.SchemaIR
+	schemaURI   protocol.DocumentUri
+	schemaText  string
+	schemaFiles []protocol.DocumentUri
 }
 
 var lspCmd = &cobra.Command{
@@ -140,10 +145,13 @@ func (s *lspServer) setDoc(uri protocol.DocumentUri, text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.docs[uri] = text
-	// If this is the workspace schema file, re-resolve so query diagnostics stay fresh.
-	if uri == s.schemaURI {
-		s.schemaText = text
-		s.schema = resolveSchema(text)
+	// If this is (part of) the workspace schema, re-resolve the whole set so
+	// query diagnostics stay fresh.
+	if s.isSchemaFile(uri) {
+		if uri == s.schemaURI {
+			s.schemaText = text
+		}
+		s.resolveWorkspaceSchema()
 		return
 	}
 	// Fallback: with no configured schema, adopt the first .asl that resolves
@@ -153,26 +161,100 @@ func (s *lspServer) setDoc(uri protocol.DocumentUri, text string) {
 			s.schemaURI = uri
 			s.schemaText = text
 			s.schema = ir
+			s.schemaFiles = []protocol.DocumentUri{uri}
 		}
 	}
 }
 
-// refresh recomputes and publishes diagnostics for uri, and — if uri is the
-// schema — for every open .aql document too.
+// isSchemaFile reports whether uri is one of the workspace schema's files.
+// Callers must hold s.mu.
+func (s *lspServer) isSchemaFile(uri protocol.DocumentUri) bool {
+	for _, u := range s.schemaFiles {
+		if u == uri {
+			return true
+		}
+	}
+	return uri == s.schemaURI
+}
+
+// schemaSource returns the current text of a schema file: the open editor buffer
+// when there is one, the file on disk otherwise. Callers must hold s.mu.
+func (s *lspServer) schemaSource(uri protocol.DocumentUri) (string, bool) {
+	if text, ok := s.docs[uri]; ok {
+		return text, true
+	}
+	data, err := os.ReadFile(uriToPath(uri))
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
+}
+
+// resolveWorkspaceSchema re-resolves the schema from the merge of every file in
+// schemaFiles. Callers must hold s.mu for writing.
+func (s *lspServer) resolveWorkspaceSchema() {
+	var parsed []*asl.SourceFile
+	for _, uri := range s.schemaFiles {
+		text, ok := s.schemaSource(uri)
+		if !ok {
+			continue
+		}
+		sf, err := asl.ParseNamed(uriToPath(uri), []byte(text))
+		if err != nil {
+			// One unparseable file leaves the previous schema in place rather
+			// than blanking completion/hover across the workspace mid-keystroke.
+			return
+		}
+		parsed = append(parsed, sf)
+	}
+	ir, err := (&asl.Resolver{}).Resolve(asl.Merge(parsed...))
+	if err != nil {
+		return
+	}
+	s.schema = ir
+}
+
+// otherSchemaFiles returns the sibling files of uri within the workspace schema.
+func (s *lspServer) otherSchemaFiles(uri protocol.DocumentUri) []corelsp.SchemaFile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var others []corelsp.SchemaFile
+	for _, u := range s.schemaFiles {
+		if u == uri {
+			continue
+		}
+		if text, ok := s.schemaSource(u); ok {
+			others = append(others, corelsp.SchemaFile{Path: uriToPath(u), Text: text})
+		}
+	}
+	return others
+}
+
+// refresh recomputes and publishes diagnostics for uri, and — if uri is part of
+// the schema — for every open .aql document too.
 func (s *lspServer) refresh(ctx *glsp.Context, uri protocol.DocumentUri) {
 	s.publish(ctx, uri)
-	if uri == s.schemaURI {
-		s.mu.RLock()
-		uris := make([]protocol.DocumentUri, 0, len(s.docs))
+
+	s.mu.RLock()
+	var uris []protocol.DocumentUri
+	if s.isSchemaFile(uri) {
+		// Every open query is compiled against the schema, and every sibling
+		// schema file shares its namespace — so a change here can resolve or
+		// introduce a problem in any of them.
+		uris = make([]protocol.DocumentUri, 0, len(s.docs))
 		for u := range s.docs {
-			if u != uri && strings.HasSuffix(uriToPath(u), ".aql") {
+			if u == uri {
+				continue
+			}
+			if strings.HasSuffix(uriToPath(u), ".aql") || s.isSchemaFile(u) {
 				uris = append(uris, u)
 			}
 		}
-		s.mu.RUnlock()
-		for _, u := range uris {
-			s.publish(ctx, u)
-		}
+	}
+	s.mu.RUnlock()
+
+	for _, u := range uris {
+		s.publish(ctx, u)
 	}
 }
 
@@ -197,7 +279,7 @@ func (s *lspServer) publish(ctx *glsp.Context, uri protocol.DocumentUri) {
 	var diags []corelsp.Diagnostic
 	switch {
 	case strings.HasSuffix(uriToPath(uri), ".asl"):
-		diags = corelsp.SchemaDiagnostics(text)
+		diags = corelsp.SchemaDiagnosticsIn(uriToPath(uri), text, s.otherSchemaFiles(uri))
 	case strings.HasSuffix(uriToPath(uri), ".aql"):
 		diags = corelsp.QueryDiagnostics(text, schema)
 	}
@@ -365,16 +447,24 @@ func (s *lspServer) loadWorkspaceSchema(root string) {
 			cfg.SchemaPath,
 		}
 	}
-	for _, schemaPath := range candidates {
-		schemaText, err := os.ReadFile(schemaPath)
+	for _, spec := range candidates {
+		// spec may be a single file, a directory, or a glob matching several.
+		paths, err := asl.ExpandPaths(spec)
 		if err != nil {
 			continue
 		}
-		abs, _ := filepath.Abs(schemaPath)
+		uris := make([]protocol.DocumentUri, 0, len(paths))
+		for _, p := range paths {
+			abs, _ := filepath.Abs(p)
+			uris = append(uris, protocol.DocumentUri("file://"+abs))
+		}
 		s.mu.Lock()
-		s.schemaText = string(schemaText)
-		s.schema = resolveSchema(string(schemaText))
-		s.schemaURI = protocol.DocumentUri("file://" + abs)
+		s.schemaFiles = uris
+		s.schemaURI = uris[0]
+		if text, ok := s.schemaSource(uris[0]); ok {
+			s.schemaText = text
+		}
+		s.resolveWorkspaceSchema()
 		s.mu.Unlock()
 		return
 	}

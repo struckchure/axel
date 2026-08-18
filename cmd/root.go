@@ -134,11 +134,14 @@ func loadConfig() {
 	md := migrationsDir
 	if !lo.IsEmpty(projectDir) {
 		if lo.IsEmpty(sp) || sp == "axel/schema.asl" {
-			// Prefer schema.asl, fall back to default.asl.
+			// Prefer schema.asl, fall back to default.asl, then to a schema/
+			// directory holding a schema split across several .asl files.
 			if _, err := os.Stat(projectDir + "/schema.asl"); err == nil {
 				sp = projectDir + "/schema.asl"
 			} else if _, err := os.Stat(projectDir + "/default.asl"); err == nil {
 				sp = projectDir + "/default.asl"
+			} else if info, err := os.Stat(projectDir + "/schema"); err == nil && info.IsDir() {
+				sp = projectDir + "/schema/*.asl"
 			}
 		}
 		if lo.IsEmpty(md) || md == "axel/migrations" {
@@ -187,10 +190,10 @@ func databaseURLFromEnv() string {
 }
 
 func init() {
-	RootCmd.PersistentFlags().StringVarP(&projectDir, "dir", "d", ".", "Project directory (auto-discovers axel.yaml, schema.asl, or default.asl)")
+	RootCmd.PersistentFlags().StringVarP(&projectDir, "dir", "d", ".", "Project directory (auto-discovers axel.yaml, schema.asl, default.asl, or schema/)")
 	RootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Config file path (overrides --dir)")
 
 	RootCmd.PersistentFlags().StringVarP(&databaseURL, "url", "u", "", "Database URL")
 	RootCmd.PersistentFlags().StringVar(&migrationsDir, "migrations-dir", "", "Migrations directory")
-	RootCmd.PersistentFlags().StringVar(&schemaPath, "schema-path", "", "Schema file path (.asl)")
+	RootCmd.PersistentFlags().StringVar(&schemaPath, "schema-path", "", "Schema file, directory or glob (.asl), e.g. schema/*.asl")
 }

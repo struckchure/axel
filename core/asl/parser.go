@@ -37,7 +37,16 @@ var aslParser = participle.MustBuild[SourceFile](
 	participle.UseLookahead(3),
 )
 
-// Parse parses a .asl schema file and returns the AST root.
+// Parse parses a .asl schema file and returns the AST root. Positions carry no
+// filename; use ParseNamed when the source came from a known path so errors can
+// name the file it came from.
 func Parse(src []byte) (*SourceFile, error) {
-	return aslParser.ParseBytes("", src)
+	return ParseNamed("", src)
+}
+
+// ParseNamed parses a .asl schema file, attributing every position in the
+// resulting AST to filename. This is what lets a schema split across several
+// files report "type %q declared more than once" with both file locations.
+func ParseNamed(filename string, src []byte) (*SourceFile, error) {
+	return aslParser.ParseBytes(filename, src)
 }

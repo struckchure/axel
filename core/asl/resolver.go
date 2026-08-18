@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/samber/lo"
 )
 
@@ -36,7 +37,34 @@ func BuiltinSQLType(name string) (string, bool) {
 // Resolver builds a SchemaIR from a parsed SourceFile.
 type Resolver struct{}
 
+// declSite records where a name was declared, so a redeclaration can point at
+// both locations.
+type declSite struct {
+	kind string
+	pos  lexer.Position
+}
+
+// posStr renders a declaration site as file:line:col, degrading to line:col for
+// sources parsed without a filename (Parse rather than ParseNamed).
+func posStr(p lexer.Position) string {
+	if p.Filename == "" {
+		return fmt.Sprintf("%d:%d", p.Line, p.Column)
+	}
+	return fmt.Sprintf("%s:%d:%d", p.Filename, p.Line, p.Column)
+}
+
+func redeclared(prev declSite, kind, name string, pos lexer.Position) error {
+	if prev.kind == kind {
+		return fmt.Errorf("%s %q declared more than once (%s and %s)", kind, name, posStr(prev.pos), posStr(pos))
+	}
+	return fmt.Errorf("%s %q conflicts with %s %q declared at %s (%s)", kind, name, prev.kind, name, posStr(prev.pos), posStr(pos))
+}
+
 // Resolve resolves a parsed SourceFile into a SchemaIR.
+//
+// The SourceFile may be a single parsed file or several merged by Merge (see
+// Load). Declarations are collected before anything is resolved, so order —
+// within a file, and between files — never affects the result.
 func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 	ir := &SchemaIR{
 		ScalarTypes: make(map[string]*ResolvedScalar),
@@ -45,28 +73,31 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 		Functions:   make(map[string]*ResolvedFunction),
 	}
 
-	// Pass 1: register scalar types, enum types, functions, extensions, globals.
-	seenExt := map[string]bool{}
-	seenGlobal := map[string]bool{}
+	// Pass 0: collect every declaration, rejecting redeclarations. Scalars,
+	// enums and object types share one type namespace, so a clash between kinds
+	// is reported too.
+	var (
+		typeNames  = map[string]declSite{}
+		scalarDefs = map[string]*ScalarTypeDef{}
+		enumDefs   = map[string]*EnumTypeDef{}
+		objDefs    = map[string]*TypeDef{}
+		globalSeen = map[string]declSite{}
+		funcSeen   = map[string]declSite{}
+		seenExt    = map[string]bool{}
+
+		scalarOrder []string
+		enumOrder   []string
+		objOrder    []string
+		globalDecls []*GlobalDecl
+		funcDecls   []*FunctionDecl
+	)
+
 	for _, def := range src.Definitions {
-		if def.Global != nil {
-			g := def.Global
-			if seenGlobal[g.Name] {
-				return nil, fmt.Errorf("global %q declared more than once", g.Name)
-			}
-			sqlType, err := r.resolveBaseType(g.Type, ir)
-			if err != nil {
-				return nil, fmt.Errorf("global %q: %w (globals must be a scalar type)", g.Name, err)
-			}
-			seenGlobal[g.Name] = true
-			ir.Globals = append(ir.Globals, &ResolvedGlobal{
-				Name:     g.Name,
-				AQLType:  g.Type,
-				SQLType:  sqlType,
-				Required: g.Required,
-			})
-		}
-		if def.Extension != nil {
+		switch {
+		case def.Extension != nil:
+			// Extensions are deduped rather than rejected: repeating
+			// `use extension 'uuid-ossp';` in each file of a split schema is
+			// expected, and the emitted SQL is idempotent either way.
 			name := stripSingleQuotes(def.Extension.Name)
 			if name == "" {
 				return nil, fmt.Errorf("extension name may not be empty")
@@ -75,45 +106,123 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 				seenExt[name] = true
 				ir.Extensions = append(ir.Extensions, name)
 			}
-		}
-		if def.Function != nil {
-			fn, err := r.resolveFunction(def.Function, ir)
-			if err != nil {
-				return nil, fmt.Errorf("function %q: %w", def.Function.Name, err)
+
+		case def.Global != nil:
+			g := def.Global
+			if prev, ok := globalSeen[g.Name]; ok {
+				return nil, redeclared(prev, "global", g.Name, g.Pos)
 			}
-			if _, exists := ir.Functions[fn.Name]; exists {
-				return nil, fmt.Errorf("function %q declared more than once", fn.Name)
+			globalSeen[g.Name] = declSite{"global", g.Pos}
+			globalDecls = append(globalDecls, g)
+
+		case def.Function != nil:
+			f := def.Function
+			if prev, ok := funcSeen[f.Name]; ok {
+				return nil, redeclared(prev, "function", f.Name, f.Pos)
 			}
-			ir.Functions[fn.Name] = fn
-		}
-		switch {
+			funcSeen[f.Name] = declSite{"function", f.Pos}
+			funcDecls = append(funcDecls, f)
+
 		case def.ScalarType != nil:
 			s := def.ScalarType
-			sqlType, err := r.resolveBaseType(s.Extends, ir)
-			if err != nil {
-				return nil, fmt.Errorf("scalar type %q: %w", s.Name, err)
+			if prev, ok := typeNames[s.Name]; ok {
+				return nil, redeclared(prev, "scalar type", s.Name, s.Pos)
 			}
-			ir.ScalarTypes[s.Name] = &ResolvedScalar{
-				Name:    s.Name,
-				Base:    s.Extends,
-				SQLType: sqlType,
-			}
+			typeNames[s.Name] = declSite{"scalar type", s.Pos}
+			scalarDefs[s.Name] = s
+			scalarOrder = append(scalarOrder, s.Name)
 
 		case def.EnumType != nil:
 			e := def.EnumType
-			ir.EnumTypes[e.Name] = &ResolvedEnum{
-				Name:   e.Name,
-				Values: e.Values,
+			if prev, ok := typeNames[e.Name]; ok {
+				return nil, redeclared(prev, "enum", e.Name, e.Pos)
+			}
+			typeNames[e.Name] = declSite{"enum", e.Pos}
+			enumDefs[e.Name] = e
+			enumOrder = append(enumOrder, e.Name)
+
+		case def.TypeDef != nil:
+			t := def.TypeDef
+			if prev, ok := typeNames[t.Name]; ok {
+				return nil, redeclared(prev, "type", t.Name, t.Pos)
+			}
+			typeNames[t.Name] = declSite{"type", t.Pos}
+			objDefs[t.Name] = t
+			objOrder = append(objOrder, t.Name)
+		}
+	}
+
+	// Pass 1: enums. They have no dependencies, so they come first — a scalar or
+	// a global may name one.
+	for _, name := range enumOrder {
+		e := enumDefs[name]
+		ir.EnumTypes[name] = &ResolvedEnum{Name: name, Values: e.Values}
+	}
+
+	// Pass 2: scalars, resolved depth-first so `scalar type A extending B` works
+	// with B declared later (or in another file).
+	{
+		resolving := map[string]bool{}
+		var resolveScalar func(name string) error
+		resolveScalar = func(name string) error {
+			if _, done := ir.ScalarTypes[name]; done {
+				return nil
+			}
+			s := scalarDefs[name]
+			if resolving[name] {
+				return fmt.Errorf("scalar type %q: cycle detected in extending chain", name)
+			}
+			resolving[name] = true
+			defer delete(resolving, name)
+
+			// A scalar extending another user scalar needs that one resolved first.
+			if _, isBuiltin := builtinTypes[s.Extends]; !isBuiltin {
+				if _, isDeclared := scalarDefs[s.Extends]; isDeclared {
+					if err := resolveScalar(s.Extends); err != nil {
+						return err
+					}
+				}
+			}
+			sqlType, err := r.resolveBaseType(s.Extends, ir)
+			if err != nil {
+				return fmt.Errorf("scalar type %q: %w", s.Name, err)
+			}
+			ir.ScalarTypes[s.Name] = &ResolvedScalar{Name: s.Name, Base: s.Extends, SQLType: sqlType}
+			return nil
+		}
+		for _, name := range scalarOrder {
+			if err := resolveScalar(name); err != nil {
+				return nil, err
 			}
 		}
 	}
 
-	// Pass 2: register object types (abstract and concrete) without members.
-	for _, def := range src.Definitions {
-		if def.TypeDef == nil {
-			continue
+	// Pass 3: globals (scalar-typed, so every named type is registered by now).
+	for _, g := range globalDecls {
+		sqlType, err := r.resolveBaseType(g.Type, ir)
+		if err != nil {
+			return nil, fmt.Errorf("global %q: %w (globals must be a scalar type)", g.Name, err)
 		}
-		t := def.TypeDef
+		ir.Globals = append(ir.Globals, &ResolvedGlobal{
+			Name:     g.Name,
+			AQLType:  g.Type,
+			SQLType:  sqlType,
+			Required: g.Required,
+		})
+	}
+
+	// Pass 4: functions (parameter and return types may name scalars or enums).
+	for _, fd := range funcDecls {
+		fn, err := r.resolveFunction(fd, ir)
+		if err != nil {
+			return nil, fmt.Errorf("function %q: %w", fd.Name, err)
+		}
+		ir.Functions[fn.Name] = fn
+	}
+
+	// Pass 5: register object types (abstract and concrete) without members.
+	for _, name := range objOrder {
+		t := objDefs[name]
 		rt := &ResolvedType{
 			Name:       t.Name,
 			IsAbstract: t.Abstract,
@@ -128,17 +237,11 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 		ir.ObjectTypes[t.Name] = rt
 	}
 
-	// Pass 2b: detect inheritance (extends) cycles before flattening. Flattening
+	// Pass 6: detect inheritance (extends) cycles before flattening. Flattening
 	// copies each parent's already-resolved members into the child, so a cycle
 	// would otherwise produce silently incomplete types. The link/foreign-key
 	// graph is intentionally not checked here — self- and mutual references are
 	// valid (see Validate).
-	parents := make(map[string][]string)
-	for _, def := range src.Definitions {
-		if def.TypeDef != nil {
-			parents[def.TypeDef.Name] = def.TypeDef.Extending
-		}
-	}
 	{
 		visited := make(map[string]bool)
 		visiting := make(map[string]bool)
@@ -151,8 +254,8 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 				return fmt.Errorf("inheritance cycle detected involving type %q", name)
 			}
 			visiting[name] = true
-			for _, parent := range parents[name] {
-				if _, known := parents[parent]; !known {
+			for _, parent := range objDefs[name].Extending {
+				if _, known := objDefs[parent]; !known {
 					continue // unknown parent is reported during flattening below
 				}
 				if err := checkExtends(parent); err != nil {
@@ -163,66 +266,81 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			visited[name] = true
 			return nil
 		}
-		for _, def := range src.Definitions {
-			if def.TypeDef == nil {
-				continue
-			}
-			if err := checkExtends(def.TypeDef.Name); err != nil {
+		for _, name := range objOrder {
+			if err := checkExtends(name); err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	// Pass 3: resolve members for each type (with inheritance).
-	for _, def := range src.Definitions {
-		if def.TypeDef == nil {
-			continue
-		}
-		t := def.TypeDef
-		rt := ir.ObjectTypes[t.Name]
+	// Pass 7: resolve members for each type. Parents are flattened into children
+	// by copying already-resolved members, so each type's parents must be
+	// resolved first — done depth-first rather than in declaration order, which
+	// is what lets a child live in a file that sorts before its parent's.
+	{
+		done := map[string]bool{}
+		var resolveType func(name string) error
+		resolveType = func(name string) error {
+			if done[name] {
+				return nil
+			}
+			done[name] = true // pass 6 already rejected cycles
 
-		// Inherit from parent types first.
-		for _, parentName := range t.Extending {
-			parent, ok := ir.ObjectTypes[parentName]
-			if !ok {
-				return nil, fmt.Errorf("type %q extends unknown type %q", t.Name, parentName)
-			}
-			for k, v := range parent.Properties {
-				rt.Properties[k] = v
-			}
-			for k, v := range parent.Links {
-				rt.Links[k] = v
-			}
-			for k, v := range parent.Computed {
-				rt.Computed[k] = v
-			}
-			rt.Indexes = append(rt.Indexes, parent.Indexes...)
-			rt.Constraints = append(rt.Constraints, parent.Constraints...)
-			rt.Triggers = append(rt.Triggers, parent.Triggers...)
-			rt.Policies = append(rt.Policies, parent.Policies...)
-		}
+			t := objDefs[name]
+			rt := ir.ObjectTypes[name]
 
-		// Resolve own members.
-		for _, m := range t.Members {
-			if err := r.resolveMember(m, rt, ir); err != nil {
-				return nil, fmt.Errorf("type %q: %w", t.Name, err)
+			// Inherit from parent types first.
+			for _, parentName := range t.Extending {
+				parent, ok := ir.ObjectTypes[parentName]
+				if !ok {
+					return fmt.Errorf("type %q extends unknown type %q", t.Name, parentName)
+				}
+				if err := resolveType(parentName); err != nil {
+					return err
+				}
+				for k, v := range parent.Properties {
+					rt.Properties[k] = v
+				}
+				for k, v := range parent.Links {
+					rt.Links[k] = v
+				}
+				for k, v := range parent.Computed {
+					rt.Computed[k] = v
+				}
+				rt.Indexes = append(rt.Indexes, parent.Indexes...)
+				rt.Constraints = append(rt.Constraints, parent.Constraints...)
+				rt.Triggers = append(rt.Triggers, parent.Triggers...)
+				rt.Policies = append(rt.Policies, parent.Policies...)
 			}
-		}
 
-		// Policies resolve after all members so `.field` refs see every column.
-		for _, m := range t.Members {
-			if m.Policy == nil {
-				continue
+			// Resolve own members.
+			for _, m := range t.Members {
+				if err := r.resolveMember(m, rt, ir); err != nil {
+					return fmt.Errorf("type %q: %w", t.Name, err)
+				}
 			}
-			pol, err := r.resolvePolicy(m.Policy, rt)
-			if err != nil {
-				return nil, fmt.Errorf("type %q: %w", t.Name, err)
+
+			// Policies resolve after all members so `.field` refs see every column.
+			for _, m := range t.Members {
+				if m.Policy == nil {
+					continue
+				}
+				pol, err := r.resolvePolicy(m.Policy, rt)
+				if err != nil {
+					return fmt.Errorf("type %q: %w", t.Name, err)
+				}
+				rt.Policies = append(rt.Policies, pol)
 			}
-			rt.Policies = append(rt.Policies, pol)
+			return nil
+		}
+		for _, name := range objOrder {
+			if err := resolveType(name); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	// Pass 4: validate that every trigger's execute target is a declared function
+	// Pass 8: validate that every trigger's execute target is a declared function
 	// returning trigger (functions are all registered by now).
 	for _, rt := range ir.ObjectTypes {
 		for _, trg := range rt.Triggers {

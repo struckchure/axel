@@ -11,6 +11,9 @@ ASL is a declarative schema language for defining PostgreSQL types. You write `.
 schema.asl
 ```
 
+A schema can also be [split across several files](/asl/splitting) with a glob
+such as `schema/*.asl`.
+
 ## How ASL is organized
 
 An ASL file is a set of top-level declarations. The reference is split by feature:
@@ -20,6 +23,7 @@ An ASL file is a set of top-level declarations. The reference is split by featur
 - **[Fields](/asl/fields)** — properties, defaults, rewrites, field constraints, links, and computed fields.
 - **[Functions](/asl/functions)** — top-level Postgres functions with AQL or raw-SQL bodies.
 - **[Triggers](/asl/triggers)** — row/statement triggers attached to a type.
+- **[Splitting a Schema](/asl/splitting)** — spread declarations across several `.asl` files.
 
 ## Complete example
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -109,12 +110,21 @@ func (s *server) aqlLive() bool { return s.aql != nil && s.aql.Live() }
 func (s *server) aqlStatus() string {
 	switch {
 	case s.aqlLive():
-		return "live @ " + s.schema.Path
+		return "live @ " + s.schemaSource()
 	case s.aql != nil:
-		return "compile-only @ " + s.schema.Path
+		return "compile-only @ " + s.schemaSource()
 	default:
 		return "off"
 	}
+}
+
+// schemaSource describes where the schema came from, noting the file count when
+// it was loaded from a directory or glob rather than a single file.
+func (s *server) schemaSource() string {
+	if n := len(s.schema.Files); n > 1 {
+		return fmt.Sprintf("%s (%d files)", s.schema.Path, n)
+	}
+	return s.schema.Path
 }
 
 func (s *server) handleStudio(w http.ResponseWriter, r *http.Request) {

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"os"
 	"sort"
 
 	"github.com/struckchure/axel/core/asl"
@@ -11,25 +10,19 @@ import (
 // Schema is a loaded, resolved ASL schema. It powers the schema-driven sidebar
 // and structure views and backs AQL execution.
 type Schema struct {
-	IR   *asl.SchemaIR
-	Desc codegen.SchemaDescriptor
-	Path string
+	IR    *asl.SchemaIR
+	Desc  codegen.SchemaDescriptor
+	Path  string   // the path spec the schema was loaded from (file, dir or glob)
+	Files []string // the .asl files it expanded to
 
 	byType  map[string]codegen.TypeDescriptor
 	byTable map[string]codegen.TypeDescriptor
 }
 
-// LoadSchema reads and resolves an .asl file.
+// LoadSchema reads and resolves a schema. path may name a single .asl file, a
+// directory, or a glob matching several files, which are merged into one schema.
 func LoadSchema(path string) (*Schema, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	sf, err := asl.Parse(src)
-	if err != nil {
-		return nil, err
-	}
-	ir, err := (&asl.Resolver{}).Resolve(sf)
+	ir, files, err := asl.LoadIR(path)
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +31,7 @@ func LoadSchema(path string) (*Schema, error) {
 		IR:      ir,
 		Desc:    codegen.FromSchemaIR(ir),
 		Path:    path,
+		Files:   files,
 		byType:  map[string]codegen.TypeDescriptor{},
 		byTable: map[string]codegen.TypeDescriptor{},
 	}

@@ -11,7 +11,8 @@
     },
     "schema-path": {
       "type": "string",
-      "description": "Path to .asl schema file (default: axel/schema.asl)"
+      "description": "Path to the .asl schema (default: axel/schema.asl). May be a single file, a directory, or a glob such as schema/*.asl or schema/**/*.asl — all matching files are merged into one schema.",
+      "examples": ["axel/schema.asl", "schema/", "schema/*.asl", "schema/**/*.asl"]
     },
     "database-url": {
       "type": "string",

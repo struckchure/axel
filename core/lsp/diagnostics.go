@@ -40,15 +40,94 @@ func SchemaDiagnostics(text string) []Diagnostic {
 	return append(diags, inlineAQLDiagnostics(text, ir)...)
 }
 
+// SchemaFile is one file of a schema split across several .asl files.
+type SchemaFile struct {
+	Path string
+	Text string
+}
+
+// SchemaDiagnosticsIn reports problems for one document of a schema that is
+// split across several files. text is the document being edited (at path), and
+// others carries the current source of the remaining files. They are merged
+// before resolving, so a type declared in a sibling file does not read as
+// unknown here. Only problems attributable to this document are returned — the
+// rest are reported against the file that owns them.
+func SchemaDiagnosticsIn(path, text string, others []SchemaFile) []Diagnostic {
+	if len(others) == 0 {
+		return SchemaDiagnostics(text)
+	}
+
+	sf, err := asl.ParseNamed(path, []byte(text))
+	if err != nil {
+		return []Diagnostic{parseErrDiag(text, err)}
+	}
+	parsed := []*asl.SourceFile{sf}
+	for _, o := range others {
+		// A sibling that does not parse is reported in its own editor buffer;
+		// here it just contributes nothing.
+		if osf, err := asl.ParseNamed(o.Path, []byte(o.Text)); err == nil {
+			parsed = append(parsed, osf)
+		}
+	}
+
+	ir, err := (&asl.Resolver{}).Resolve(asl.Merge(parsed...))
+	if err != nil {
+		if d, ok := localDiag(path, text, err.Error()); ok {
+			return []Diagnostic{d}
+		}
+		return nil
+	}
+
+	var diags []Diagnostic
+	for _, e := range asl.Validate(ir) {
+		if d, ok := localDiag(path, text, e.Error()); ok {
+			diags = append(diags, d)
+		}
+	}
+	return append(diags, localInlineAQLDiagnostics(text, ir)...)
+}
+
+// localDiag decides whether a resolve/validate message belongs to this document.
+// A message is local when one of the names it quotes can be found in the text,
+// or when it names this file outright (resolver messages about a redeclaration
+// carry file:line:col for both sites). Otherwise it belongs to a sibling file.
+func localDiag(path, text, msg string) (Diagnostic, bool) {
+	rng := errorRange(text, msg)
+	if rng == (Range{}) && !strings.Contains(msg, path) {
+		return Diagnostic{}, false
+	}
+	return Diagnostic{Range: rng, Severity: SeverityError, Message: msg}, true
+}
+
+// localInlineAQLDiagnostics reports inline-AQL problems only for functions
+// declared in this document, so a query broken in a sibling file is not
+// reported here as well.
+func localInlineAQLDiagnostics(text string, ir *asl.SchemaIR) []Diagnostic {
+	return inlineAQLDiagnosticsFor(text, ir, func(name string) bool {
+		return indexWord(text, name, 0) >= 0
+	})
+}
+
 // inlineAQLDiagnostics compiles every aql`…` literal embedded in a function
 // body, so a bad inline query is reported in the editor rather than at migration
 // time. Functions are visited in name order for stable output.
 func inlineAQLDiagnostics(text string, ir *asl.SchemaIR) []Diagnostic {
+	return inlineAQLDiagnosticsFor(text, ir, nil)
+}
+
+// inlineAQLDiagnosticsFor is inlineAQLDiagnostics restricted to the functions
+// accepted by include (nil accepts all). Compilation always sees the whole IR —
+// only which functions are reported changes.
+func inlineAQLDiagnosticsFor(text string, ir *asl.SchemaIR, include func(name string) bool) []Diagnostic {
 	names := make([]string, 0, len(ir.Functions))
 	for name, fn := range ir.Functions {
-		if len(fn.InlineAQL) > 0 {
-			names = append(names, name)
+		if len(fn.InlineAQL) == 0 {
+			continue
 		}
+		if include != nil && !include(name) {
+			continue
+		}
+		names = append(names, name)
 	}
 	sort.Strings(names)
 
