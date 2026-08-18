@@ -16,7 +16,6 @@ on:
 
 jobs:
   test:
-    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -29,7 +28,7 @@ jobs:
           go-version: stable
 
       - name: Run test suite
-        run: go test ./...
+        run: go test -v ./...
 
   release:
     if: github.event_name != 'pull_request'
