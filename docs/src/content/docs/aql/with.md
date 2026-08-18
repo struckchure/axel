@@ -43,7 +43,7 @@ Using a set binding as a value is rejected at compile time, rather than becoming
 `more than one row returned by a subquery` failure at run time:
 
 ```aql
--- error: binding "api_keys" is a `multi select` (a set, not a value)
+# error: binding "api_keys" is a `multi select` (a set, not a value)
 filter .sender_id = api_keys.id
 ```
 
@@ -93,7 +93,7 @@ Only the named fields are projected into the CTE. Referencing a field that was n
 included in the shape is caught at compile time:
 
 ```aql
--- error: field "label" was not included in the { shape }
+# error: field "label" was not included in the { shape }
 filter .name = api_key.label
 ```
 
@@ -110,7 +110,7 @@ you can attach a `<cast>` directly to the field reference on the right of `in`. 
 is applied inside the subquery projection:
 
 ```aql
--- api_key.id is uuid; sender_id is stored as text — cast at the reference site
+# api_key.id is uuid; sender_id is stored as text — cast at the reference site
 filter .sender_id in api_key.id<str> or .reciever_id in api_key.id<str>
 ```
 

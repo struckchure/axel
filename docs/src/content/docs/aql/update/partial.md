@@ -16,8 +16,8 @@ current value with `?? .field`:
 update Application
 filter .id = $id
 set {
-  status              := $status?,                        -- null → sets the column to NULL
-  build_system        := $build_system? ?? .build_system  -- null → keeps the current value
+  status              := $status?,                        # null → sets the column to NULL
+  build_system        := $build_system? ?? .build_system  # null → keeps the current value
 };
 ```
 

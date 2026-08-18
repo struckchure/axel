@@ -10,8 +10,8 @@ description: "Single vs multi selects and shapes"
 A plain `select` returns a **single** row — Axel appends an implicit `LIMIT 1`, and code generation produces a single-row (`*Row`) result. Prefix the query with `multi` to return **all** matching rows (no implicit limit, a `[]Row` result). `limit`/`offset` are only allowed on a `multi select`.
 
 ```aql
-select User { id, email };        -- one row  → LIMIT 1
-multi select User { id, email };  -- all rows → no implicit limit
+select User { id, email };        # one row  → LIMIT 1
+multi select User { id, email };  # all rows → no implicit limit
 ```
 
 ## Basic select
