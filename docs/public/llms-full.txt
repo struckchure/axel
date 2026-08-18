@@ -5975,6 +5975,22 @@ WHERE u.active = $1 AND u.age >= $2;
 
 Formats `.asl` schema and `.aql` query files in canonical style, preserving comments. Paths may be files or directories (searched recursively); with no paths, the current directory is formatted.
 
+Inside a type body, members are printed in blocks — properties and links (then computed fields), constraints, indexes, policies, triggers — with one blank line between blocks and none within one. Fields keep the order you wrote them in, since that decides column order; everything else is diffed by name, so grouping it costs nothing:
+
+```asl
+type Post extending Base {
+  required title: str;
+  required link author: User;
+  computed excerpt := .content;
+
+  constraint exclusive on (.title, .author);
+
+  index on (.title);
+
+  policy owner_only for all using ( .author = global current_user );
+}
+```
+
 ```sh
 # Print the formatted result to stdout
 axel fmt schema.asl

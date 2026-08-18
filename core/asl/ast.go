@@ -197,6 +197,7 @@ type FieldConstraintDecl struct {
 //	New:  default := gen_uuid();  / default := true  / default := 'n/a';
 //	Old:  default @func(gen_random_uuid);  / default 'n/a'  / default true
 type DefaultDecl struct {
+	Pos lexer.Position
 	// new: default := funcName()
 	NewFunc *string `parser:"  'default' ':=' @Ident '(' ')' ';'?"`
 	// new: default := Enum.Member (qualified enum reference)
@@ -213,6 +214,7 @@ type DefaultDecl struct {
 //
 //	on id; / on email
 type OnClause struct {
+	Pos   lexer.Position
 	Field string `parser:"'on' @Ident ';'?"`
 }
 

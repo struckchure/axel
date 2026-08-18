@@ -219,24 +219,173 @@ func (f *aslFmt) typeDef(t *TypeDef, next int) {
 	// Header line trailing comment attaches before the first member.
 	f.commit(memberOffset(t.Members[0]))
 	f.indent++
-	prevLine := 0
-	for i, m := range t.Members {
-		mo := memberOffset(m)
-		// Preserve a single author blank line between members.
-		if i > 0 && prevLine > 0 && mPosLine(m)-prevLine > 1 {
-			f.blank()
+
+	// Comments are bucketed per member before anything is printed: members are
+	// re-ordered below, so a single source-order cursor would hand a comment to
+	// whichever member happened to be printed at that moment.
+	slots, tail := f.splitBodyComments(t)
+
+	prevBlock := -1
+	for _, i := range orderedMembers(t.Members) {
+		m := t.Members[i]
+		if b := blockOf(m); b != prevBlock {
+			if prevBlock >= 0 {
+				f.blank()
+			}
+			prevBlock = b
 		}
-		f.leading(mo)
-		next := t.EndPos.Offset
+		end := t.EndPos.Offset
 		if i+1 < len(t.Members) {
-			next = memberOffset(t.Members[i+1])
+			end = memberOffset(t.Members[i+1])
 		}
-		f.member(m, next)
-		prevLine = mPosLine(m)
+		f.withComments(slots[i], func() {
+			f.leading(memberOffset(m))
+			f.member(m, end)
+		})
 	}
+	for _, c := range tail {
+		f.out.WriteString(strings.Repeat("  ", f.indent))
+		f.out.WriteString(c.Text)
+		f.out.WriteByte('\n')
+	}
+
 	f.indent--
 	f.w("}")
 	f.commit(next)
+}
+
+// Member blocks, in printed order. Properties, links and computed fields all
+// describe the row, so they share one block; each of the remaining kinds is
+// printed as its own block, separated by a blank line.
+const (
+	blockRow        = 0 // properties and links
+	blockConstraint = 1
+	blockIndex      = 2
+	blockPolicy     = 3
+	blockTrigger    = 4
+)
+
+// blockOf returns the block a member is printed in.
+func blockOf(m *Member) int {
+	switch {
+	case m.Constraint != nil:
+		return blockConstraint
+	case m.Index != nil:
+		return blockIndex
+	case m.Policy != nil:
+		return blockPolicy
+	case m.Trigger != nil:
+		return blockTrigger
+	default: // Field, Computed
+		return blockRow
+	}
+}
+
+// orderedMembers returns member indices grouped by block, and — within the row
+// block — properties and links before computed fields. Order inside each group
+// is the order they were written in. Field order is what decides column order,
+// and every other kind is diffed by name, so this only moves lines around.
+func orderedMembers(members []*Member) []int {
+	order := make([]int, 0, len(members))
+	rank := func(m *Member) int {
+		if b := blockOf(m); b != blockRow {
+			return b + 1
+		}
+		if m.Computed != nil {
+			return 1 // computed close the row block
+		}
+		return 0
+	}
+	for want := 0; want <= blockTrigger+1; want++ {
+		for i, m := range members {
+			if rank(m) == want {
+				order = append(order, i)
+			}
+		}
+	}
+	return order
+}
+
+// splitBodyComments consumes every comment inside the type body and buckets it
+// by the member it belongs to: an own-line comment leads the member that follows
+// it, a trailing comment stays with the member whose line it shares. Comments
+// after the last member are returned separately, to be printed before the
+// closing brace.
+func (f *aslFmt) splitBodyComments(t *TypeDef) ([][]comment, []comment) {
+	slots := make([][]comment, len(t.Members))
+	var tail []comment
+	for f.ci < len(f.cmts) && f.cmts[f.ci].Offset < t.EndPos.Offset {
+		c := f.cmts[f.ci]
+		f.ci++
+
+		// A comment written inside a member (in a field body, a policy predicate)
+		// belongs to that member, wherever it ends up being printed.
+		if i, ok := memberContaining(t.Members, c.Offset); ok {
+			slots[i] = append(slots[i], c)
+			continue
+		}
+		next := -1
+		for i, m := range t.Members {
+			if memberOffset(m) > c.Offset {
+				next = i
+				break
+			}
+		}
+		switch {
+		case c.Own && next >= 0:
+			slots[next] = append(slots[next], c)
+		case c.Own:
+			tail = append(tail, c)
+		case next > 0:
+			slots[next-1] = append(slots[next-1], c)
+		case next < 0 && len(t.Members) > 0:
+			slots[len(t.Members)-1] = append(slots[len(t.Members)-1], c)
+		default:
+			tail = append(tail, c)
+		}
+	}
+	return slots, tail
+}
+
+// memberContaining returns the member whose source span covers offset. Only
+// members that can hold a nested comment carry an end position; the single-line
+// kinds (index, constraint, computed) cannot contain one.
+func memberContaining(members []*Member, offset int) (int, bool) {
+	for i, m := range members {
+		end := mEndOffset(m)
+		if end > 0 && offset > memberOffset(m) && offset < end {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func mEndOffset(m *Member) int {
+	switch {
+	case m.Field != nil:
+		return m.Field.EndPos.Offset
+	case m.Policy != nil:
+		return m.Policy.EndPos.Offset
+	case m.Trigger != nil:
+		return m.Trigger.EndPos.Offset
+	}
+	return 0
+}
+
+// withComments runs fn against a private comment cursor, so a member printed out
+// of source order only ever sees its own comments. Anything fn did not place is
+// flushed after it: a misplaced comment is a nuisance, a dropped one is data
+// loss.
+func (f *aslFmt) withComments(cs []comment, fn func()) {
+	saveCmts, saveCi := f.cmts, f.ci
+	f.cmts, f.ci = cs, 0
+	fn()
+	for ; f.ci < len(f.cmts); f.ci++ {
+		f.out.WriteString(strings.Repeat("  ", f.indent))
+		f.out.WriteString(f.cmts[f.ci].Text)
+		f.out.WriteByte('\n')
+	}
+	f.cmts, f.ci = saveCmts, saveCi
 }
 
 func mPosLine(m *Member) int { return mPos(m).Line }
@@ -318,9 +467,15 @@ func (f *aslFmt) field(fd *FieldDecl, next int) {
 	f.w(" {")
 	f.commit(fieldBodyItemOffset(fd.Body.Items[0], next))
 	f.indent++
-	for _, it := range fd.Body.Items {
+	for i, it := range fd.Body.Items {
+		f.leading(fieldBodyItemOffset(it, next))
 		f.bodyItem(it)
-		f.commit(next)
+		// A trailing comment belongs to this item's line, not to the whole body.
+		end := next
+		if i+1 < len(fd.Body.Items) {
+			end = fieldBodyItemOffset(fd.Body.Items[i+1], next)
+		}
+		f.commit(end)
 	}
 	f.indent--
 	f.w("};")
@@ -335,6 +490,10 @@ func fieldBodyItemOffset(it *FieldBodyItem, fallback int) int {
 		return it.Constraint.Pos.Offset
 	case it.Rewrite != nil:
 		return it.Rewrite.Pos.Offset
+	case it.Default != nil:
+		return it.Default.Pos.Offset
+	case it.OnClause != nil:
+		return it.OnClause.Pos.Offset
 	}
 	return fallback
 }

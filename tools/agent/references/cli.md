@@ -74,6 +74,11 @@ axel fmt -w .              # rewrite in place
 axel fmt --check .         # CI: lists unformatted files, exits non-zero
 ```
 
+Inside a type body, members are grouped into blocks — properties and links (then computed fields),
+constraints, indexes, policies, triggers — separated by a single blank line, with no blank lines
+within a block. Fields keep their written order (it decides column order); the other kinds are
+diffed by name, so regrouping them never affects a migration.
+
 Formatting is safe: if the reformatted text would not parse back to the same structure, the original
 is left alone.
 

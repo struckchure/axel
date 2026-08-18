@@ -369,3 +369,108 @@ multi select User { id, email };
 
 
 
+
+// ── ASL member grouping ──────────────────────────────────────────────────────
+
+// Members are printed in blocks: properties and links (then computed fields),
+// constraints, indexes, policies, triggers — one blank line between blocks and
+// none inside one, whatever order they were written in.
+func TestASLFormatGroupsMembers(t *testing.T) {
+	src := `type Post extending Base {
+  required title: str;
+
+  index on (.title);
+  required content: str;
+  computed excerpt := .content;
+  policy owner for all using ( .title != '' );
+  constraint exclusive on (.title);
+  trigger touch before update execute fn();
+  index on (.content);
+
+  required link author: User;
+}`
+	want := `type Post extending Base {
+  required title: str;
+  required content: str;
+  required link author: User;
+  computed excerpt := .content;
+
+  constraint exclusive on (.title);
+
+  index on (.title);
+  index on (.content);
+
+  policy owner for all using ( .title != '' );
+
+  trigger touch before update execute fn();
+}
+`
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+// Field order decides column order, so fields keep the order they were written
+// in — only the blocks around them move.
+func TestASLFormatKeepsFieldOrder(t *testing.T) {
+	src := "type A {\n  required c: str;\n\n  required a: str;\n  required b: str;\n}"
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "type A {\n  required c: str;\n  required a: str;\n  required b: str;\n}\n"
+	if out != want {
+		t.Errorf("got:\n%q\nwant:\n%q", out, want)
+	}
+}
+
+// Reordering must carry each member's comments with it, including ones written
+// inside a field body.
+func TestASLFormatMovesCommentsWithMembers(t *testing.T) {
+	src := `type A {
+  # about the index
+  index on (.name); # trailing on index
+  required name: str {
+    # inside the body
+    default := 'x'; # trailing inside the body
+  };
+  # dangling before the brace
+}`
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"required name: str {\n    # inside the body\n    default := 'x';  # trailing inside the body",
+		"# about the index\n  index on (.name);  # trailing on index",
+		"# dangling before the brace\n}",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lost or misplaced a comment; want to find:\n%s\n\ngot:\n%s", want, out)
+		}
+	}
+}
+
+// Regression: blank lines used to be derived from source line numbers, compared
+// against the *start* line of the previous member. A multi-line field therefore
+// produced a spurious blank line, the reformatted text rendered differently from
+// the original, and Format's safety net returned the file unchanged — so `fmt`
+// silently did nothing to any type containing a field with a body.
+func TestASLFormatReformatsTypeWithMultiLineField(t *testing.T) {
+	src := "type A {\n      required id: uuid {\n        default := gen_uuid();\n      };\n      required name: str;\n}\n"
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out == src {
+		t.Fatal("formatter returned the source unchanged; the safety net bailed")
+	}
+	want := "type A {\n  required id: uuid {\n    default := gen_uuid();\n  };\n  required name: str;\n}\n"
+	if out != want {
+		t.Errorf("got:\n%q\nwant:\n%q", out, want)
+	}
+}
