@@ -32,6 +32,7 @@ type lspServer struct {
 	schemaURI   protocol.DocumentUri
 	schemaText  string
 	schemaFiles []protocol.DocumentUri
+	schemaSpec  string // the configured schema-path, re-expanded when a new .asl appears
 }
 
 var lspCmd = &cobra.Command{
@@ -145,8 +146,16 @@ func (s *lspServer) setDoc(uri protocol.DocumentUri, text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.docs[uri] = text
+	if !strings.HasSuffix(uriToPath(uri), ".asl") {
+		return
+	}
+	// A file created after the schema-path glob was expanded (a new model in
+	// schema/) joins the set the moment it is opened.
+	if !s.isSchemaFile(uri) && s.schemaSpec != "" {
+		s.expandSchemaSpec(s.schemaSpec)
+	}
 	// If this is (part of) the workspace schema, re-resolve the whole set so
-	// query diagnostics stay fresh.
+	// diagnostics, completion and go-to-definition see every file.
 	if s.isSchemaFile(uri) {
 		if uri == s.schemaURI {
 			s.schemaText = text
@@ -154,16 +163,44 @@ func (s *lspServer) setDoc(uri protocol.DocumentUri, text string) {
 		s.resolveWorkspaceSchema()
 		return
 	}
-	// Fallback: with no configured schema, adopt the first .asl that resolves
-	// cleanly as the workspace schema.
-	if s.schemaURI == "" && strings.HasSuffix(uriToPath(uri), ".asl") {
-		if ir := resolveSchema(text); ir != nil {
-			s.schemaURI = uri
-			s.schemaText = text
-			s.schema = ir
-			s.schemaFiles = []protocol.DocumentUri{uri}
+	// Fallback: with no configured schema, adopt the .asl files sitting next to
+	// the first one opened — a split schema works without an axel.yaml.
+	if s.schemaURI == "" {
+		if ir := resolveSchema(text); ir == nil {
+			return
+		}
+		s.schemaURI = uri
+		s.schemaText = text
+		s.schemaFiles = []protocol.DocumentUri{uri}
+		if dir := filepath.Dir(uriToPath(uri)); dir != "" {
+			s.schemaSpec = dir
+			s.expandSchemaSpec(dir)
+		}
+		s.resolveWorkspaceSchema()
+	}
+}
+
+// expandSchemaSpec re-expands a schema-path spec (file, directory or glob) into
+// the current file set, keeping schemaURI — the file go-to-definition falls back
+// to — pointing at the same document when it is still part of it. Callers must
+// hold s.mu for writing.
+func (s *lspServer) expandSchemaSpec(spec string) {
+	paths, err := asl.ExpandPaths(spec)
+	if err != nil {
+		return
+	}
+	uris := make([]protocol.DocumentUri, 0, len(paths))
+	for _, p := range paths {
+		abs, _ := filepath.Abs(p)
+		uris = append(uris, protocol.DocumentUri("file://"+abs))
+	}
+	s.schemaFiles = uris
+	for _, u := range uris {
+		if u == s.schemaURI {
+			return
 		}
 	}
+	s.schemaURI = uris[0]
 }
 
 // isSchemaFile reports whether uri is one of the workspace schema's files.
@@ -214,20 +251,32 @@ func (s *lspServer) resolveWorkspaceSchema() {
 	s.schema = ir
 }
 
-// otherSchemaFiles returns the sibling files of uri within the workspace schema.
-func (s *lspServer) otherSchemaFiles(uri protocol.DocumentUri) []corelsp.SchemaFile {
+// schemaFileSet returns the files of the workspace schema, with their current
+// text. `skip` is omitted (pass "" to keep them all) — diagnostics want the
+// siblings of the document being checked, while go-to-definition wants every
+// file, including the one it started from.
+func (s *lspServer) schemaFileSet(skip protocol.DocumentUri) []corelsp.SchemaFile {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var others []corelsp.SchemaFile
+	var files []corelsp.SchemaFile
 	for _, u := range s.schemaFiles {
-		if u == uri {
+		if u == skip {
 			continue
 		}
 		if text, ok := s.schemaSource(u); ok {
-			others = append(others, corelsp.SchemaFile{Path: uriToPath(u), Text: text})
+			files = append(files, corelsp.SchemaFile{Path: uriToPath(u), URI: string(u), Text: text})
 		}
 	}
-	return others
+	return files
+}
+
+// workspaceSchema returns the schema resolved from every file, and whether uri
+// is one of them. A document outside the set (no axel.yaml, a scratch file) is
+// resolved on its own instead.
+func (s *lspServer) workspaceSchema(uri protocol.DocumentUri) (*asl.SchemaIR, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.schema, s.isSchemaFile(uri)
 }
 
 // refresh recomputes and publishes diagnostics for uri, and — if uri is part of
@@ -279,7 +328,7 @@ func (s *lspServer) publish(ctx *glsp.Context, uri protocol.DocumentUri) {
 	var diags []corelsp.Diagnostic
 	switch {
 	case strings.HasSuffix(uriToPath(uri), ".asl"):
-		diags = corelsp.SchemaDiagnosticsIn(uriToPath(uri), text, s.otherSchemaFiles(uri))
+		diags = corelsp.SchemaDiagnosticsIn(uriToPath(uri), text, s.schemaFileSet(uri))
 	case strings.HasSuffix(uriToPath(uri), ".aql"):
 		diags = corelsp.QueryDiagnostics(text, schema)
 	}
@@ -315,13 +364,11 @@ func (s *lspServer) hover(ctx *glsp.Context, params *protocol.HoverParams) (*pro
 		return nil, nil
 	}
 	offset := corelsp.PositionToOffset(text, toCorePosition(params.Position))
-	s.mu.RLock()
-	schema := s.schema
-	s.mu.RUnlock()
+	schema, inWorkspace := s.workspaceSchema(params.TextDocument.URI)
 
 	var h *corelsp.Hover
 	if strings.HasSuffix(uriToPath(params.TextDocument.URI), ".asl") {
-		h = corelsp.SchemaHover(text, offset, resolveSchema(text))
+		h = corelsp.SchemaHover(text, offset, schemaFor(schema, inWorkspace, text))
 	} else {
 		h = corelsp.QueryHover(text, offset, schema)
 	}
@@ -346,15 +393,15 @@ func (s *lspServer) definition(ctx *glsp.Context, params *protocol.DefinitionPar
 
 	var loc *corelsp.Location
 	if strings.HasSuffix(uriToPath(uri), ".asl") {
-		loc = corelsp.SchemaDefinition(text, offset)
+		// Siblings only: the current document is searched first, from its live
+		// buffer text rather than from disk.
+		loc = corelsp.SchemaDefinitionIn(text, offset, s.schemaFileSet(uri))
 		if loc != nil && loc.URI == "" {
 			loc.URI = string(uri) // same-document reference
 		}
 	} else {
-		s.mu.RLock()
-		schema, schemaURI, schemaText := s.schema, s.schemaURI, s.schemaText
-		s.mu.RUnlock()
-		loc = corelsp.QueryDefinition(text, offset, schema, string(schemaURI), schemaText)
+		schema, _ := s.workspaceSchema(uri)
+		loc = corelsp.QueryDefinitionIn(text, offset, schema, s.schemaFileSet(""))
 	}
 	if loc == nil {
 		return nil, nil
@@ -399,13 +446,11 @@ func (s *lspServer) completion(ctx *glsp.Context, params *protocol.CompletionPar
 		return nil, nil
 	}
 	offset := corelsp.PositionToOffset(text, toCorePosition(params.Position))
-	s.mu.RLock()
-	schema := s.schema
-	s.mu.RUnlock()
+	schema, inWorkspace := s.workspaceSchema(uri)
 
 	var items []corelsp.CompletionItem
 	if strings.HasSuffix(uriToPath(uri), ".asl") {
-		items = corelsp.SchemaCompletion(text, offset, resolveSchema(text))
+		items = corelsp.SchemaCompletion(text, offset, schemaFor(schema, inWorkspace, text))
 	} else {
 		items = corelsp.QueryCompletion(text, offset, schema)
 	}
@@ -449,25 +494,30 @@ func (s *lspServer) loadWorkspaceSchema(root string) {
 	}
 	for _, spec := range candidates {
 		// spec may be a single file, a directory, or a glob matching several.
-		paths, err := asl.ExpandPaths(spec)
-		if err != nil {
+		if _, err := asl.ExpandPaths(spec); err != nil {
 			continue
 		}
-		uris := make([]protocol.DocumentUri, 0, len(paths))
-		for _, p := range paths {
-			abs, _ := filepath.Abs(p)
-			uris = append(uris, protocol.DocumentUri("file://"+abs))
-		}
 		s.mu.Lock()
-		s.schemaFiles = uris
-		s.schemaURI = uris[0]
-		if text, ok := s.schemaSource(uris[0]); ok {
+		s.schemaSpec = spec
+		s.schemaURI = ""
+		s.expandSchemaSpec(spec)
+		if text, ok := s.schemaSource(s.schemaURI); ok {
 			s.schemaText = text
 		}
 		s.resolveWorkspaceSchema()
 		s.mu.Unlock()
 		return
 	}
+}
+
+// schemaFor picks the schema a .asl document should be analysed against: the
+// merged workspace schema when the document is part of it (so a type declared in
+// a sibling file is known), and the document alone otherwise.
+func schemaFor(workspace *asl.SchemaIR, inWorkspace bool, text string) *asl.SchemaIR {
+	if inWorkspace && workspace != nil {
+		return workspace
+	}
+	return resolveSchema(text)
 }
 
 func resolveSchema(text string) *asl.SchemaIR {

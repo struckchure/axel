@@ -40,9 +40,12 @@ func SchemaDiagnostics(text string) []Diagnostic {
 	return append(diags, inlineAQLDiagnostics(text, ir)...)
 }
 
-// SchemaFile is one file of a schema split across several .asl files.
+// SchemaFile is one file of a schema split across several .asl files. Path is
+// the filesystem path (resolver messages are attributed by it); URI is the
+// document URI a go-to-definition result points at.
 type SchemaFile struct {
 	Path string
+	URI  string
 	Text string
 }
 
