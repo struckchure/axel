@@ -1,0 +1,101 @@
+# Axel
+
+> Axel is an ahead-of-time compiler for PostgreSQL. You define your data model in ASL (Axel Schema Language) and write queries in AQL (Axel Query Language); Axel compiles ASL to migration SQL and AQL to parameterized query strings. It is not an ORM: it never wraps a driver, holds a connection, or executes anything on your behalf.
+
+Axel compiles, it does not execute. Every command turns `.asl` / `.aql` source into SQL
+you run yourself with your own driver. The full text of these docs is also available as
+one file at /llms-full.txt.
+
+## Getting started
+
+- [Why Axel?](https://struckchure.github.io/axel/why-axel): Discover why Axel was created: ahead-of-time SQL compilation, zero runtime overhead, native PostgreSQL powers, and robust relational queries.
+- [Axel vs. Alternatives](https://struckchure.github.io/axel/comparison): In-depth technical comparison between Axel and traditional ORMs, Prisma, Drizzle, and sqlc for PostgreSQL.
+- [Installation](https://struckchure.github.io/axel/installation): Install Axel on macOS, Linux, or Windows
+- [Tutorial](https://struckchure.github.io/axel/tutorial): Build your first Axel project end to end — schema, migrations, queries, and typed code
+- [Exactly how SQL should be written](https://struckchure.github.io/axel/): Axel is an ahead-of-time compiler for PostgreSQL schemas and queries. Declarative models, type-safe query shapes, and zero runtime overhead.
+
+## Schema Language (ASL)
+
+- [Schema Language (ASL)](https://struckchure.github.io/axel/asl): Define PostgreSQL schemas with Axel Schema Language
+- [Types — ASL](https://struckchure.github.io/axel/asl/schema/types): Concrete and abstract types
+- [Inheritance — ASL](https://struckchure.github.io/axel/asl/schema/inheritance): Extending one or more types
+- [Indexes — ASL](https://struckchure.github.io/axel/asl/schema/indexes): Index declarations on one or more columns
+- [Constraints — ASL](https://struckchure.github.io/axel/asl/schema/constraints): Composite, type-level constraints spanning multiple columns
+- [Scalars — ASL](https://struckchure.github.io/axel/asl/data-types/scalars): Built-in scalar types and their PostgreSQL mappings
+- [Aliases — ASL](https://struckchure.github.io/axel/asl/data-types/aliases): Named scalar aliases over a built-in scalar
+- [Enums — ASL](https://struckchure.github.io/axel/asl/data-types/enums): Enumerated string types with a CHECK constraint
+- [Properties — ASL](https://struckchure.github.io/axel/asl/fields/properties): Scalar columns, required, and defaults
+- [Rewrites — ASL](https://struckchure.github.io/axel/asl/fields/rewrites): Auto-assign a field on insert/update events
+- [Constraints — ASL](https://struckchure.github.io/axel/asl/fields/constraints): Field-level exclusive, pk, and CHECK constraints
+- [Links — ASL](https://struckchure.github.io/axel/asl/fields/links): Single and multi foreign-key relationships
+- [Computed Fields — ASL](https://struckchure.github.io/axel/asl/fields/computed): Derived values expanded during AQL compilation
+- [Functions — ASL](https://struckchure.github.io/axel/asl/functions): Top-level Postgres functions with parameters, directives, and a return expression
+- [Triggers — ASL](https://struckchure.github.io/axel/asl/triggers): Row and statement triggers attached to a type
+- [Policies (RLS) — ASL](https://struckchure.github.io/axel/asl/policies): Row-level security policies attached to a type
+- [Globals — ASL](https://struckchure.github.io/axel/asl/globals): Session-scoped global variables, read in AQL and set from the client
+- [Extensions — ASL](https://struckchure.github.io/axel/asl/extensions): Enable Postgres extensions with `use extension`
+- [Splitting a Schema — ASL](https://struckchure.github.io/axel/asl/splitting): Spread a schema across several .asl files with a glob
+- [Data Types — ASL](https://struckchure.github.io/axel/asl/data-types): Built-in scalars, scalar aliases, and enums
+- [Fields — ASL](https://struckchure.github.io/axel/asl/fields): Properties, defaults, rewrites, constraints, links, and computed fields
+- [Schema — ASL](https://struckchure.github.io/axel/asl/schema): Types, inheritance, indexes, and composite constraints
+
+## Query Language (AQL)
+
+- [Query Language (AQL)](https://struckchure.github.io/axel/aql): Write expressive queries that compile to parameterized PostgreSQL SQL
+- [Named parameters — AQL](https://struckchure.github.io/axel/aql/parameters/named): The basics of $name query parameters
+- [Optional parameters — AQL](https://struckchure.github.io/axel/aql/parameters/optional): $name? and how it behaves in filters vs set clauses
+- [Typed parameters — AQL](https://struckchure.github.io/axel/aql/parameters/typed): $name<type> annotations and type inference
+- [Select basics — AQL](https://struckchure.github.io/axel/aql/select/basics): Single vs multi selects and shapes
+- [Filtering — AQL](https://struckchure.github.io/axel/aql/select/filtering): The filter clause on a select
+- [Ordering & Pagination — AQL](https://struckchure.github.io/axel/aql/select/ordering): order by, limit, and offset
+- [Computed shape fields — AQL](https://struckchure.github.io/axel/aql/select/computed): Inline expressions and sub-selects in a shape
+- [Nested shapes (links) — AQL](https://struckchure.github.io/axel/aql/select/nested): Selecting linked types as JSON, with no N+1. Configurable between correlated subquery (json_agg) and LEFT JOIN LATERAL strategies.
+- [Aggregates — AQL](https://struckchure.github.io/axel/aql/select/aggregates): count and aggregate selects
+- [Group By & Having — AQL](https://struckchure.github.io/axel/aql/select/group-by): Multi-row aggregation, grouped projections, and having clauses in AQL
+- [Insert basics — AQL](https://struckchure.github.io/axel/aql/insert/basics): Inserting rows and assigning links
+- [Conflicts (unless conflict) — AQL](https://struckchure.github.io/axel/aql/insert/conflicts): ON CONFLICT do-nothing and upsert behavior
+- [Update basics — AQL](https://struckchure.github.io/axel/aql/update/basics): The update ... set statement
+- [Partial updates — AQL](https://struckchure.github.io/axel/aql/update/partial): Optional params in set, and keeping current values
+- [Updating links — AQL](https://struckchure.github.io/axel/aql/update/links): Reassigning a link's FK in an update set clause
+- [Delete — AQL](https://struckchure.github.io/axel/aql/delete): Deleting rows
+- [With — AQL](https://struckchure.github.io/axel/aql/with): Bind a subquery once with `with (...)` and reuse it across the query
+- [Operators — AQL](https://struckchure.github.io/axel/aql/expressions/operators): Comparison and logical operators, and combining conditions
+- [Literals — AQL](https://struckchure.github.io/axel/aql/expressions/literals): String, number, boolean, and null literals
+- [Path Expressions — AQL](https://struckchure.github.io/axel/aql/expressions/paths): .field paths and link traversal
+- [Casts & Types — AQL](https://struckchure.github.io/axel/aql/expressions/casts): <Type> casts and computed-field type resolution
+- [Directives — AQL](https://struckchure.github.io/axel/aql/directives): Codegen metadata with @name, @request, and @response
+- [Grammar reference — AQL](https://struckchure.github.io/axel/aql/grammar): The full AQL grammar
+- [Expressions — AQL](https://struckchure.github.io/axel/aql/expressions): Operators, literals, path expressions, and casts
+- [Insert — AQL](https://struckchure.github.io/axel/aql/insert): Inserting rows, links, and unless-conflict upserts
+- [Parameters — AQL](https://struckchure.github.io/axel/aql/parameters): Named, optional, and typed query parameters
+- [Select — AQL](https://struckchure.github.io/axel/aql/select): Shapes, filters, ordering, nested links, and aggregates
+- [Update — AQL](https://struckchure.github.io/axel/aql/update): Updates and partial updates
+
+## Examples
+
+- [Examples — Axel](https://struckchure.github.io/axel/examples): Practical recipes for common things you can build with Axel
+- [Audit timestamps & UUID keys — Examples](https://struckchure.github.io/axel/examples/timestamps): A reusable Base type with UUID primary keys and auto-updated timestamps
+- [Soft deletes — Examples](https://struckchure.github.io/axel/examples/soft-delete): Hide deleted rows with a policy instead of removing them
+- [Slugs from titles — Examples](https://struckchure.github.io/axel/examples/slugs): Derive a URL slug automatically on insert and update
+- [Multi-tenant row ownership — Examples](https://struckchure.github.io/axel/examples/multi-tenancy): Scope every row to the current user with a global and an RLS policy
+- [Expiring rows + cleanup — Examples](https://struckchure.github.io/axel/examples/expiring-rows): A TTL policy that hides stale rows, swept by a scheduled job
+- [Append-only event log — Examples](https://struckchure.github.io/axel/examples/append-only-log): Block updates and deletes with a single multi-command policy
+- [Job queue with a single claim — Examples](https://struckchure.github.io/axel/examples/job-queue): Enforce \"one pending job per key\" with a partial unique constraint
+- [Upserts — Examples](https://struckchure.github.io/axel/examples/upsert): Insert-or-update in a single statement with unless conflict
+- [Nested data in one query — Examples](https://struckchure.github.io/axel/examples/nested-data): Fetch an object and its related rows as JSON, with no N+1
+
+## Integrations
+
+- [Integrations — Overview](https://struckchure.github.io/axel/integrations): Postgres providers (Supabase, Neon) and language clients (TypeScript, Go)
+- [Supabase — Integrations](https://struckchure.github.io/axel/integrations/supabase): Run Axel migrations against a Supabase Postgres database
+- [Neon — Integrations](https://struckchure.github.io/axel/integrations/neon): Run Axel migrations against a Neon serverless Postgres database
+- [TypeScript — Integrations](https://struckchure.github.io/axel/integrations/typescript): End to end — from axel init to a typed TypeScript client
+- [Go — Integrations](https://struckchure.github.io/axel/integrations/golang): End to end — from axel init to a typed Go client
+
+## Tooling
+
+- [Editor setup](https://struckchure.github.io/axel/editors): Install the Axel extensions for Zed and VS Code (highlighting + language server)
+- [AI tooling](https://struckchure.github.io/axel/ai): llms.txt for the docs, and a drop-in Axel guide for coding agents
+- [Studio](https://struckchure.github.io/axel/studio): Browse and edit your database in the browser with Axel Studio
+- [Code Generation](https://struckchure.github.io/axel/codegen): Generate Go, TypeScript, or custom code from your schema and AQL queries
+- [CLI Reference](https://struckchure.github.io/axel/cli): All Axel commands, flags, and usage examples
