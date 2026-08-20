@@ -23,11 +23,22 @@ type ResolvedGlobal struct {
 	Required bool
 }
 
-// ResolvedScalar is a scalar type alias (e.g. EmailStr extending str).
+// ResolvedScalar is a scalar type alias (e.g. EmailStr extends str) or typed JSON scalar.
 type ResolvedScalar struct {
-	Name    string
-	Base    string // the builtin type it extends: "str", "int32", etc.
-	SQLType string // the SQL type to use: "TEXT", "INTEGER", etc.
+	Name          string
+	Base          string // the builtin type it extends: "json", "jsonb", "str", "int32", etc.
+	SQLType       string // the SQL type to use: "JSON", "JSONB", "TEXT", "INTEGER", etc.
+	Fields        map[string]*ResolvedScalarField
+	ExtendKeyword string // "extends" or "extending"
+}
+
+// ResolvedScalarField is a field in a typed JSON scalar.
+type ResolvedScalarField struct {
+	Name       string
+	AQLType    string // "str", "int32", "float64", etc.
+	SQLType    string // "TEXT", "INTEGER", "DOUBLE PRECISION", etc.
+	IsRequired bool
+	IsMulti    bool
 }
 
 // ResolvedEnum is an enum type.
@@ -38,16 +49,17 @@ type ResolvedEnum struct {
 
 // ResolvedType is a resolved object type (abstract or concrete).
 type ResolvedType struct {
-	Name        string
-	IsAbstract  bool
-	Table       string // snake_case table name; empty for abstract types
-	Properties  map[string]*ResolvedProp
-	Links       map[string]*ResolvedLink
-	Computed    map[string]*ResolvedComputed
-	Indexes     []*ResolvedIndex
-	Constraints []*ResolvedTypeConstraint
-	Triggers    []*ResolvedTrigger
-	Policies    []*ResolvedPolicy
+	Name          string
+	IsAbstract    bool
+	Table         string // snake_case table name; empty for abstract types
+	ExtendKeyword string // "extends" or "extending"
+	Properties    map[string]*ResolvedProp
+	Links         map[string]*ResolvedLink
+	Computed      map[string]*ResolvedComputed
+	Indexes       []*ResolvedIndex
+	Constraints   []*ResolvedTypeConstraint
+	Triggers      []*ResolvedTrigger
+	Policies      []*ResolvedPolicy
 }
 
 // ResolvedPolicy is a resolved row-level-security policy on a type. UsingAQL /
@@ -113,6 +125,7 @@ type ResolvedProp struct {
 	Name        string
 	Column      string // snake_case column name
 	SQLType     string // "TEXT", "INTEGER", "BOOLEAN", "UUID", "TIMESTAMPTZ"
+	AQLType     string // declared ASL scalar type name, e.g. "Coordinate", "str", "json"
 	EnumType    string // enum type name when the property is enum-backed; "" otherwise
 	IsRequired  bool
 	IsMulti     bool   // true → array or junction table

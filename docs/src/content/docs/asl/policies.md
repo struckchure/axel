@@ -171,7 +171,7 @@ abstract type Soft {
   deleted_at: datetime;
   policy not_deleted for select using ( .deleted_at is null );
 }
-type Note extending Soft { required body: str; }
+type Note extends Soft { required body: str; }
 ```
 
 ## The table owner bypasses RLS

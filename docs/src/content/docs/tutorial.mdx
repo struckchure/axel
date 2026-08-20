@@ -92,7 +92,7 @@ abstract type Base {
   };
 }
 
-type User extending Base {
+type User extends Base {
   required email: str {
     constraint exclusive;
     constraint min_length(10);
@@ -104,14 +104,14 @@ type User extending Base {
   active: bool { default := true };
 }
 
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required content: str;
   required link author: User;   # single link → FK column "author"
   multi link likes: User;       # multi link → junction table "post_likes"
 }
 
-type Comment extending Base {
+type Comment extends Base {
   required content: str;
   required link post: Post;
   required link author: User;
@@ -122,7 +122,7 @@ A few things worth noticing, each covered in the [ASL reference](/asl/):
 
 - **`use extension 'pgcrypto';`** enables the `pgcrypto` PostgreSQL extension, which provides cryptographic functions like `gen_random_uuid()` (or `gen_uuid()`).
 - **`abstract type Base`** is never a table on its own; its fields are inlined
-  into every type that `extending`s it.
+  into every type that `extends` it.
 - **`constraint`s** (`exclusive`, `pk`, `min_length`) compile to SQL
   `UNIQUE` / `PRIMARY KEY` / `CHECK` clauses.
 - **`required link author: User`** is a one-to-many foreign key; **`multi link

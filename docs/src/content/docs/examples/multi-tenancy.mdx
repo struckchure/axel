@@ -14,7 +14,7 @@ and a [policy](/asl/policies) compares it to `.owner`:
 ```asl
 global current_user: uuid;
 
-type Article extending Base {
+type Article extends Base {
   required title: str;
   required owner: uuid;
 

@@ -1377,8 +1377,8 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 
 	// Infer param types from the opposite side of a comparison.
 	if rt != nil {
-		inferFilterParamType(c.params, cmp.Left, cmp.Right, rt)
-		inferFilterParamType(c.params, cmp.Right, cmp.Left, rt)
+		c.inferFilterParamType(cmp.Left, cmp.Right, rt)
+		c.inferFilterParamType(cmp.Right, cmp.Left, rt)
 	}
 	c.inferWithParamType(cmp.Left, cmp.Right)
 	c.inferWithParamType(cmp.Right, cmp.Left)
@@ -1665,10 +1665,52 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 		return "", fmt.Errorf("type %q has no field %q", rt.Name, name)
 	}
 
-	// Multi-step: .author.email / .organization.owner → resolve the link then the
-	// remaining path against the target, emitting a correlated scalar subquery.
-	// This runs in both query mode (non-empty alias) and policy mode (alias ==
-	// ""); see outerRef for how the base row is referenced in each.
+	// Multi-step:
+	first := path.Steps[0]
+
+	// 1. JSON / Typed JSON scalar property access: .coord.lat or .data.status
+	if prop, ok := rt.Properties[first]; ok {
+		var scalar *asl.ResolvedScalar
+		if c.schema != nil && prop.AQLType != "" {
+			scalar = c.schema.ScalarTypes[prop.AQLType]
+		}
+		isJSON := prop.SQLType == "JSON" || prop.SQLType == "JSONB" || (scalar != nil && (scalar.SQLType == "JSON" || scalar.SQLType == "JSONB"))
+		if isJSON {
+			remaining := path.Steps[1:]
+			colRef := prop.Column
+			if alias != "" {
+				colRef = fmt.Sprintf("%s.%s", alias, prop.Column)
+			}
+			if scalar != nil && len(scalar.Fields) > 0 {
+				if len(remaining) > 1 {
+					return "", fmt.Errorf("cannot traverse nested path in JSON scalar %q (nested JSON is not supported)", scalar.Name)
+				}
+				field, ok := scalar.Fields[remaining[0]]
+				if !ok {
+					return "", fmt.Errorf("scalar type %q has no field %q", scalar.Name, remaining[0])
+				}
+				if field.SQLType == "TEXT" {
+					return fmt.Sprintf("(%s->>'%s')", colRef, remaining[0]), nil
+				}
+				return fmt.Sprintf("((%s->>'%s')::%s)", colRef, remaining[0], field.SQLType), nil
+			}
+			// Untyped JSON property:
+			if len(remaining) == 1 {
+				return fmt.Sprintf("(%s->>'%s')", colRef, remaining[0]), nil
+			}
+			var parts []string
+			for i, step := range remaining {
+				if i == len(remaining)-1 {
+					parts = append(parts, fmt.Sprintf("->>'%s'", step))
+				} else {
+					parts = append(parts, fmt.Sprintf("->'%s'", step))
+				}
+			}
+			return fmt.Sprintf("(%s%s)", colRef, strings.Join(parts, "")), nil
+		}
+	}
+
+	// 2. Link traversal
 	linkName := path.Steps[0]
 	link, ok := rt.Links[linkName]
 	if !ok {
@@ -1972,8 +2014,10 @@ func sqlToAQLType(sqlType string) string {
 		return "date"
 	case "TIME":
 		return "time"
-	case "JSONB":
+	case "JSON":
 		return "json"
+	case "JSONB":
+		return "jsonb"
 	case "BYTEA":
 		return "bytes"
 	case "NUMERIC":
@@ -1995,33 +2039,57 @@ func inferAssignmentParamType(params *paramCollector, val *aql.Expr, aqlType, en
 }
 
 // inferFilterParamType sets a param's type when paired with a path on the other side of a binary op.
-func inferFilterParamType(params *paramCollector, maybePath, maybeParam *aql.Primary, rt *asl.ResolvedType) {
-	if maybePath == nil || maybeParam == nil || maybeParam.Param == nil {
+func (c *compiler) inferFilterParamType(maybePath, maybeParam *aql.Primary, rt *asl.ResolvedType) {
+	if maybePath == nil || maybeParam == nil || maybeParam.Param == nil || rt == nil {
 		return
 	}
-	if maybePath.Path != nil && len(maybePath.Path.Steps) == 1 {
-		if prop, ok := rt.Properties[maybePath.Path.Steps[0]]; ok {
-			params.setType(maybeParam.Param.Name, sqlToAQLType(prop.SQLType))
-			if prop.EnumType != "" {
-				params.setEnumType(maybeParam.Param.Name, prop.EnumType)
+	if maybePath.Path != nil {
+		if len(maybePath.Path.Steps) == 1 {
+			if prop, ok := rt.Properties[maybePath.Path.Steps[0]]; ok {
+				c.params.setType(maybeParam.Param.Name, sqlToAQLType(prop.SQLType))
+				if prop.EnumType != "" {
+					c.params.setEnumType(maybeParam.Param.Name, prop.EnumType)
+				}
+			}
+		} else if len(maybePath.Path.Steps) == 2 {
+			if prop, ok := rt.Properties[maybePath.Path.Steps[0]]; ok {
+				if c.schema != nil && prop.AQLType != "" {
+					if scalar, ok := c.schema.ScalarTypes[prop.AQLType]; ok && scalar.Fields != nil {
+						if field, ok := scalar.Fields[maybePath.Path.Steps[1]]; ok {
+							c.params.setType(maybeParam.Param.Name, field.AQLType)
+						}
+					}
+				}
 			}
 		}
 	}
 }
 
 // filterOperandSQLType returns the SQL type of a single-step path operand — a
-// scalar property's SQL type, or UUID for a link's FK column. Used to cast an
-// optional param's `IS NULL` check so its type is known even when null.
-func filterOperandSQLType(p *aql.Primary, rt *asl.ResolvedType) string {
-	if p == nil || rt == nil || p.Path == nil || len(p.Path.Steps) != 1 {
+// scalar property's SQL type, or UUID for a link's FK column — or a typed JSON field's SQL type.
+// Used to cast an optional param's `IS NULL` check so its type is known even when null.
+func (c *compiler) filterOperandSQLType(p *aql.Primary, rt *asl.ResolvedType) string {
+	if p == nil || rt == nil || p.Path == nil {
 		return ""
 	}
-	name := p.Path.Steps[0]
-	if prop, ok := rt.Properties[name]; ok {
-		return prop.SQLType
-	}
-	if _, ok := rt.Links[name]; ok {
-		return "UUID" // FK columns reference the target's uuid id
+	if len(p.Path.Steps) == 1 {
+		name := p.Path.Steps[0]
+		if prop, ok := rt.Properties[name]; ok {
+			return prop.SQLType
+		}
+		if _, ok := rt.Links[name]; ok {
+			return "UUID" // FK columns reference the target's uuid id
+		}
+	} else if len(p.Path.Steps) == 2 {
+		if prop, ok := rt.Properties[p.Path.Steps[0]]; ok {
+			if c.schema != nil && prop.AQLType != "" {
+				if scalar, ok := c.schema.ScalarTypes[prop.AQLType]; ok && scalar.Fields != nil {
+					if field, ok := scalar.Fields[p.Path.Steps[1]]; ok {
+						return field.SQLType
+					}
+				}
+			}
+		}
 	}
 	return ""
 }
@@ -2035,7 +2103,7 @@ func (c *compiler) paramCastSuffix(operand, other *aql.Primary, rt *asl.Resolved
 	if operand == nil || operand.Param == nil {
 		return ""
 	}
-	if t := filterOperandSQLType(other, rt); t != "" {
+	if t := c.filterOperandSQLType(other, rt); t != "" {
 		return "::" + t
 	}
 	if bt, ok := asl.BuiltinSQLType(paramAQLType(c.params, operand.Param.Name)); ok {

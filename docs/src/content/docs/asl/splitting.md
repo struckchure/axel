@@ -56,7 +56,7 @@ abstract type Base {
 
 ```asl
 # schema/post.asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required link author: User;   # User lives in schema/user.asl
 }

@@ -64,10 +64,30 @@ func (g *GoGenerator) BeginSchema(ctx *codegen.Context, schema codegen.SchemaDes
 	for _, e := range schema.Enums {
 		g.emitted[e.Name] = true
 	}
+	for _, s := range schema.Scalars {
+		g.emitted[s.Name] = true
+	}
 	return nil
 }
 
-func (g *GoGenerator) OnScalar(_ *codegen.Context, _ codegen.ScalarDescriptor) error { return nil }
+func (g *GoGenerator) OnScalar(_ *codegen.Context, s codegen.ScalarDescriptor) error {
+	if len(s.Fields) > 0 {
+		fmt.Fprintf(&g.models, "type %s struct {\n", s.Name)
+		for _, f := range s.Fields {
+			goType := aqlToGoType(f.AQLType, !f.IsRequired)
+			if f.IsMulti {
+				goType = "[]" + aqlToGoType(f.AQLType, false)
+			}
+			fieldName := toGoFieldName(f.Name)
+			fmt.Fprintf(&g.models, "\t%s %s `json:%q`\n", fieldName, goType, f.Name)
+		}
+		fmt.Fprintf(&g.models, "}\n\n")
+	} else {
+		baseType := aqlToGoType(s.Base, false)
+		fmt.Fprintf(&g.models, "type %s = %s\n\n", s.Name, baseType)
+	}
+	return nil
+}
 func (g *GoGenerator) OnEnum(_ *codegen.Context, e codegen.EnumDescriptor) error {
 	// Emit a string-typed const block for each enum.
 	fmt.Fprintf(&g.models, "type %s string\n\n", e.Name)
@@ -656,16 +676,21 @@ func aqlToGoType(aqlType string, nullable bool) string {
 		"date":     "time.Time",
 		"time":     "time.Time",
 		"json":     "json.RawMessage",
+		"jsonb":    "json.RawMessage",
 		"bytes":    "[]byte",
 		"decimal":  "string",
 	}[aqlType]
 
 	if base == "" {
-		base = "any"
+		if aqlType != "" {
+			base = aqlType
+		} else {
+			base = "any"
+		}
 	}
 
 	// These types don't get pointer-ified for nullable
-	if base == "json.RawMessage" || base == "[]byte" || base == "any" {
+	if base == "json.RawMessage" || base == "[]byte" || base == "any" || strings.HasPrefix(base, "[]") {
 		return base
 	}
 	if nullable {

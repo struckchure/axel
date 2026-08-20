@@ -70,11 +70,21 @@ type EnumDescriptor struct {
 	Values []string `json:"values"`
 }
 
-// ScalarDescriptor describes a named scalar alias.
+// ScalarDescriptor describes a named scalar alias or typed JSON scalar.
 type ScalarDescriptor struct {
-	Name    string `json:"name"`
-	Base    string `json:"base"`
-	SQLType string `json:"sql_type"`
+	Name    string                  `json:"name"`
+	Base    string                  `json:"base"`
+	SQLType string                  `json:"sql_type"`
+	Fields  []ScalarFieldDescriptor `json:"fields,omitempty"`
+}
+
+// ScalarFieldDescriptor describes a field on a typed JSON scalar.
+type ScalarFieldDescriptor struct {
+	Name       string `json:"name"`
+	AQLType    string `json:"aql_type"`
+	SQLType    string `json:"sql_type"`
+	IsRequired bool   `json:"is_required"`
+	IsMulti    bool   `json:"is_multi"`
 }
 
 // ComputedDescriptor describes a computed (non-stored) field.
@@ -170,9 +180,27 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 	sort.Strings(scalarNames)
 	for _, n := range scalarNames {
 		s := ir.ScalarTypes[n]
-		desc.Scalars = append(desc.Scalars, ScalarDescriptor{
+		sd := ScalarDescriptor{
 			Name: s.Name, Base: s.Base, SQLType: s.SQLType,
-		})
+		}
+		if len(s.Fields) > 0 {
+			fNames := make([]string, 0, len(s.Fields))
+			for fn := range s.Fields {
+				fNames = append(fNames, fn)
+			}
+			sort.Strings(fNames)
+			for _, fn := range fNames {
+				f := s.Fields[fn]
+				sd.Fields = append(sd.Fields, ScalarFieldDescriptor{
+					Name:       f.Name,
+					AQLType:    f.AQLType,
+					SQLType:    f.SQLType,
+					IsRequired: f.IsRequired,
+					IsMulti:    f.IsMulti,
+				})
+			}
+		}
+		desc.Scalars = append(desc.Scalars, sd)
 	}
 
 	// Enums (sorted)
@@ -208,10 +236,14 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 		sort.Strings(propNames)
 		for _, pn := range propNames {
 			p := t.Properties[pn]
+			aqlType := p.AQLType
+			if aqlType == "" {
+				aqlType = sqlTypeToAQLType(p.SQLType)
+			}
 			pd := PropertyDescriptor{
 				Name:       p.Name,
 				Column:     p.Column,
-				AQLType:    sqlTypeToAQLType(p.SQLType),
+				AQLType:    aqlType,
 				SQLType:    p.SQLType,
 				EnumType:   p.EnumType,
 				IsRequired: p.IsRequired,
@@ -759,8 +791,10 @@ func sqlTypeToAQLType(sqlType string) string {
 		return "date"
 	case "TIME":
 		return "time"
-	case "JSONB":
+	case "JSON":
 		return "json"
+	case "JSONB":
+		return "jsonb"
 	case "BYTEA":
 		return "bytes"
 	case "NUMERIC":

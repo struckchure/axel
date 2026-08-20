@@ -15,7 +15,7 @@ purge them.
 ```asl
 use extension 'pg_cron';
 
-type Session extending Base {
+type Session extends Base {
   required token: str { constraint exclusive; };
   expires_at: datetime;
 

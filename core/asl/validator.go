@@ -37,3 +37,19 @@ func Validate(ir *SchemaIR) []error {
 
 	return errs
 }
+
+// ValidateWarnings returns non-fatal deprecation warnings and lint hints.
+func ValidateWarnings(ir *SchemaIR) []error {
+	var warnings []error
+	for name, s := range ir.ScalarTypes {
+		if s.ExtendKeyword == "extending" {
+			warnings = append(warnings, fmt.Errorf("scalar type %q: keyword 'extending' is deprecated; use 'extends' instead (run 'axel fmt' to fix)", name))
+		}
+	}
+	for name, t := range ir.ObjectTypes {
+		if t.ExtendKeyword == "extending" {
+			warnings = append(warnings, fmt.Errorf("type %q: keyword 'extending' is deprecated; use 'extends' instead (run 'axel fmt' to fix)", name))
+		}
+	}
+	return warnings
+}

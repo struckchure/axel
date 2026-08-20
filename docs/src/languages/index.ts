@@ -121,7 +121,7 @@ export const asl: LanguageRegistration = {
     },
     "builtin-type": {
       match:
-        "\\b(str|int16|int32|int64|float32|float64|bool|uuid|datetime|date|time|json|bytes|decimal)\\b",
+        "\\b(str|int16|int32|int64|float32|float64|bool|uuid|datetime|date|time|json|jsonb|bytes|decimal)\\b",
       name: "support.type.builtin.asl",
     },
     constant: {

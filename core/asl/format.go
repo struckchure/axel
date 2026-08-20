@@ -159,9 +159,7 @@ func (f *aslFmt) definition(d *Definition, next int) {
 		f.wf("%s: %s;", g.Name, g.Type)
 		f.commit(next)
 	case d.ScalarType != nil:
-		s := d.ScalarType
-		f.wf("scalar type %s extending %s;", s.Name, s.Extends)
-		f.commit(next)
+		f.scalarTypeDef(d.ScalarType, next)
 	case d.EnumType != nil:
 		e := d.EnumType
 		f.wf("enum %s { %s }", e.Name, strings.Join(e.Values, ", "))
@@ -171,6 +169,42 @@ func (f *aslFmt) definition(d *Definition, next int) {
 	case d.TypeDef != nil:
 		f.typeDef(d.TypeDef, next)
 	}
+}
+
+func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
+	if s.Body == nil || len(s.Body.Fields) == 0 {
+		f.wf("scalar type %s extends %s;", s.Name, s.Extends)
+		f.commit(next)
+		return
+	}
+	f.wf("scalar type %s extends %s {", s.Name, s.Extends)
+	if len(s.Body.Fields) > 0 {
+		f.commit(s.Body.Fields[0].Pos.Offset)
+	} else {
+		f.commit(next)
+	}
+	f.indent++
+	for i, field := range s.Body.Fields {
+		f.leading(field.Pos.Offset)
+		fieldNext := next
+		if i+1 < len(s.Body.Fields) {
+			fieldNext = s.Body.Fields[i+1].Pos.Offset
+		}
+		req := ""
+		if field.Required {
+			req = "required "
+		}
+		multi := ""
+		if field.Multi {
+			multi = "multi "
+		}
+		f.wf("%s%s%s: %s;", req, multi, field.Name, field.Type)
+		f.commit(fieldNext)
+	}
+	f.indent--
+	f.leading(s.EndPos.Offset)
+	f.w("}")
+	f.commit(next)
 }
 
 func (f *aslFmt) function(fn *FunctionDecl, next int) {
@@ -208,7 +242,7 @@ func (f *aslFmt) typeDef(t *TypeDef, next int) {
 	}
 	f.wf("type %s", t.Name)
 	if len(t.Extending) > 0 {
-		f.wf(" extending %s", strings.Join(t.Extending, ", "))
+		f.wf(" extends %s", strings.Join(t.Extending, ", "))
 	}
 	if len(t.Members) == 0 {
 		f.w(" {}")

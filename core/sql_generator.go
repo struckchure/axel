@@ -393,7 +393,8 @@ func mapType(axelType string) string {
 		"date":     "DATE",
 		"time":     "TIME",
 		"decimal":  "NUMERIC",
-		"json":     "JSONB",
+		"json":     "JSON",
+		"jsonb":    "JSONB",
 		"bytes":    "BYTEA",
 	}
 
@@ -432,7 +433,7 @@ func isBuiltinType(typeName string) bool {
 	builtins := []string{
 		"str", "int16", "int32", "int64",
 		"float32", "float64", "bool", "uuid",
-		"datetime", "date", "time", "decimal", "json", "bytes",
+		"datetime", "date", "time", "decimal", "json", "jsonb", "bytes",
 	}
 
 	return slices.Contains(builtins, typeName)

@@ -18,8 +18,8 @@ such as `schema/*.asl`.
 
 An ASL file is a set of top-level declarations. The reference is split by feature:
 
-- **[Schema](/asl/schema)** — concrete and abstract types, inheritance (`extending`), indexes, and composite constraints.
-- **[Data Types](/asl/data-types)** — built-in scalars, named scalar aliases, and enums.
+- **[Schema](/asl/schema)** — concrete and abstract types, inheritance (`extends`), indexes, and composite constraints.
+- **[Data Types](/asl/data-types)** — built-in scalars, named scalar aliases, typed JSON, and enums.
 - **[Fields](/asl/fields)** — properties, defaults, rewrites, field constraints, links, and computed fields.
 - **[Functions](/asl/functions)** — top-level Postgres functions with AQL or raw-SQL bodies.
 - **[Triggers](/asl/triggers)** — row/statement triggers attached to a type.
@@ -30,7 +30,7 @@ An ASL file is a set of top-level declarations. The reference is split by featur
 A schema that touches most features:
 
 ```asl
-scalar type EmailStr extending str;
+scalar type EmailStr extends str;
 
 enum Role { Admin, Member, Guest }
 
@@ -46,7 +46,7 @@ abstract type Base {
   };
 }
 
-type User extending Base {
+type User extends Base {
   required email: EmailStr {
     constraint exclusive;
   };
@@ -60,14 +60,14 @@ type User extending Base {
   index on (.email);
 }
 
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required content: str;
   required link author: User;
   multi link likes: User;
 }
 
-type Comment extending Base {
+type Comment extends Base {
   required link post: Post;
   required link author: User;
   required content: str;

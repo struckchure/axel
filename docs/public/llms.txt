@@ -22,7 +22,7 @@ one file at /llms-full.txt.
 - [Indexes — ASL](https://struckchure.github.io/axel/asl/schema/indexes): Index declarations on one or more columns
 - [Constraints — ASL](https://struckchure.github.io/axel/asl/schema/constraints): Composite, type-level constraints spanning multiple columns
 - [Scalars — ASL](https://struckchure.github.io/axel/asl/data-types/scalars): Built-in scalar types and their PostgreSQL mappings
-- [Aliases — ASL](https://struckchure.github.io/axel/asl/data-types/aliases): Named scalar aliases over a built-in scalar
+- [Aliases & Typed JSON — ASL](https://struckchure.github.io/axel/asl/data-types/aliases): Named scalar aliases and typed JSON scalar definitions
 - [Enums — ASL](https://struckchure.github.io/axel/asl/data-types/enums): Enumerated string types with a CHECK constraint
 - [Properties — ASL](https://struckchure.github.io/axel/asl/fields/properties): Scalar columns, required, and defaults
 - [Rewrites — ASL](https://struckchure.github.io/axel/asl/fields/rewrites): Auto-assign a field on insert/update events

@@ -31,7 +31,7 @@ RETURNING "created_at", "email", "id", "role", "updated_at";
 The conflict target `.email` must be a unique/exclusive column:
 
 ```asl
-type User extending Base {
+type User extends Base {
   required email: str { constraint exclusive; };
 }
 ```

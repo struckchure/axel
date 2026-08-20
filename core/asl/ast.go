@@ -44,14 +44,35 @@ type ExtensionDecl struct {
 	EndPos lexer.Position
 }
 
-// ScalarTypeDef defines a named scalar alias.
+// ScalarTypeDef defines a named scalar alias or typed JSON scalar.
 //
-//	scalar type EmailStr extending str;
+//	scalar type EmailStr extends str;
+//	scalar type Coordinate extends json {
+//	  lat: str;
+//	  lng: str;
+//	}
 type ScalarTypeDef struct {
-	Pos     lexer.Position
-	Name    string `parser:"'scalar' 'type' @Ident"`
-	Extends string `parser:"'extending' @Ident ';'"`
-	EndPos  lexer.Position
+	Pos           lexer.Position
+	Name          string          `parser:"'scalar' 'type' @Ident"`
+	ExtendKeyword string          `parser:"@( 'extends' | 'extending' )"`
+	Extends       string          `parser:"@Ident"`
+	Body          *ScalarTypeBody `parser:"( '{' @@ '}' )? ';'?"`
+	EndPos        lexer.Position
+}
+
+// ScalarTypeBody holds fields defined on a typed JSON scalar.
+type ScalarTypeBody struct {
+	Fields []*ScalarFieldDecl `parser:"@@*"`
+}
+
+// ScalarFieldDecl is one property in a typed JSON scalar body.
+type ScalarFieldDecl struct {
+	Pos      lexer.Position
+	Required bool   `parser:"@'required'?"`
+	Multi    bool   `parser:"@'multi'?"`
+	Name     string `parser:"@Ident ':'"`
+	Type     string `parser:"@Ident ';'"`
+	EndPos   lexer.Position
 }
 
 // EnumTypeDef defines an enum type.
@@ -66,15 +87,16 @@ type EnumTypeDef struct {
 
 // TypeDef defines a concrete or abstract type (or model — backward compat).
 //
-//	abstract type User extending Timestamped { ... }
+//	abstract type User extends Timestamped { ... }
 //	model User extends Base { ... }
 type TypeDef struct {
-	Pos       lexer.Position
-	Abstract  bool      `parser:"@'abstract'?"`
-	Name      string    `parser:"( 'type' | 'model' ) @Ident"`
-	Extending []string  `parser:"( ( 'extends' | 'extending' ) @Ident ( ',' @Ident )* )?"`
-	Members   []*Member `parser:"'{' @@* '}'"`
-	EndPos    lexer.Position
+	Pos           lexer.Position
+	Abstract      bool      `parser:"@'abstract'?"`
+	Name          string    `parser:"( 'type' | 'model' ) @Ident"`
+	ExtendKeyword string    `parser:"( @( 'extends' | 'extending' )"`
+	Extending     []string  `parser:"  @Ident ( ',' @Ident )* )?"`
+	Members       []*Member `parser:"'{' @@* '}'"`
+	EndPos        lexer.Position
 }
 
 // Member is any declaration inside a type body.

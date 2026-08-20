@@ -78,7 +78,7 @@
 ((type_identifier) @type.builtin
   (#any-of? @type.builtin
     "str" "int16" "int32" "int64" "float32" "float64"
-    "bool" "uuid" "datetime" "date" "time" "json" "bytes" "decimal"))
+    "bool" "uuid" "datetime" "date" "time" "json" "jsonb" "bytes" "decimal"))
 
 ; Default functions and boolean literals (bare identifiers in a default)
 ((default (identifier) @function.builtin)

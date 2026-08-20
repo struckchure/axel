@@ -10,7 +10,7 @@ import (
 // builtinScalars are the AQL/ASL builtin value types (mirrors the Zed grammar).
 var builtinScalars = []string{
 	"str", "int16", "int32", "int64", "float32", "float64",
-	"bool", "uuid", "datetime", "date", "time", "json", "bytes", "decimal",
+	"bool", "uuid", "datetime", "date", "time", "json", "jsonb", "bytes", "decimal",
 }
 
 // sqlToAQL maps a resolved SQL type back to its AQL/ASL name for display.
@@ -38,8 +38,10 @@ func sqlToAQL(sqlType string) string {
 		return "date"
 	case "TIME":
 		return "time"
-	case "JSONB":
+	case "JSON":
 		return "json"
+	case "JSONB":
+		return "jsonb"
 	case "BYTEA":
 		return "bytes"
 	case "NUMERIC":
@@ -50,12 +52,45 @@ func sqlToAQL(sqlType string) string {
 }
 
 // propType returns the display type of a property (its enum name if enum-backed,
-// else the AQL scalar).
+// its scalar type name if scalar-backed, else the AQL scalar).
 func propType(p *asl.ResolvedProp) string {
 	if p.EnumType != "" {
 		return p.EnumType
 	}
+	if p.AQLType != "" {
+		return p.AQLType
+	}
 	return sqlToAQL(p.SQLType)
+}
+
+// scalarHover renders a markdown summary of a scalar type definition.
+func scalarHover(s *asl.ResolvedScalar) string {
+	var b strings.Builder
+	b.WriteString("```asl\n")
+	base := s.Base
+	if base == "" {
+		base = sqlToAQL(s.SQLType)
+	}
+	if len(s.Fields) == 0 {
+		b.WriteString("scalar type " + s.Name + " extends " + base + ";\n")
+	} else {
+		b.WriteString("scalar type " + s.Name + " extends " + base + " {\n")
+		for _, fn := range sortedKeys(s.Fields) {
+			f := s.Fields[fn]
+			req := ""
+			if f.IsRequired {
+				req = "required "
+			}
+			multi := ""
+			if f.IsMulti {
+				multi = "multi "
+			}
+			b.WriteString("  " + req + multi + f.Name + ": " + f.AQLType + ";\n")
+		}
+		b.WriteString("}\n")
+	}
+	b.WriteString("```")
+	return b.String()
 }
 
 // typeHover renders a markdown summary of an object type: its fields and links.
@@ -89,13 +124,19 @@ func typeHover(rt *asl.ResolvedType) string {
 
 // fieldHover renders a one-line markdown summary for a field of rt, or "" if rt
 // has no such field.
-func fieldHover(rt *asl.ResolvedType, name string) string {
+func fieldHover(rt *asl.ResolvedType, name string, schema *asl.SchemaIR) string {
 	if p, ok := rt.Properties[name]; ok {
 		req := ""
 		if p.IsRequired {
 			req = "required "
 		}
-		return "```asl\n" + req + p.Name + ": " + propType(p) + "\n```"
+		header := "```asl\n" + req + p.Name + ": " + propType(p) + "\n```"
+		if schema != nil && p.AQLType != "" {
+			if s, ok := schema.ScalarTypes[p.AQLType]; ok && len(s.Fields) > 0 {
+				header += "\n\n" + scalarHover(s)
+			}
+		}
+		return header
 	}
 	if l, ok := rt.Links[name]; ok {
 		mod := "link"

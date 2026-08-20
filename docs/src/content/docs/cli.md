@@ -254,7 +254,7 @@ Formats `.asl` schema and `.aql` query files in canonical style, preserving comm
 Inside a type body, members are printed in blocks — properties and links (then computed fields), constraints, indexes, policies, triggers — with one blank line between blocks and none within one. Fields keep the order you wrote them in, since that decides column order; everything else is diffed by name, so grouping it costs nothing:
 
 ```asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required link author: User;
   computed excerpt := .content;

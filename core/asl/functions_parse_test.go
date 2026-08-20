@@ -53,7 +53,7 @@ function slugify(value: text, sep: text) -> text {
 func TestFunctionTypeResolution(t *testing.T) {
 	src := `
 @language sql
-function f(a: str, b: int32, c: jsonb, d: text[]) -> bool {
+function f(a: str, b: int32, c: jsonb, d: inet, e: text[]) -> bool {
   return a is not null;
 };
 `
@@ -66,7 +66,7 @@ function f(a: str, b: int32, c: jsonb, d: text[]) -> bool {
 		t.Fatalf("resolve: %v", err)
 	}
 	fn := ir.Functions["f"]
-	want := []string{"TEXT", "INTEGER", "jsonb", "text[]"}
+	want := []string{"TEXT", "INTEGER", "JSONB", "inet", "text[]"}
 	for i, w := range want {
 		if fn.Params[i].SQLType != w {
 			t.Errorf("param %d SQLType = %q, want %q", i, fn.Params[i].SQLType, w)

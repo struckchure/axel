@@ -10,12 +10,16 @@ Comments start with `#`. Every top-level declaration and every member inside a t
 
 ```asl
 use extension 'pgcrypto';              # CREATE EXTENSION IF NOT EXISTS
-scalar type EmailStr extending str;    # named alias over a builtin scalar
+scalar type EmailStr extends str;      # named alias over a builtin scalar
+scalar type Coordinate extends json {  # typed JSON scalar
+  lat: str;
+  lng: str;
+}
 enum Role { Admin, Member, Guest }     # TEXT column + CHECK constraint
 global current_user: uuid;             # session GUC, not DDL
 global required tenant: str;
 abstract type Base { … }               # no table; inherited only
-type User extending Base { … }         # table "user"
+type User extends Base { … }           # table "user"
 model User { … }                       # `model` is accepted as an alias for `type`
 ```
 
@@ -35,9 +39,10 @@ files are merged into one schema. There is no `import`; `use extension` is dedup
 | `int16` | `SMALLINT` | | `datetime` | `TIMESTAMPTZ` |
 | `int32` | `INTEGER` | | `date` | `DATE` |
 | `int64` | `BIGINT` | | `time` | `TIME` |
-| `float32` | `REAL` | | `json` | `JSONB` |
-| `float64` | `DOUBLE PRECISION` | | `bytes` | `BYTEA` |
-| `bool` | `BOOLEAN` | | `decimal` | `NUMERIC` |
+| `float32` | `REAL` | | `json` | `JSON` |
+| `float64` | `DOUBLE PRECISION` | | `jsonb` | `JSONB` |
+| `bool` | `BOOLEAN` | | `bytes` | `BYTEA` |
+| `decimal` | `NUMERIC` | | | |
 
 Table and column names are snake_cased from the declaration (`BlogPost` → `blog_post`).
 
@@ -165,7 +170,7 @@ return types may be ASL scalars or raw Postgres types, with `[]` for arrays.
 |---|---|
 | `unknown type "X"` | Not a builtin, scalar, enum or declared type — or its file is outside `schema-path` |
 | `type "X" extends unknown type "Y"` | Parent not declared anywhere in the schema set |
-| `inheritance cycle detected involving type "X"` | `extending` loops back on itself |
+| `inheritance cycle detected involving type "X"` | `extends` loops back on itself |
 | `type "X" declared more than once (a.asl:1:1 and b.asl:4:1)` | One flat namespace across files |
 | `global "g": unknown type … (globals must be a scalar type)` | Globals cannot be object-typed |
 | `type "X" trigger "t" executes unknown function "f"` | Trigger target missing or not `-> trigger` |

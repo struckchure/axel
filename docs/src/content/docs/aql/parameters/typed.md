@@ -51,7 +51,7 @@ offset $offset<int32>?;
 The type may name any declared **value** type from your schema:
 
 - a **builtin scalar** — `str`, `int16`/`int32`/`int64`, `float32`/`float64`, `bool`, `uuid`, `datetime`, `date`, `time`, `json`, `bytes`, `decimal`
-- a **scalar alias** — e.g. `scalar type EmailStr extending str` renders as its base builtin
+- a **scalar alias** — e.g. `scalar type EmailStr extends str` renders as its base builtin
 - an **enum** — e.g. `TransactionStatus`, which generates the real enum type in code (Go `TransactionStatus`, TypeScript `TransactionStatus`) rather than a bare `string`
 
 Object types (tables) are **not** valid parameter types — a parameter is a value, not a row — and an unknown type name is a compile error.

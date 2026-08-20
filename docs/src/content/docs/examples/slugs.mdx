@@ -19,7 +19,7 @@ function slugify(value: text) -> text {
   return regexp_replace(lower(public.unaccent(value)), '[^a-z0-9]+', '-', 'gi');
 };
 
-type Article extending Base {
+type Article extends Base {
   required title: str;
   slug: str {
     constraint exclusive;

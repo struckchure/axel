@@ -101,6 +101,10 @@ func TestResolveLanguageValidationErrors(t *testing.T) {
 		{"unknown link target", `type T { link owner: Missing; }`, "references unknown type"},
 		{"invalid rewrite event", `type T { value: str { rewrite delete := 'x'; }; }`, "rewrite event"},
 		{"invalid trigger function", `type T { id: uuid; trigger t before insert execute missing(); }`, "executes unknown function"},
+		{"scalar fields on non-json", `scalar type S extends str { x: str; }`, "cannot define fields"},
+		{"disallowed bool in json scalar", `scalar type S extends json { active: bool; }`, "type \"bool\" is not allowed"},
+		{"disallowed uuid in json scalar", `scalar type S extends json { id: uuid; }`, "type \"uuid\" is not allowed"},
+		{"disallowed nested json in json scalar", `scalar type S extends json { nested: json; }`, "type \"json\" is not allowed"},
 	}
 
 	for _, tc := range cases {
@@ -114,5 +118,98 @@ func TestResolveLanguageValidationErrors(t *testing.T) {
 				t.Fatalf("resolve error = %v, want containing %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestTypedJsonScalars(t *testing.T) {
+	src := `
+scalar type Coordinate extends json {
+  lat: str;
+  lng: str;
+}
+
+scalar type ItemStats extends jsonb {
+  score: float64;
+  views: int32;
+  multi tags: str;
+}
+
+type Location {
+  id: uuid;
+  name: str;
+  coord: Coordinate;
+  stats: ItemStats;
+}
+`
+	ir := resolveSrc(t, src)
+	coord := ir.ScalarTypes["Coordinate"]
+	if coord == nil || coord.Base != "json" || coord.SQLType != "JSON" {
+		t.Fatalf("Coordinate scalar = %+v", coord)
+	}
+	if len(coord.Fields) != 2 {
+		t.Fatalf("Coordinate fields len = %d, want 2", len(coord.Fields))
+	}
+	if f := coord.Fields["lat"]; f == nil || f.AQLType != "str" || f.SQLType != "TEXT" || f.IsMulti {
+		t.Errorf("lat field = %+v", f)
+	}
+
+	stats := ir.ScalarTypes["ItemStats"]
+	if stats == nil || stats.Base != "jsonb" || stats.SQLType != "JSONB" {
+		t.Fatalf("ItemStats scalar = %+v", stats)
+	}
+	if len(stats.Fields) != 3 {
+		t.Fatalf("ItemStats fields len = %d, want 3", len(stats.Fields))
+	}
+	if f := stats.Fields["score"]; f == nil || f.AQLType != "float64" || f.SQLType != "DOUBLE PRECISION" {
+		t.Errorf("score field = %+v", f)
+	}
+	if f := stats.Fields["tags"]; f == nil || f.AQLType != "str" || !f.IsMulti {
+		t.Errorf("tags field = %+v", f)
+	}
+
+	loc := ir.ObjectTypes["Location"]
+	if loc == nil {
+		t.Fatalf("Location type missing")
+	}
+	if p := loc.Properties["coord"]; p == nil || p.AQLType != "Coordinate" || p.SQLType != "JSON" {
+		t.Errorf("coord prop = %+v", p)
+	}
+	if p := loc.Properties["stats"]; p == nil || p.AQLType != "ItemStats" || p.SQLType != "JSONB" {
+		t.Errorf("stats prop = %+v", p)
+	}
+}
+
+func TestExtendingDeprecationAndFormat(t *testing.T) {
+	src := `scalar type Coordinate extending json {
+  lat: str;
+  lng: str;
+}
+
+type Base {
+  id: uuid;
+}
+
+type Place extending Base {
+  coord: Coordinate;
+}
+`
+	ir := resolveSrc(t, src)
+	warnings := ValidateWarnings(ir)
+	if len(warnings) != 2 {
+		t.Fatalf("got %d warnings, want 2: %v", len(warnings), warnings)
+	}
+
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+	if strings.Contains(formatted, "extending") {
+		t.Errorf("formatted still contains 'extending':\n%s", formatted)
+	}
+	if !strings.Contains(formatted, "scalar type Coordinate extends json {") {
+		t.Errorf("formatted missing Coordinate body:\n%s", formatted)
+	}
+	if !strings.Contains(formatted, "type Place extends Base {") {
+		t.Errorf("formatted missing Place extends Base:\n%s", formatted)
 	}
 }

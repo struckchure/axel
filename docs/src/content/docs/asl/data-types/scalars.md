@@ -18,9 +18,17 @@ description: "Built-in scalar types and their PostgreSQL mappings"
 | `datetime` | `TIMESTAMPTZ`      |
 | `date`     | `DATE`             |
 | `time`     | `TIME`             |
-| `json`     | `JSONB`            |
+| `json`     | `JSON`             |
+| `jsonb`    | `JSONB`            |
 | `bytes`    | `BYTEA`            |
 | `decimal`  | `NUMERIC`          |
+
+## `json` vs `jsonb`
+
+Axel explicitly distinguishes between PostgreSQL's `JSON` and `JSONB` types:
+
+* **`jsonb` (`JSONB`)**: Stored in a decomposed binary format. Preferred for structured data that must be queried, filtered, searched, or indexed (GIN indexes, expression indexes).
+* **`json` (`JSON`)**: Stored as exact text. Use only when the original JSON formatting, key ordering, or duplicate keys must be preserved, or when the payload is completely opaque.
 
 ## Using `uuid` with `pgcrypto`
 

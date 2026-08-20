@@ -72,15 +72,18 @@ type Application {
   required id: uuid;
   os: ApplicationOs;
   build_system_config: json;
+  audit_data: jsonb;
 }`
 	c := compileAQL(t, schema, `update Application filter .id = $id set {
       os := $os<ApplicationOs>? ?? .os,
-      build_system_config := $cfg<json>? ?? .build_system_config
+      build_system_config := $cfg<json>? ?? .build_system_config,
+      audit_data := $audit<jsonb>? ?? .audit_data
     };`)
 
 	for _, want := range []string{
 		"os = COALESCE($1::TEXT, a.os)",
-		"build_system_config = COALESCE($2::JSONB, a.build_system_config)",
+		"build_system_config = COALESCE($2::JSON, a.build_system_config)",
+		"audit_data = COALESCE($3::JSONB, a.audit_data)",
 	} {
 		if !strings.Contains(c.SQL, want) {
 			t.Errorf("expected %q in:\n%s", want, c.SQL)

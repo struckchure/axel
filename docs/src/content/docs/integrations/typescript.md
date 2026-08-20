@@ -44,7 +44,7 @@ The starter `axel/schema.asl` already defines a reusable `Base` (uuid primary ke
 + `created_at` / `updated_at`) and a `User`. Add a `Post` linked to `User`:
 
 ```asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   content: str;
   required author: User;

@@ -37,6 +37,13 @@ func SchemaDiagnostics(text string) []Diagnostic {
 			Message:  e.Error(),
 		})
 	}
+	for _, w := range asl.ValidateWarnings(ir) {
+		diags = append(diags, Diagnostic{
+			Range:    errorRange(text, w.Error()),
+			Severity: SeverityWarning,
+			Message:  w.Error(),
+		})
+	}
 	return append(diags, inlineAQLDiagnostics(text, ir)...)
 }
 
@@ -84,6 +91,12 @@ func SchemaDiagnosticsIn(path, text string, others []SchemaFile) []Diagnostic {
 	var diags []Diagnostic
 	for _, e := range asl.Validate(ir) {
 		if d, ok := localDiag(path, text, e.Error()); ok {
+			diags = append(diags, d)
+		}
+	}
+	for _, w := range asl.ValidateWarnings(ir) {
+		if d, ok := localDiag(path, text, w.Error()); ok {
+			d.Severity = SeverityWarning
 			diags = append(diags, d)
 		}
 	}

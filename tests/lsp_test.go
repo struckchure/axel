@@ -292,3 +292,54 @@ func TestInlineAQLDiagnostics(t *testing.T) {
 		t.Errorf("valid inline query should have no diagnostics, got %+v", d)
 	}
 }
+
+func TestTypedJsonHover(t *testing.T) {
+	schemaText := `
+scalar type Coordinate extends json {
+  lat: str;
+  lng: str;
+}
+
+type Location {
+  required id: uuid;
+  name: str;
+  coord: Coordinate;
+}
+`
+	schema := parseSchema(t, schemaText)
+
+	// 1. Hover on scalar name in schema
+	h := lsp.SchemaHover(schemaText, offsetOf(t, schemaText, "Coordinate"), schema)
+	if h == nil {
+		t.Fatal("expected hover for Coordinate in schema")
+	}
+	if !strings.Contains(h.Contents, "scalar type Coordinate extends json {") || !strings.Contains(h.Contents, "lat: str;") {
+		t.Errorf("unexpected schema hover content:\n%s", h.Contents)
+	}
+
+	// 2. Hover on scalar name in query
+	qWithCast := `select Location { name } filter .coord = $c<Coordinate>;`
+	hType := lsp.QueryHover(qWithCast, offsetOf(t, qWithCast, "Coordinate"), schema)
+	if hType == nil || !strings.Contains(hType.Contents, "scalar type Coordinate extends json {") {
+		t.Fatalf("expected hover for Coordinate in query, got %+v", hType)
+	}
+
+	queryText := `select Location { name, coord } filter .coord.lat = $lat;`
+	hCoord := lsp.QueryHover(queryText, offsetOf(t, queryText, "coord"), schema)
+	if hCoord == nil {
+		t.Fatal("expected hover for coord property in query")
+	}
+	if !strings.Contains(hCoord.Contents, "coord: Coordinate") || !strings.Contains(hCoord.Contents, "lat: str;") {
+		t.Errorf("unexpected query hover content for coord:\n%s", hCoord.Contents)
+	}
+
+	// 3. Hover on subfield .lat in .coord.lat
+	hLat := lsp.QueryHover(queryText, offsetOf(t, queryText, "lat"), schema)
+	if hLat == nil {
+		t.Fatal("expected hover for lat subfield in query")
+	}
+	if !strings.Contains(hLat.Contents, "lat: str") || !strings.Contains(hLat.Contents, "Coordinate") {
+		t.Errorf("unexpected query hover content for lat:\n%s", hLat.Contents)
+	}
+}
+

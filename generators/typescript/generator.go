@@ -107,10 +107,35 @@ func (g *TsGenerator) BeginSchema(ctx *codegen.Context, schema codegen.SchemaDes
 	for _, e := range schema.Enums {
 		g.emitted[e.Name] = true
 	}
+	for _, s := range schema.Scalars {
+		g.emitted[s.Name] = true
+	}
 	return nil
 }
 
-func (g *TsGenerator) OnScalar(_ *codegen.Context, _ codegen.ScalarDescriptor) error { return nil }
+func (g *TsGenerator) OnScalar(_ *codegen.Context, s codegen.ScalarDescriptor) error {
+	if len(s.Fields) > 0 {
+		fmt.Fprintf(&g.models, "export interface %s {\n", s.Name)
+		for _, f := range s.Fields {
+			optional := !f.IsRequired
+			tsType := aqlToTsType(f.AQLType, false)
+			if f.IsMulti {
+				tsType += "[]"
+			}
+			if optional {
+				tsType += " | null"
+			}
+			fmt.Fprintf(&g.models, "  %s%s: %s;\n", toTsCamelCase(f.Name), optionalMark(optional), tsType)
+		}
+		fmt.Fprintf(&g.models, "}\n\n")
+		g.emitted[s.Name] = true
+	} else {
+		baseType := aqlToTsType(s.Base, false)
+		fmt.Fprintf(&g.models, "export type %s = %s;\n\n", s.Name, baseType)
+		g.emitted[s.Name] = true
+	}
+	return nil
+}
 
 func (g *TsGenerator) OnEnum(_ *codegen.Context, e codegen.EnumDescriptor) error {
 	quoted := make([]string, len(e.Values))
@@ -1562,10 +1587,15 @@ func aqlToTsType(aqlType string, nullable bool) string {
 		"date":     "Date",
 		"time":     "string",
 		"json":     "unknown",
+		"jsonb":    "unknown",
 		"bytes":    "Uint8Array",
 	}[aqlType]
 	if base == "" {
-		base = "unknown"
+		if aqlType != "" {
+			base = aqlType
+		} else {
+			base = "unknown"
+		}
 	}
 	if nullable {
 		return base + " | null"

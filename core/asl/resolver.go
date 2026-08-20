@@ -22,9 +22,22 @@ var builtinTypes = map[string]string{
 	"datetime": "TIMESTAMPTZ",
 	"date":     "DATE",
 	"time":     "TIME",
-	"json":     "JSONB",
+	"json":     "JSON",
+	"jsonb":    "JSONB",
 	"bytes":    "BYTEA",
 	"decimal":  "NUMERIC",
+}
+
+// allowedJsonScalarFieldTypes restricts field types inside typed JSON scalars
+// strictly to strings and numbers.
+var allowedJsonScalarFieldTypes = map[string]bool{
+	"str":     true,
+	"int16":   true,
+	"int32":   true,
+	"int64":   true,
+	"float32": true,
+	"float64": true,
+	"decimal": true,
 }
 
 // BuiltinSQLType returns the SQL type for a builtin scalar name (e.g. "str" →
@@ -187,7 +200,39 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			if err != nil {
 				return fmt.Errorf("scalar type %q: %w", s.Name, err)
 			}
-			ir.ScalarTypes[s.Name] = &ResolvedScalar{Name: s.Name, Base: s.Extends, SQLType: sqlType}
+			var fields map[string]*ResolvedScalarField
+			if s.Body != nil && len(s.Body.Fields) > 0 {
+				if sqlType != "JSON" && sqlType != "JSONB" {
+					return fmt.Errorf("scalar type %q extending %q cannot define fields: fields are only supported on json/jsonb scalars", s.Name, s.Extends)
+				}
+				fields = make(map[string]*ResolvedScalarField)
+				for _, f := range s.Body.Fields {
+					if _, exists := fields[f.Name]; exists {
+						return fmt.Errorf("scalar type %q: field %q declared more than once", s.Name, f.Name)
+					}
+					if !allowedJsonScalarFieldTypes[f.Type] {
+						return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON fields currently only support strings (str) and numbers (int16, int32, int64, float32, float64, decimal)", s.Name, f.Name, f.Type)
+					}
+					fSQLType, ok := builtinTypes[f.Type]
+					if !ok {
+						return fmt.Errorf("scalar type %q field %q: unknown type %q", s.Name, f.Name, f.Type)
+					}
+					fields[f.Name] = &ResolvedScalarField{
+						Name:       f.Name,
+						AQLType:    f.Type,
+						SQLType:    fSQLType,
+						IsRequired: f.Required,
+						IsMulti:    f.Multi,
+					}
+				}
+			}
+			ir.ScalarTypes[s.Name] = &ResolvedScalar{
+				Name:          s.Name,
+				Base:          s.Extends,
+				SQLType:       sqlType,
+				Fields:        fields,
+				ExtendKeyword: s.ExtendKeyword,
+			}
 			return nil
 		}
 		for _, name := range scalarOrder {
@@ -224,12 +269,13 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 	for _, name := range objOrder {
 		t := objDefs[name]
 		rt := &ResolvedType{
-			Name:       t.Name,
-			IsAbstract: t.Abstract,
-			Table:      toSnakeCase(t.Name),
-			Properties: make(map[string]*ResolvedProp),
-			Links:      make(map[string]*ResolvedLink),
-			Computed:   make(map[string]*ResolvedComputed),
+			Name:          t.Name,
+			IsAbstract:    t.Abstract,
+			Table:         toSnakeCase(t.Name),
+			ExtendKeyword: t.ExtendKeyword,
+			Properties:    make(map[string]*ResolvedProp),
+			Links:         make(map[string]*ResolvedLink),
+			Computed:      make(map[string]*ResolvedComputed),
 		}
 		if t.Abstract {
 			rt.Table = "" // abstract types have no table
@@ -638,6 +684,7 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 		Name:       f.Name,
 		Column:     toSnakeCase(f.Name),
 		SQLType:    sqlType,
+		AQLType:    typeName,
 		IsRequired: f.Required,
 		IsMulti:    f.Multi,
 	}

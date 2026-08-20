@@ -389,7 +389,7 @@ func TestASLFormatGroupsMembers(t *testing.T) {
 
   required link author: User;
 }`
-	want := `type Post extending Base {
+	want := `type Post extends Base {
   required title: str;
   required content: str;
   required link author: User;

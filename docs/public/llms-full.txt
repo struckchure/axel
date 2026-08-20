@@ -495,7 +495,7 @@ abstract type Base {
   };
 }
 
-type User extending Base {
+type User extends Base {
   required email: str {
     constraint exclusive;
     constraint min_length(10);
@@ -507,14 +507,14 @@ type User extending Base {
   active: bool { default := true };
 }
 
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required content: str;
   required link author: User;   # single link → FK column "author"
   multi link likes: User;       # multi link → junction table "post_likes"
 }
 
-type Comment extending Base {
+type Comment extends Base {
   required content: str;
   required link post: Post;
   required link author: User;
@@ -525,7 +525,7 @@ A few things worth noticing, each covered in the [ASL reference](/asl/):
 
 - **`use extension 'pgcrypto';`** enables the `pgcrypto` PostgreSQL extension, which provides cryptographic functions like `gen_random_uuid()` (or `gen_uuid()`).
 - **`abstract type Base`** is never a table on its own; its fields are inlined
-  into every type that `extending`s it.
+  into every type that `extends` it.
 - **`constraint`s** (`exclusive`, `pk`, `min_length`) compile to SQL
   `UNIQUE` / `PRIMARY KEY` / `CHECK` clauses.
 - **`required link author: User`** is a one-to-many foreign key; **`multi link
@@ -1936,8 +1936,8 @@ such as `schema/*.asl`.
 
 An ASL file is a set of top-level declarations. The reference is split by feature:
 
-- **[Schema](/asl/schema)** — concrete and abstract types, inheritance (`extending`), indexes, and composite constraints.
-- **[Data Types](/asl/data-types)** — built-in scalars, named scalar aliases, and enums.
+- **[Schema](/asl/schema)** — concrete and abstract types, inheritance (`extends`), indexes, and composite constraints.
+- **[Data Types](/asl/data-types)** — built-in scalars, named scalar aliases, typed JSON, and enums.
 - **[Fields](/asl/fields)** — properties, defaults, rewrites, field constraints, links, and computed fields.
 - **[Functions](/asl/functions)** — top-level Postgres functions with AQL or raw-SQL bodies.
 - **[Triggers](/asl/triggers)** — row/statement triggers attached to a type.
@@ -1948,7 +1948,7 @@ An ASL file is a set of top-level declarations. The reference is split by featur
 A schema that touches most features:
 
 ```asl
-scalar type EmailStr extending str;
+scalar type EmailStr extends str;
 
 enum Role { Admin, Member, Guest }
 
@@ -1964,7 +1964,7 @@ abstract type Base {
   };
 }
 
-type User extending Base {
+type User extends Base {
   required email: EmailStr {
     constraint exclusive;
   };
@@ -1978,14 +1978,14 @@ type User extending Base {
   index on (.email);
 }
 
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required content: str;
   required link author: User;
   multi link likes: User;
 }
 
-type Comment extending Base {
+type Comment extends Base {
   required link post: Post;
   required link author: User;
   required content: str;
@@ -2044,16 +2044,16 @@ Source: https://struckchure.github.io/axel/asl/schema/inheritance
 A type can extend one or more other types. All properties, links, indexes, and computed fields are inherited.
 
 ```asl
-type User extending Timestamped {
+type User extends Timestamped {
   required email: str;
 }
 
-type Admin extending User, Audited {
+type Admin extends User, Audited {
   required level: int32;
 }
 ```
 
-The keyword `extends` is accepted as a synonym for `extending`.
+> **Deprecation Notice:** The `extending` keyword is deprecated in favor of `extends`. Running `axel fmt` will automatically migrate `extending` to `extends`.
 
 Inheriting from an [abstract type](/asl/schema/types#abstract-types) is the common way to
 share a common `id` / `created_at` / `updated_at` base across many concrete
@@ -2154,9 +2154,17 @@ Source: https://struckchure.github.io/axel/asl/data-types/scalars
 | `datetime` | `TIMESTAMPTZ`      |
 | `date`     | `DATE`             |
 | `time`     | `TIME`             |
-| `json`     | `JSONB`            |
+| `json`     | `JSON`             |
+| `jsonb`    | `JSONB`            |
 | `bytes`    | `BYTEA`            |
 | `decimal`  | `NUMERIC`          |
+
+## `json` vs `jsonb`
+
+Axel explicitly distinguishes between PostgreSQL's `JSON` and `JSONB` types:
+
+* **`jsonb` (`JSONB`)**: Stored in a decomposed binary format. Preferred for structured data that must be queried, filtered, searched, or indexed (GIN indexes, expression indexes).
+* **`json` (`JSON`)**: Stored as exact text. Use only when the original JSON formatting, key ordering, or duplicate keys must be preserved, or when the payload is completely opaque.
 
 ## Using `uuid` with `pgcrypto`
 
@@ -2180,18 +2188,122 @@ Source: https://struckchure.github.io/axel/asl/data-types/aliases
 
 # Named scalar aliases
 
-Create a named alias over a built-in [scalar](/asl/data-types/scalars).
+Create a named alias over a built-in [scalar](/asl/data-types/scalars) using `extends`.
 
 ```asl
-scalar type EmailStr extending str;
-scalar type Score extending float32;
+scalar type EmailStr extends str;
+scalar type Score extends float32;
 ```
+
+> **Deprecation Notice:** The `extending` keyword is deprecated in favor of `extends`. Running `axel fmt` will automatically migrate `extending` to `extends`.
 
 Use aliases like any other type:
 
 ```asl
 type User {
   required email: EmailStr;
+}
+```
+
+---
+
+# Typed JSON Scalars
+
+You can define structured, typed JSON and JSONB scalars that give type safety, autocomplete, and query capabilities to document data in PostgreSQL.
+
+```asl
+scalar type Coordinate extends json {
+  lat: str;
+  lng: str;
+}
+
+scalar type ItemStats extends jsonb {
+  score: float64;
+  views: int32;
+  multi tags: str;
+}
+```
+
+### Allowed Field Types
+
+To ensure reliable extraction and type coercion in PostgreSQL, field types within typed JSON scalars are strictly restricted to:
+- **Strings**: `str`
+- **Numbers**: `int16`, `int32`, `int64`, `float32`, `float64`, `decimal`
+- **Arrays**: Provided via the `multi` modifier (e.g. `multi tags: str;`, `multi scores: float64;`)
+
+Nested JSON objects and non-primitive types are not permitted within typed JSON scalars.
+
+### Using Typed JSON Scalars in Types
+
+Declare properties with your typed JSON scalar:
+
+```asl
+type Place {
+  required id: uuid;
+  name: str;
+  coord: Coordinate;
+  stats: ItemStats;
+}
+```
+
+### Querying in AQL
+
+You can query and filter on individual fields of a typed JSON scalar directly using dot-notation:
+
+```aql
+# String comparison automatically extracts as text (coord->>'lat')
+select Place { id, name } filter .coord.lat = $lat;
+
+# Numeric comparisons automatically apply PostgreSQL type casting ((stats->>'score')::DOUBLE PRECISION)
+select Place { id, name } filter .stats.score > $min_score;
+
+# Integer comparisons
+select Place { id, name } filter .stats.views >= 100;
+```
+
+### Generated Client Types
+
+Axel generates idiomatic types for all target languages:
+
+#### TypeScript
+```typescript
+export interface Coordinate {
+  lat?: string | null;
+  lng?: string | null;
+}
+
+export interface ItemStats {
+  score?: number | null;
+  views?: number | null;
+  tags?: string[] | null;
+}
+
+export interface Place {
+  id: string;
+  name?: string | null;
+  coord?: Coordinate | null;
+  stats?: ItemStats | null;
+}
+```
+
+#### Go
+```go
+type Coordinate struct {
+	Lat *string `json:"lat"`
+	Lng *string `json:"lng"`
+}
+
+type ItemStats struct {
+	Score *float64 `json:"score"`
+	Views *int32   `json:"views"`
+	Tags  []string `json:"tags"`
+}
+
+type Place struct {
+	ID    string      `json:"id" db:"id"`
+	Name  *string     `json:"name" db:"name"`
+	Coord *Coordinate `json:"coord" db:"coord"`
+	Stats *ItemStats  `json:"stats" db:"stats"`
 }
 ```
 
@@ -2752,7 +2864,7 @@ abstract type Soft {
   deleted_at: datetime;
   policy not_deleted for select using ( .deleted_at is null );
 }
-type Note extending Soft { required body: str; }
+type Note extends Soft { required body: str; }
 ```
 
 ## The table owner bypasses RLS
@@ -3017,7 +3129,7 @@ abstract type Base {
 
 ```asl
 # schema/post.asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required link author: User;   # User lives in schema/user.asl
 }
@@ -3244,7 +3356,7 @@ offset $offset<int32>?;
 The type may name any declared **value** type from your schema:
 
 - a **builtin scalar** — `str`, `int16`/`int32`/`int64`, `float32`/`float64`, `bool`, `uuid`, `datetime`, `date`, `time`, `json`, `bytes`, `decimal`
-- a **scalar alias** — e.g. `scalar type EmailStr extending str` renders as its base builtin
+- a **scalar alias** — e.g. `scalar type EmailStr extends str` renders as its base builtin
 - an **enum** — e.g. `TransactionStatus`, which generates the real enum type in code (Go `TransactionStatus`, TypeScript `TransactionStatus`) rather than a bare `string`
 
 Object types (tables) are **not** valid parameter types — a parameter is a value, not a row — and an unknown type name is a compile error.
@@ -4589,7 +4701,7 @@ abstract type Base {
   };
 }
 
-type Article extending Base {
+type Article extends Base {
   required title: str;
 }
 ```
@@ -4645,7 +4757,7 @@ abstract type Soft {
   policy not_deleted for select using ( .deleted_at is null );
 }
 
-type Article extending Base, Soft {
+type Article extends Base, Soft {
   required title: str;
 }
 ```
@@ -4713,7 +4825,7 @@ function slugify(value: text) -> text {
   return regexp_replace(lower(public.unaccent(value)), '[^a-z0-9]+', '-', 'gi');
 };
 
-type Article extending Base {
+type Article extends Base {
   required title: str;
   slug: str {
     constraint exclusive;
@@ -4765,7 +4877,7 @@ and a [policy](/asl/policies) compares it to `.owner`:
 ```asl
 global current_user: uuid;
 
-type Article extending Base {
+type Article extends Base {
   required title: str;
   required owner: uuid;
 
@@ -4836,7 +4948,7 @@ purge them.
 ```asl
 use extension 'pg_cron';
 
-type Session extending Base {
+type Session extends Base {
   required token: str { constraint exclusive; };
   expires_at: datetime;
 
@@ -5063,7 +5175,7 @@ RETURNING "created_at", "email", "id", "role", "updated_at";
 The conflict target `.email` must be a unique/exclusive column:
 
 ```asl
-type User extending Base {
+type User extends Base {
   required email: str { constraint exclusive; };
 }
 ```
@@ -5417,7 +5529,7 @@ The starter `axel/schema.asl` already defines a reusable `Base` (uuid primary ke
 + `created_at` / `updated_at`) and a `User`. Add a `Post` linked to `User`:
 
 ```asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   content: str;
   required author: User;
@@ -5611,7 +5723,7 @@ The starter `axel/schema.asl` already defines a reusable `Base` (uuid primary ke
 + `created_at` / `updated_at`) and a `User`. Add a `Post` linked to `User`:
 
 ```asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   content: str;
   required author: User;
@@ -5978,7 +6090,7 @@ Formats `.asl` schema and `.aql` query files in canonical style, preserving comm
 Inside a type body, members are printed in blocks — properties and links (then computed fields), constraints, indexes, policies, triggers — with one blank line between blocks and none within one. Fields keep the order you wrote them in, since that decides column order; everything else is diffed by name, so grouping it costs nothing:
 
 ```asl
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required link author: User;
   computed excerpt := .content;

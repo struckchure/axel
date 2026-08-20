@@ -26,20 +26,27 @@ type Application {
 func TestLiteralCast(t *testing.T) {
 	c := compileAQL(t, pathSchema, `multi select Application {
 	  id,
-	  secrets := '{}'<json>
+	  secrets := '{}'<json>,
+	  metadata := '{}'<jsonb>
 	} filter .id = $id<uuid>;`)
-	if !strings.Contains(c.SQL, `(('{}')::JSONB) AS secrets`) {
+	if !strings.Contains(c.SQL, `(('{}')::JSON) AS secrets`) {
+		t.Errorf("literal cast should emit ('{}')::JSON:\n%s", c.SQL)
+	}
+	if !strings.Contains(c.SQL, `(('{}')::JSONB) AS metadata`) {
 		t.Errorf("literal cast should emit ('{}')::JSONB:\n%s", c.SQL)
 	}
 
-	// And it types the computed field (json here), producing no warning.
+	// And it types the computed field (json / jsonb), producing no warning.
 	ir := parseSchema(t, pathSchema)
 	desc := buildQueryDesc(t, ir, "Q", "q.aql", `multi select Application {
-	  id, secrets := '{}'<json>
+	  id, secrets := '{}'<json>, metadata := '{}'<jsonb>
 	} filter .id = $id<uuid>;`)
 	for _, f := range desc.Result.Fields {
 		if f.Name == "secrets" && f.AQLType != "json" {
 			t.Errorf("cast literal field should type json, got %q", f.AQLType)
+		}
+		if f.Name == "metadata" && f.AQLType != "jsonb" {
+			t.Errorf("cast literal field should type jsonb, got %q", f.AQLType)
 		}
 	}
 	if len(desc.Warnings) != 0 {

@@ -17,7 +17,7 @@ abstract type Soft {
   policy not_deleted for select using ( .deleted_at is null );
 }
 
-type Article extending Base, Soft {
+type Article extends Base, Soft {
   required title: str;
 }
 ```
