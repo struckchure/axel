@@ -1858,6 +1858,35 @@ func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.Resol
 	if strings.ToLower(fc.Name) == "count" && len(fc.Args) == 0 {
 		return "COUNT(*)", nil
 	}
+	if c.schema != nil {
+		if declFn, isLocal := c.schema.Functions[fc.Name]; isLocal {
+			if len(fc.Args) != len(declFn.Params) {
+				return "", fmt.Errorf("function %q expects %d argument(s), got %d", fc.Name, len(declFn.Params), len(fc.Args))
+			}
+			for i, a := range fc.Args {
+				if p := a.SoloPrimary(); p != nil {
+					var argType string
+					switch {
+					case p.Str != nil:
+						argType = "TEXT"
+					case p.Int != nil:
+						argType = "INTEGER"
+					case p.Float != nil:
+						argType = "NUMERIC"
+					case p.True || p.False:
+						argType = "BOOLEAN"
+					}
+					if argType != "" {
+						expected := declFn.Params[i].SQLType
+						if !isTypeCompatible(argType, expected) {
+							return "", fmt.Errorf("function %q argument %d expects %s, got %s",
+								fc.Name, i+1, sqlToAQLType(expected), sqlToAQLType(argType))
+						}
+					}
+				}
+			}
+		}
+	}
 	var args []string
 	for _, a := range fc.Args {
 		s, err := c.compileExpr(a, alias, rt)
@@ -1870,6 +1899,25 @@ func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.Resol
 		args = append(args, s)
 	}
 	return fmt.Sprintf("%s(%s)", fn, strings.Join(args, ", ")), nil
+}
+
+func isTypeCompatible(argType, expectedSQL string) bool {
+	expectedSQL = strings.ToUpper(strings.TrimSpace(expectedSQL))
+	if argType == "UNKNOWN" || expectedSQL == "" {
+		return true
+	}
+	switch argType {
+	case "TEXT":
+		return expectedSQL == "TEXT" || expectedSQL == "VARCHAR" || strings.HasPrefix(expectedSQL, "VARCHAR") || expectedSQL == "CHAR"
+	case "INTEGER":
+		return expectedSQL == "INTEGER" || expectedSQL == "SMALLINT" || expectedSQL == "BIGINT" || expectedSQL == "NUMERIC" || expectedSQL == "REAL" || expectedSQL == "DOUBLE PRECISION" || expectedSQL == "DECIMAL"
+	case "NUMERIC":
+		return expectedSQL == "NUMERIC" || expectedSQL == "REAL" || expectedSQL == "DOUBLE PRECISION" || expectedSQL == "DECIMAL" || expectedSQL == "FLOAT"
+	case "BOOLEAN":
+		return expectedSQL == "BOOLEAN" || expectedSQL == "BOOL"
+	default:
+		return strings.EqualFold(argType, expectedSQL)
+	}
 }
 
 // ─────────────────────────────────────────────────────────────

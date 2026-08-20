@@ -59,3 +59,55 @@ func TestSchemaDiagnosticsInToleratesUnparseableSibling(t *testing.T) {
 		t.Errorf("expected no diagnostics, got %+v", got)
 	}
 }
+
+func TestQueryDiagnosticsFunctionParams(t *testing.T) {
+	schema := schemaFor(t, `
+function random_string(len: int32) -> str { return 'abc'; };
+type User { required name: str; }
+`)
+
+	// Valid call: 1 argument
+	okQuery := `select User filter random_string(10) != '';`
+	if diags := QueryDiagnostics(okQuery, schema); len(diags) != 0 {
+		t.Fatalf("expected no diagnostics for valid function call, got %+v", diags)
+	}
+
+	// Invalid call: 2 arguments
+	badQuery := `select User filter random_string(10, 20) != '';`
+	diags := QueryDiagnostics(badQuery, schema)
+	if len(diags) == 0 {
+		t.Fatal("expected diagnostic for invalid function argument count, got none")
+	}
+	if !strings.Contains(diags[0].Message, `function "random_string" expects 1 argument(s), got 2`) {
+		t.Errorf("unexpected diagnostic message: %q", diags[0].Message)
+	}
+
+	// Invalid call: argument type mismatch ('10' passed to int32)
+	badTypeQuery := `select User filter random_string('10') != '';`
+	diags = QueryDiagnostics(badTypeQuery, schema)
+	if len(diags) == 0 {
+		t.Fatal("expected diagnostic for function argument type mismatch, got none")
+	}
+	if !strings.Contains(diags[0].Message, `function "random_string" argument 1 expects int32, got str`) {
+		t.Errorf("unexpected diagnostic message: %q", diags[0].Message)
+	}
+}
+
+func TestSchemaDiagnosticsFunctionParamTypeMismatch(t *testing.T) {
+	aslText := `
+function random_hex(len: int32) -> str { return 'hex'; };
+
+scalar type Code extends str {
+  default := random_hex('6');
+}
+`
+	diags := SchemaDiagnostics(aslText)
+	if len(diags) == 0 {
+		t.Fatal("expected schema diagnostic for default function argument type mismatch, got none")
+	}
+	if !strings.Contains(diags[0].Message, `function "random_hex" argument 1 expects int32, got str ('6')`) {
+		t.Errorf("unexpected diagnostic message: %q", diags[0].Message)
+	}
+}
+
+

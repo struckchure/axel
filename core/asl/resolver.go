@@ -200,29 +200,72 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			if err != nil {
 				return fmt.Errorf("scalar type %q: %w", s.Name, err)
 			}
-			var fields map[string]*ResolvedScalarField
-			if s.Body != nil && len(s.Body.Fields) > 0 {
-				if sqlType != "JSON" && sqlType != "JSONB" {
-					return fmt.Errorf("scalar type %q extending %q cannot define fields: fields are only supported on json/jsonb scalars", s.Name, s.Extends)
+			var constraints []ResolvedConstraint
+			var defaultVal string
+			var rewrites []ResolvedRewrite
+			if parentScalar, isScalar := ir.ScalarTypes[s.Extends]; isScalar {
+				if len(parentScalar.Constraints) > 0 {
+					constraints = append(constraints, parentScalar.Constraints...)
 				}
-				fields = make(map[string]*ResolvedScalarField)
-				for _, f := range s.Body.Fields {
-					if _, exists := fields[f.Name]; exists {
-						return fmt.Errorf("scalar type %q: field %q declared more than once", s.Name, f.Name)
+				defaultVal = parentScalar.Default
+				if len(parentScalar.Rewrites) > 0 {
+					rewrites = append(rewrites, parentScalar.Rewrites...)
+				}
+			}
+
+			var fields map[string]*ResolvedScalarField
+			if s.Body != nil {
+				if len(s.Body.Items) > 0 {
+					for _, item := range s.Body.Items {
+						switch {
+						case item.Default != nil:
+							if item.Default.QualEnum != nil {
+								return fmt.Errorf("scalar type %q: qualified enum default %s.%s used on non-enum type %q",
+									s.Name, item.Default.QualEnum[0], item.Default.QualEnum[1], s.Extends)
+							}
+							def, err := resolveDefault(item.Default, sqlType, ir)
+							if err != nil {
+								return fmt.Errorf("scalar type %q: %w", s.Name, err)
+							}
+							defaultVal = def
+						case item.Constraint != nil:
+							constraints = append(constraints, ResolvedConstraint{
+								Name: item.Constraint.Name,
+								Args: item.Constraint.Args,
+							})
+						case item.Rewrite != nil:
+							rw, err := resolveRewrite(item.Rewrite, sqlType, s.Name)
+							if err != nil {
+								return fmt.Errorf("scalar type %q: %w", s.Name, err)
+							}
+							rewrites = append(rewrites, rw)
+						}
 					}
-					if !allowedJsonScalarFieldTypes[f.Type] {
-						return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON fields currently only support strings (str) and numbers (int16, int32, int64, float32, float64, decimal)", s.Name, f.Name, f.Type)
+				}
+
+				if len(s.Body.Fields) > 0 {
+					if sqlType != "JSON" && sqlType != "JSONB" {
+						return fmt.Errorf("scalar type %q extending %q cannot define fields: fields are only supported on json/jsonb scalars", s.Name, s.Extends)
 					}
-					fSQLType, ok := builtinTypes[f.Type]
-					if !ok {
-						return fmt.Errorf("scalar type %q field %q: unknown type %q", s.Name, f.Name, f.Type)
-					}
-					fields[f.Name] = &ResolvedScalarField{
-						Name:       f.Name,
-						AQLType:    f.Type,
-						SQLType:    fSQLType,
-						IsRequired: f.Required,
-						IsMulti:    f.Multi,
+					fields = make(map[string]*ResolvedScalarField)
+					for _, f := range s.Body.Fields {
+						if _, exists := fields[f.Name]; exists {
+							return fmt.Errorf("scalar type %q: field %q declared more than once", s.Name, f.Name)
+						}
+						if !allowedJsonScalarFieldTypes[f.Type] {
+							return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON fields currently only support strings (str) and numbers (int16, int32, int64, float32, float64, decimal)", s.Name, f.Name, f.Type)
+						}
+						fSQLType, ok := builtinTypes[f.Type]
+						if !ok {
+							return fmt.Errorf("scalar type %q field %q: unknown type %q", s.Name, f.Name, f.Type)
+						}
+						fields[f.Name] = &ResolvedScalarField{
+							Name:       f.Name,
+							AQLType:    f.Type,
+							SQLType:    fSQLType,
+							IsRequired: f.Required,
+							IsMulti:    f.Multi,
+						}
 					}
 				}
 			}
@@ -232,6 +275,9 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 				SQLType:       sqlType,
 				Fields:        fields,
 				ExtendKeyword: s.ExtendKeyword,
+				Default:       defaultVal,
+				Constraints:   constraints,
+				Rewrites:      rewrites,
 			}
 			return nil
 		}
@@ -263,6 +309,21 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			return nil, fmt.Errorf("function %q: %w", fd.Name, err)
 		}
 		ir.Functions[fn.Name] = fn
+	}
+
+	// Validate scalar defaults against resolved functions
+	for _, name := range scalarOrder {
+		s := scalarDefs[name]
+		if s.Body != nil {
+			for _, item := range s.Body.Items {
+				if item.Default != nil && item.Default.NewCall != nil {
+					sqlType := ir.ScalarTypes[name].SQLType
+					if _, err := resolveDefault(item.Default, sqlType, ir); err != nil {
+						return nil, fmt.Errorf("scalar type %q: %w", name, err)
+					}
+				}
+			}
+		}
 	}
 
 	// Pass 5: register object types (abstract and concrete) without members.
@@ -690,6 +751,20 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 	}
 	if isEnum {
 		prop.EnumType = typeName
+	} else if scalar, isScalar := ir.ScalarTypes[typeName]; isScalar {
+		if scalar.Default != "" {
+			prop.Default = scalar.Default
+		}
+		if len(scalar.Constraints) > 0 {
+			prop.Constraints = append(prop.Constraints, scalar.Constraints...)
+		}
+		for _, rw := range scalar.Rewrites {
+			prop.Rewrites = append(prop.Rewrites, ResolvedRewrite{
+				Events:   append([]string(nil), rw.Events...),
+				ValueSQL: rw.ValueSQL,
+				Origin:   rt.Name,
+			})
+		}
 	}
 
 	// Extract default and constraints from body.
@@ -708,7 +783,11 @@ func (r *Resolver) resolveProp(f *FieldDecl, rt *ResolvedType, ir *SchemaIR) err
 						return fmt.Errorf("property %q: qualified enum default %s.%s used on non-enum type %q",
 							f.Name, item.Default.QualEnum[0], item.Default.QualEnum[1], typeName)
 					}
-					prop.Default = resolveDefault(item.Default, sqlType)
+					def, err := resolveDefault(item.Default, sqlType, ir)
+					if err != nil {
+						return fmt.Errorf("property %q: %w", f.Name, err)
+					}
+					prop.Default = def
 				}
 			case item.Constraint != nil:
 				prop.Constraints = append(prop.Constraints, ResolvedConstraint{
@@ -837,7 +916,7 @@ func resolveEnumDefault(d *DefaultDecl, enumName string, enum *ResolvedEnum) (st
 		member = stripSingleQuotes(*d.NewLit)
 	case d.OldLit != nil:
 		member = stripSingleQuotes(*d.OldLit)
-	case d.NewFunc != nil, d.OldFunc != nil:
+	case d.NewCall != nil, d.OldFunc != nil:
 		return "", fmt.Errorf("function default is not valid for enum type %q", enumName)
 	default:
 		return "", nil
@@ -910,18 +989,128 @@ func (r *Resolver) resolveBaseType(typeName string, ir *SchemaIR) (string, error
 }
 
 // resolveDefault converts a DefaultDecl to a SQL DEFAULT expression.
-func resolveDefault(d *DefaultDecl, sqlType string) string {
+func resolveDefault(d *DefaultDecl, sqlType string, ir *SchemaIR) (string, error) {
 	switch {
-	case d.NewFunc != nil:
-		return mapFuncDefault(*d.NewFunc, sqlType)
+	case d.NewCall != nil:
+		if ir != nil {
+			if declFn, isLocal := ir.Functions[d.NewCall.Func]; isLocal {
+				if len(d.NewCall.Args) != len(declFn.Params) {
+					return "", fmt.Errorf("function %q expects %d argument(s), got %d", d.NewCall.Func, len(declFn.Params), len(d.NewCall.Args))
+				}
+				for i, a := range d.NewCall.Args {
+					if a.Lit != nil {
+						argType := literalType(*a.Lit)
+						expected := declFn.Params[i].SQLType
+						if !isTypeCompatible(argType, expected) {
+							return "", fmt.Errorf("function %q argument %d expects %s, got %s (%s)",
+								d.NewCall.Func, i+1, sqlToAQL(expected), sqlToAQL(argType), *a.Lit)
+						}
+					}
+				}
+			}
+		}
+		if len(d.NewCall.Args) == 0 {
+			return mapFuncDefault(d.NewCall.Func, sqlType), nil
+		}
+		args := make([]string, len(d.NewCall.Args))
+		for i, a := range d.NewCall.Args {
+			args[i] = mapLitDefault(*a.Lit, sqlType)
+		}
+		return fmt.Sprintf("%s(%s)", d.NewCall.Func, strings.Join(args, ", ")), nil
 	case d.NewLit != nil:
-		return mapLitDefault(*d.NewLit, sqlType)
+		return mapLitDefault(*d.NewLit, sqlType), nil
 	case d.OldFunc != nil:
-		return mapFuncDefault(*d.OldFunc, sqlType)
+		return mapFuncDefault(*d.OldFunc, sqlType), nil
 	case d.OldLit != nil:
-		return mapLitDefault(*d.OldLit, sqlType)
+		return mapLitDefault(*d.OldLit, sqlType), nil
 	}
-	return ""
+	return "", nil
+}
+
+func literalType(lit string) string {
+	lit = strings.TrimSpace(lit)
+	if strings.HasPrefix(lit, "'") && strings.HasSuffix(lit, "'") {
+		return "TEXT"
+	}
+	if lit == "true" || lit == "false" {
+		return "BOOLEAN"
+	}
+	if strings.Contains(lit, ".") {
+		return "NUMERIC"
+	}
+	isDigit := true
+	for i, r := range lit {
+		if i == 0 && (r == '-' || r == '+') {
+			continue
+		}
+		if r < '0' || r > '9' {
+			isDigit = false
+			break
+		}
+	}
+	if isDigit && len(lit) > 0 {
+		return "INTEGER"
+	}
+	return "UNKNOWN"
+}
+
+func isTypeCompatible(argType, expectedSQL string) bool {
+	expectedSQL = strings.ToUpper(strings.TrimSpace(expectedSQL))
+	if argType == "UNKNOWN" || expectedSQL == "" {
+		return true
+	}
+	switch argType {
+	case "TEXT":
+		return expectedSQL == "TEXT" || expectedSQL == "VARCHAR" || strings.HasPrefix(expectedSQL, "VARCHAR") || expectedSQL == "CHAR"
+	case "INTEGER":
+		return expectedSQL == "INTEGER" || expectedSQL == "SMALLINT" || expectedSQL == "BIGINT" || expectedSQL == "NUMERIC" || expectedSQL == "REAL" || expectedSQL == "DOUBLE PRECISION" || expectedSQL == "DECIMAL"
+	case "NUMERIC":
+		return expectedSQL == "NUMERIC" || expectedSQL == "REAL" || expectedSQL == "DOUBLE PRECISION" || expectedSQL == "DECIMAL" || expectedSQL == "FLOAT"
+	case "BOOLEAN":
+		return expectedSQL == "BOOLEAN" || expectedSQL == "BOOL"
+	default:
+		return strings.EqualFold(argType, expectedSQL)
+	}
+}
+
+func sqlToAQL(sqlType string) string {
+	if strings.HasSuffix(sqlType, "[]") {
+		return sqlToAQL(strings.TrimSuffix(sqlType, "[]")) + "[]"
+	}
+	switch sqlType {
+	case "TEXT":
+		return "str"
+	case "SMALLINT":
+		return "int16"
+	case "INTEGER":
+		return "int32"
+	case "BIGINT":
+		return "int64"
+	case "REAL":
+		return "float32"
+	case "DOUBLE PRECISION":
+		return "float64"
+	case "BOOLEAN":
+		return "bool"
+	case "UUID":
+		return "uuid"
+	case "TIMESTAMPTZ":
+		return "datetime"
+	case "DATE":
+		return "date"
+	case "TIME":
+		return "time"
+	case "JSON":
+		return "json"
+	case "JSONB":
+		return "jsonb"
+	case "BYTEA":
+		return "bytes"
+	case "NUMERIC":
+		return "decimal"
+	default:
+		return strings.ToLower(sqlType)
+	}
 }
 
 func mapFuncDefault(name, sqlType string) string {

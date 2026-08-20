@@ -46,10 +46,14 @@ type. A trailing `[]` makes an array.
 
 ```asl
 @language sql
-function first_tag(tags: text[]) -> text { return tags[1]; };   # raw text[] passthrough
+function first_tag(tags: text[]) -> text {
+  return tags[1];
+};
 
 @language sql
-function total(a: int32, b: int32) -> int32 { return a + b; };  # ASL scalars → INTEGER
+function total(a: int32, b: int32) -> int32 {
+  return a + b;
+};
 ```
 
 ## The body
@@ -73,6 +77,59 @@ Everything in the expression — operators, function calls (`lower`, `regexp_rep
 `public.unaccent`), casts, subqueries — passes straight through to Postgres, so the
 full SQL surface is available. For multi-statement logic (mutations that also
 return a row), use a [trigger](/asl/triggers) with an inline `do ( … )` body.
+
+## Calling functions in Defaults & Extended Types
+
+Schema-defined functions and builtins can be called in property defaults or [extended scalar types](/asl/data-types/aliases#extended-scalars-with-field-descriptors):
+
+```asl
+@language sql
+@volatile
+@strict
+function random_hex(len: int32) -> str {
+  return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len);
+};
+
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+  default := random_hex(6);
+}
+
+type User {
+  required id: uuid { constraint pk; };
+  code: Code;
+  referral_code: str {
+    default := random_hex(8);
+  };
+}
+```
+
+### Parameter Count & Type Validation
+
+Axel validates function calls at compile time:
+- **Argument count**: The number of arguments passed must match the function's parameter list.
+- **Argument types**: Literal arguments are checked against declared parameter types (e.g. passing a string literal `'6'` to an `int32` parameter will raise a type mismatch error).
+
+## Calling functions in AQL Queries
+
+Declared functions can be called directly in AQL query expressions, filters, and mutations:
+
+```aql
+@name CreateUserWithCode
+insert User {
+  email := $email<str>,
+  referral_code := random_hex(8)
+};
+```
+
+## Language Server (LSP) Features
+
+The Axel Language Server provides rich IntelliSense for schema functions:
+- **Auto-Completion**: Suggests available schema functions with their parameter signatures in expressions and trigger `execute` clauses.
+- **Hover**: Displays the clean ASL function signature including decorators (`@language`, `@volatile`, `@strict`, `@parallel`).
+- **Go to Definition**: Navigates from query call sites and schema default/rewrite expressions across files directly to the `function` declaration.
+- **Diagnostics**: Flags parameter count mismatches and argument type errors in real time in your editor.
 
 ## Inline AQL: <code>aql`…`</code>
 
@@ -149,7 +206,9 @@ A `-> trigger` function takes no parameters (Postgres rule) and is what a
 [trigger](/asl/triggers)'s `execute` form runs. Its `return` yields the row:
 
 ```asl
-function stamp() -> trigger { return NEW; };
+function stamp() -> trigger {
+  return NEW;
+};
 
 type Post {
   id: uuid { default := gen_uuid(); };
@@ -160,3 +219,4 @@ type Post {
 
 Functions are emitted as `CREATE OR REPLACE FUNCTION`; editing a definition
 produces a single replace in the migration.
+

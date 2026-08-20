@@ -60,9 +60,10 @@ type ScalarTypeDef struct {
 	EndPos        lexer.Position
 }
 
-// ScalarTypeBody holds fields defined on a typed JSON scalar.
+// ScalarTypeBody holds field descriptors (constraints, defaults, rewrites) or fields on a typed JSON scalar.
 type ScalarTypeBody struct {
-	Fields []*ScalarFieldDecl `parser:"@@*"`
+	Items  []*FieldBodyItem   `parser:"( @@"`
+	Fields []*ScalarFieldDecl `parser:"| @@ )*"`
 }
 
 // ScalarFieldDecl is one property in a typed JSON scalar body.
@@ -220,8 +221,8 @@ type FieldConstraintDecl struct {
 //	Old:  default @func(gen_random_uuid);  / default 'n/a'  / default true
 type DefaultDecl struct {
 	Pos lexer.Position
-	// new: default := funcName()
-	NewFunc *string `parser:"  'default' ':=' @Ident '(' ')' ';'?"`
+	// new: default := funcName(args...)
+	NewCall *DefaultCall `parser:"  'default' ':=' @@ ';'?"`
 	// new: default := Enum.Member (qualified enum reference)
 	QualEnum []string `parser:"| 'default' ':=' @Ident '.' @Ident ';'?"`
 	// new: default := literal
@@ -230,6 +231,19 @@ type DefaultDecl struct {
 	OldFunc *string `parser:"| 'default' '@' 'func' '(' @Ident ')' ';'?"`
 	// old: default literal
 	OldLit *string `parser:"| 'default' @( String | Int | Ident ) ';'?"`
+}
+
+// DefaultCall is a function call in a default declaration: `name( args? )`.
+type DefaultCall struct {
+	Pos  lexer.Position
+	Func string        `parser:"@Ident '('"`
+	Args []*DefaultArg `parser:"( @@ ( ',' @@ )* )? ')'"`
+}
+
+// DefaultArg is one argument to a default function call: a literal value.
+type DefaultArg struct {
+	Pos lexer.Position
+	Lit *string `parser:"@( String | Int | Ident )"`
 }
 
 // OnClause specifies the join field for old-style links.

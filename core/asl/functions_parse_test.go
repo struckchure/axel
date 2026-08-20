@@ -125,3 +125,26 @@ func TestFunctionDirectiveErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestFunctionFormatting(t *testing.T) {
+	src := `@language sql
+@volatile
+@strict
+function random_hex(len: int32) -> str { return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len); };
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	want := `@language sql
+@volatile
+@strict
+function random_hex(len: int32) -> str {
+  return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len);
+};
+`
+	if formatted != want {
+		t.Errorf("formatted:\n%q\nwant:\n%q", formatted, want)
+	}
+}
+

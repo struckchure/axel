@@ -206,3 +206,29 @@ func TestModifyColumnAddsLengthConstraint(t *testing.T) {
 		t.Errorf("down SQL missing drop length constraint:\n%s", down)
 	}
 }
+
+func TestExtendedScalarTypeConstraints(t *testing.T) {
+	up := genUp(t, `
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+  default := '000000';
+}
+
+type User {
+  required id: uuid { constraint pk; };
+  required code: Code { constraint exclusive; };
+}
+`)
+	for _, want := range []string{
+		`CONSTRAINT "uq_user_code" UNIQUE`,
+		`CONSTRAINT "chk_user_code_min_length" CHECK (char_length("code") >= 6)`,
+		`CONSTRAINT "chk_user_code_max_length" CHECK (char_length("code") <= 6)`,
+		`DEFAULT '000000'`,
+	} {
+		if !strings.Contains(up, want) {
+			t.Errorf("up SQL missing %q:\n%s", want, up)
+		}
+	}
+}
+

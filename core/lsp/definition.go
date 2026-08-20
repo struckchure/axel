@@ -1,6 +1,11 @@
 package lsp
 
-import "github.com/struckchure/axel/core/asl"
+import (
+	"strings"
+
+	"github.com/struckchure/axel/core/aql"
+	"github.com/struckchure/axel/core/asl"
+)
 
 // SchemaDefinition resolves a type reference under offset (a field annotation,
 // `extending`, etc.) to its declaration in the same document. The returned
@@ -29,7 +34,33 @@ func SchemaDefinitionIn(text string, offset int, others []SchemaFile) *Location 
 	if rng, ok := schemaDeclRange(text, word); ok {
 		return &Location{Range: rng}
 	}
-	return declLocation(word, others)
+	if loc := declLocation(word, others); loc != nil {
+		return loc
+	}
+
+	// Field reference inside ASL: e.g. `.created_at` in index/constraint/policy/rewrite,
+	// or `on id` in a link declaration.
+	allFiles := make([]SchemaFile, 0, len(others)+1)
+	allFiles = append(allFiles, SchemaFile{Text: text})
+	allFiles = append(allFiles, others...)
+
+	if start > 0 && text[start-1] == '.' {
+		if enclosing := enclosingTypeDef(text, offset); enclosing != "" {
+			if loc := findFieldLocation(enclosing, word, allFiles); loc != nil {
+				return loc
+			}
+		}
+	}
+	pw := prevWord(text, start)
+	if pw == "on" {
+		if target := linkTargetBefore(text, start); target != "" {
+			if loc := findFieldLocation(target, word, allFiles); loc != nil {
+				return loc
+			}
+		}
+	}
+
+	return nil
 }
 
 // QueryDefinition resolves the type name under offset in an AQL document to its
@@ -38,10 +69,8 @@ func QueryDefinition(text string, offset int, schema *asl.SchemaIR, schemaURI, s
 	return QueryDefinitionIn(text, offset, schema, []SchemaFile{{URI: schemaURI, Text: schemaText}})
 }
 
-// QueryDefinitionIn resolves the type name under offset in an AQL document to
-// its declaration anywhere in the schema, which may span several files. schema
-// is the resolved IR of all of them, and decides whether the name is a type at
-// all; files are then searched in order for the one that declares it.
+// QueryDefinitionIn resolves the type name or field under offset in an AQL document to
+// its declaration anywhere in the schema, which may span several files.
 func QueryDefinitionIn(text string, offset int, schema *asl.SchemaIR, files []SchemaFile) *Location {
 	if schema == nil || len(files) == 0 {
 		return nil
@@ -51,9 +80,7 @@ func QueryDefinitionIn(text string, offset int, schema *asl.SchemaIR, files []Sc
 		return nil
 	}
 	// Qualified enum member (EnumName.Value): resolve to the value token inside
-	// the enum declaration, not to a same-named top-level type. This must run
-	// before the plain type/enum lookup so `TransactionActorEntity.ApiKey` does
-	// not jump to a `type ApiKey` that happens to share the value's name.
+	// the enum declaration.
 	if qualifier, ok := qualifierBefore(text, start); ok {
 		if enum, known := schema.EnumTypes[qualifier]; known {
 			for _, v := range enum.Values {
@@ -63,12 +90,64 @@ func QueryDefinitionIn(text string, offset int, schema *asl.SchemaIR, files []Sc
 			}
 		}
 	}
-	_, isType := schema.ObjectTypes[word]
-	_, isEnum := schema.EnumTypes[word]
-	if !isType && !isEnum {
+
+	// Top-level schema declarations: types, enums, scalars, functions, globals.
+	if isSchemaTopLevel(word, schema) {
+		return declLocation(word, files)
+	}
+
+	// Field / property references in AQL:
+	rt := queryType(text, schema)
+	if rt == nil {
 		return nil
 	}
-	return declLocation(word, files)
+
+	// Subfield of a link or typed JSON scalar via dot-path: e.g. in `.coord.lat` or `.author.name`
+	if start > 0 && text[start-1] == '.' {
+		pw := prevWord(text, start-1)
+		if pw != "" {
+			if prop, ok := rt.Properties[pw]; ok && prop.AQLType != "" {
+				if loc := findFieldLocation(prop.AQLType, word, files); loc != nil {
+					return loc
+				}
+			}
+			if link, ok := rt.Links[pw]; ok && link.TargetType != "" {
+				if loc := findFieldLocation(link.TargetType, word, files); loc != nil {
+					return loc
+				}
+			}
+		}
+		// Single dot field: `.field`
+		return findFieldLocation(rt.Name, word, files)
+	}
+
+	// Field inside shape or update/insert set body:
+	if targetType := shapeFieldType(text, offset, schema); targetType != "" {
+		return findFieldLocation(targetType, word, files)
+	}
+
+	return findFieldLocation(rt.Name, word, files)
+}
+
+func isSchemaTopLevel(name string, schema *asl.SchemaIR) bool {
+	if _, ok := schema.ObjectTypes[name]; ok {
+		return true
+	}
+	if _, ok := schema.EnumTypes[name]; ok {
+		return true
+	}
+	if _, ok := schema.ScalarTypes[name]; ok {
+		return true
+	}
+	if _, ok := schema.Functions[name]; ok {
+		return true
+	}
+	for _, g := range schema.Globals {
+		if g.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // qualifierBefore returns the identifier immediately preceding a `.` at start,
@@ -121,8 +200,6 @@ func enumValueDeclRange(schemaText, enumName, value string) (Range, bool) {
 			continue
 		}
 		e := d.EnumType
-		// Start the search past the enum's name so a value that repeats the enum
-		// name is not shadowed by the name token itself.
 		from := indexWord(schemaText, e.Name, e.Pos.Offset)
 		if from < 0 {
 			from = e.Pos.Offset
@@ -142,7 +219,7 @@ func enumValueDeclRange(schemaText, enumName, value string) (Range, bool) {
 }
 
 // schemaDeclRange parses an ASL document and returns the name-token range of the
-// top-level declaration (type/enum/scalar) named name.
+// top-level declaration (type/enum/scalar/function/global) named name.
 func schemaDeclRange(schemaText, name string) (Range, bool) {
 	sf, err := asl.Parse([]byte(schemaText))
 	if err != nil || sf == nil {
@@ -156,7 +233,138 @@ func schemaDeclRange(schemaText, name string) (Range, bool) {
 			return nameSelection(schemaText, d.EnumType.Pos, name), true
 		case d.ScalarType != nil && d.ScalarType.Name == name:
 			return nameSelection(schemaText, d.ScalarType.Pos, name), true
+		case d.Function != nil && d.Function.Name == name:
+			return nameSelection(schemaText, d.Function.Pos, name), true
+		case d.Global != nil && d.Global.Name == name:
+			return nameSelection(schemaText, d.Global.Pos, name), true
 		}
 	}
 	return Range{}, false
 }
+
+// findFieldLocation finds a field/property/link in typeName or its parent types across files.
+func findFieldLocation(typeName, fieldName string, files []SchemaFile) *Location {
+	return searchFieldInHierarchy(typeName, fieldName, files, map[string]bool{})
+}
+
+func searchFieldInHierarchy(typeName, fieldName string, files []SchemaFile, visited map[string]bool) *Location {
+	if visited[typeName] {
+		return nil
+	}
+	visited[typeName] = true
+
+	var parents []string
+	for _, f := range files {
+		sf, err := asl.Parse([]byte(f.Text))
+		if err != nil || sf == nil {
+			continue
+		}
+		for _, d := range sf.Definitions {
+			if d.TypeDef != nil && d.TypeDef.Name == typeName {
+				for _, m := range d.TypeDef.Members {
+					if m.Field != nil && m.Field.Name == fieldName {
+						return &Location{URI: f.URI, Range: nameSelection(f.Text, m.Field.Pos, fieldName)}
+					}
+					if m.Computed != nil && m.Computed.Name == fieldName {
+						return &Location{URI: f.URI, Range: nameSelection(f.Text, m.Computed.Pos, fieldName)}
+					}
+				}
+				parents = append(parents, d.TypeDef.Extending...)
+			} else if d.ScalarType != nil && d.ScalarType.Name == typeName {
+				if d.ScalarType.Body != nil {
+					for _, fld := range d.ScalarType.Body.Fields {
+						if fld.Name == fieldName {
+							return &Location{URI: f.URI, Range: nameSelection(f.Text, fld.Pos, fieldName)}
+						}
+					}
+				}
+				if d.ScalarType.Extends != "" {
+					parents = append(parents, d.ScalarType.Extends)
+				}
+			}
+		}
+	}
+
+	for _, p := range parents {
+		if loc := searchFieldInHierarchy(p, fieldName, files, visited); loc != nil {
+			return loc
+		}
+	}
+	return nil
+}
+
+// enclosingTypeDef returns the name of the TypeDef enclosing offset in ASL text.
+func enclosingTypeDef(text string, offset int) string {
+	sf, err := asl.Parse([]byte(text))
+	if err != nil || sf == nil {
+		return ""
+	}
+	for _, d := range sf.Definitions {
+		if d.TypeDef != nil {
+			start := d.TypeDef.Pos.Offset
+			end := d.TypeDef.EndPos.Offset
+			if end == 0 {
+				end = len(text)
+			}
+			if offset >= start && offset <= end {
+				return d.TypeDef.Name
+			}
+		}
+	}
+	return ""
+}
+
+// linkTargetBefore inspects the text before offset for a link declaration and returns the target type name.
+func linkTargetBefore(text string, offset int) string {
+	lineStart := strings.LastIndex(text[:offset], "\n")
+	if lineStart < 0 {
+		lineStart = 0
+	}
+	line := text[lineStart:offset]
+	colonIdx := strings.Index(line, ":")
+	if colonIdx < 0 {
+		return ""
+	}
+	parts := strings.Fields(line[colonIdx+1:])
+	if len(parts) > 0 {
+		return strings.Trim(parts[0], ";{ \t")
+	}
+	return ""
+}
+
+// shapeFieldType determines the target object type enclosing offset inside an AQL shape.
+func shapeFieldType(text string, offset int, schema *asl.SchemaIR) string {
+	stmt, err := aql.ParseString(text)
+	if err != nil || stmt == nil {
+		return ""
+	}
+	_, typeName := stmtInfo(stmt)
+	if typeName == "" {
+		return ""
+	}
+	if stmt.Select != nil && stmt.Select.Body != nil && stmt.Select.Body.Shape != nil {
+		if target := findShapeTargetType(stmt.Select.Body.Shape, typeName, schema, offset); target != "" {
+			return target
+		}
+	}
+	return typeName
+}
+
+func findShapeTargetType(shape *aql.Shape, currentType string, schema *asl.SchemaIR, offset int) string {
+	rt := schema.ObjectTypes[currentType]
+	if rt == nil {
+		return currentType
+	}
+	for _, f := range shape.Fields {
+		if f.SubShape != nil && len(f.SubShape.Fields) > 0 {
+			subStart := f.SubShape.Fields[0].Pos.Offset
+			if offset >= subStart {
+				if link, ok := rt.Links[f.Name]; ok {
+					return findShapeTargetType(f.SubShape, link.TargetType, schema, offset)
+				}
+			}
+		}
+	}
+	return currentType
+}
+

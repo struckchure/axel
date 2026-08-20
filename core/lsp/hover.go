@@ -23,6 +23,9 @@ func SchemaHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 		if e, ok := schema.EnumTypes[word]; ok {
 			return &Hover{Contents: "```asl\nenum " + e.Name + " { " + join(e.Values) + " }\n```", Range: rng}
 		}
+		if fn, ok := schema.Functions[word]; ok {
+			return &Hover{Contents: functionHover(fn), Range: rng}
+		}
 	}
 	if isBuiltin(word) {
 		return &Hover{Contents: "```asl\nbuiltin scalar " + word + "\n```", Range: rng}
@@ -67,6 +70,9 @@ func QueryHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 	}
 	if e, ok := schema.EnumTypes[word]; ok {
 		return &Hover{Contents: "```asl\nenum " + e.Name + " { " + join(e.Values) + " }\n```", Range: rng}
+	}
+	if fn, ok := schema.Functions[word]; ok {
+		return &Hover{Contents: functionHover(fn), Range: rng}
 	}
 
 	// Field of the query's type (or nested typed JSON scalar field)?

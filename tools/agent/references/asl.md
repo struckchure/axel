@@ -11,6 +11,11 @@ Comments start with `#`. Every top-level declaration and every member inside a t
 ```asl
 use extension 'pgcrypto';              # CREATE EXTENSION IF NOT EXISTS
 scalar type EmailStr extends str;      # named alias over a builtin scalar
+scalar type Code extends str {         # extended scalar with field descriptors
+  constraint min_length(6);
+  constraint max_length(6);
+  default := '000000';
+}
 scalar type Coordinate extends json {  # typed JSON scalar
   lat: str;
   lng: str;

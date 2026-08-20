@@ -3,9 +3,9 @@ title: "Aliases & Typed JSON — ASL"
 description: "Named scalar aliases and typed JSON scalar definitions"
 ---
 
-# Named scalar aliases
+# Named scalar aliases & Extended Types
 
-Create a named alias over a built-in [scalar](/asl/data-types/scalars) using `extends`.
+Create a named alias or extended scalar type over a built-in [scalar](/asl/data-types/scalars) or another scalar type using `extends`.
 
 ```asl
 scalar type EmailStr extends str;
@@ -14,15 +14,56 @@ scalar type Score extends float32;
 
 > **Deprecation Notice:** The `extending` keyword is deprecated in favor of `extends`. Running `axel fmt` will automatically migrate `extending` to `extends`.
 
-Use aliases like any other type:
+### Extended Scalars with Field Descriptors
+
+Scalar types can define field descriptors (`constraint`, `default`, `rewrite`) inside their body block `{ ... }`, just like properties in object type models.
 
 ```asl
-type User {
-  required email: EmailStr;
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+  default := random_hex(6);
+}
+
+scalar type AutoTimestamp extends datetime {
+  rewrite update := datetime_current();
+}
+```
+
+Any object type property declared with an extended scalar automatically inherits all of its field descriptors:
+
+```asl
+type Product {
+  required id: uuid { constraint pk; };
+  # Inherits min_length(6), max_length(6), and default random_hex(6):
+  code: Code;
+  # Properties can override the default and add additional constraints:
+  custom_code: Code {
+    default := '999999';
+    constraint exclusive;
+  };
+  # Inherits the BEFORE UPDATE trigger rewrite:
+  updated_at: AutoTimestamp;
+}
+```
+
+### Chained Scalar Inheritance
+
+Scalar types can extend other user-defined scalar types, inheriting constraints, defaults, and rewrites in a chain:
+
+```asl
+scalar type ShortStr extends str {
+  constraint max_length(10);
+}
+
+scalar type ExactCode extends ShortStr {
+  constraint min_length(6);
+  default := '000000';
 }
 ```
 
 ---
+
 
 # Typed JSON Scalars
 

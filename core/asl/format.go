@@ -172,18 +172,31 @@ func (f *aslFmt) definition(d *Definition, next int) {
 }
 
 func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
-	if s.Body == nil || len(s.Body.Fields) == 0 {
+	if s.Body == nil || (len(s.Body.Fields) == 0 && len(s.Body.Items) == 0) {
 		f.wf("scalar type %s extends %s;", s.Name, s.Extends)
 		f.commit(next)
 		return
 	}
 	f.wf("scalar type %s extends %s {", s.Name, s.Extends)
-	if len(s.Body.Fields) > 0 {
+	if len(s.Body.Items) > 0 {
+		f.commit(fieldBodyItemOffset(s.Body.Items[0], next))
+	} else if len(s.Body.Fields) > 0 {
 		f.commit(s.Body.Fields[0].Pos.Offset)
 	} else {
 		f.commit(next)
 	}
 	f.indent++
+	for i, it := range s.Body.Items {
+		f.leading(fieldBodyItemOffset(it, next))
+		f.bodyItem(it)
+		end := next
+		if i+1 < len(s.Body.Items) {
+			end = fieldBodyItemOffset(s.Body.Items[i+1], next)
+		} else if len(s.Body.Fields) > 0 {
+			end = s.Body.Fields[0].Pos.Offset
+		}
+		f.commit(end)
+	}
 	for i, field := range s.Body.Fields {
 		f.leading(field.Pos.Offset)
 		fieldNext := next
@@ -230,9 +243,19 @@ func (f *aslFmt) function(fn *FunctionDecl, next int) {
 	}
 	body := ""
 	if fn.Return != nil {
-		body = fn.Return.Raw
+		body = strings.TrimSpace(fn.Return.Raw)
 	}
-	f.wf("function %s(%s) -> %s { return %s; }", fn.Name, strings.Join(params, ", "), ret, body)
+	f.wf("function %s(%s) -> %s {", fn.Name, strings.Join(params, ", "), ret)
+	if fn.Return != nil {
+		f.commit(fn.Return.Pos.Offset)
+		f.indent++
+		f.wf("return %s;", body)
+		f.commit(fn.EndPos.Offset)
+		f.indent--
+		f.w("};")
+	} else {
+		f.w("};")
+	}
 	f.commit(next)
 }
 
@@ -605,8 +628,15 @@ func rewriteValue(r *RewriteDecl) string {
 
 func defaultValue(d *DefaultDecl) string {
 	switch {
-	case d.NewFunc != nil:
-		return *d.NewFunc + "()"
+	case d.NewCall != nil:
+		if len(d.NewCall.Args) == 0 {
+			return d.NewCall.Func + "()"
+		}
+		args := make([]string, len(d.NewCall.Args))
+		for i, a := range d.NewCall.Args {
+			args[i] = *a.Lit
+		}
+		return fmt.Sprintf("%s(%s)", d.NewCall.Func, strings.Join(args, ", "))
 	case len(d.QualEnum) == 2:
 		return d.QualEnum[0] + "." + d.QualEnum[1]
 	case d.NewLit != nil:

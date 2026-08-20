@@ -79,11 +79,16 @@ func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []Completion
 	// `order by` / `group by` term. All take a `.field` path. Checked before insideBraces — a
 	// filter can sit inside a shape, in a computed field's sub-select.
 	case pw == "filter" || pw == "having" || pw == "and" || pw == "or" || pw == "by":
-		return pathCompletions(text, schema)
+		return append(pathCompletions(text, schema), functionCompletions(schema)...)
 	case insideBraces(text, wStart):
-		return fieldCompletions(text, schema)
+		items := fieldCompletions(text, schema)
+		if prev == ':' || prev == '=' {
+			items = append(items, functionCompletions(schema)...)
+		}
+		return items
 	default:
-		return append(keywordItems(aqlStatementKeywords), keywordItems(aqlOperatorKeywords)...)
+		items := append(keywordItems(aqlStatementKeywords), keywordItems(aqlOperatorKeywords)...)
+		return append(items, functionCompletions(schema)...)
 	}
 }
 
@@ -106,6 +111,18 @@ func SchemaCompletion(text string, offset int, schema *asl.SchemaIR) []Completio
 			{Label: "cost", Detail: "function directive", Kind: CompletionKindKeyword},
 		}
 	}
+	if pw == "execute" {
+		var items []CompletionItem
+		if schema != nil {
+			for _, name := range sortedKeys(schema.Functions) {
+				fn := schema.Functions[name]
+				if fn.Returns == "trigger" {
+					items = append(items, CompletionItem{Label: fn.Name, Detail: "trigger function", Kind: CompletionKindFunction})
+				}
+			}
+		}
+		return items
+	}
 	// `default := Enum.` (and any `EnumName.` such as a constraint filter RHS)
 	// completes that enum's members.
 	if prev == '.' {
@@ -118,7 +135,31 @@ func SchemaCompletion(text string, offset int, schema *asl.SchemaIR) []Completio
 		}
 		return append(items, typeNameCompletions(schema)...)
 	}
+	if prev == '=' || pw == "rewrite" {
+		return append(functionCompletions(schema), keywordItems(aslKeywords)...)
+	}
 	return keywordItems(aslKeywords)
+}
+
+func functionCompletions(schema *asl.SchemaIR) []CompletionItem {
+	if schema == nil {
+		return nil
+	}
+	var items []CompletionItem
+	for _, name := range sortedKeys(schema.Functions) {
+		fn := schema.Functions[name]
+		params := make([]string, len(fn.Params))
+		for i, p := range fn.Params {
+			params[i] = p.Name + ": " + sqlToAQL(p.SQLType)
+		}
+		detail := "(" + strings.Join(params, ", ") + ") -> " + sqlToAQL(fn.Returns)
+		items = append(items, CompletionItem{
+			Label:  fn.Name,
+			Detail: detail,
+			Kind:   CompletionKindFunction,
+		})
+	}
+	return items
 }
 
 // fieldCompletions lists the fields (+ `*` splat) of the query's type.

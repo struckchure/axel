@@ -106,6 +106,66 @@ func TestQueryDefinitionAcrossFiles(t *testing.T) {
 	}
 }
 
+// Functions, globals, scalars, and inherited fields resolve across files in ASL and AQL.
+func TestAdvancedDefinitionAcrossFiles(t *testing.T) {
+	baseASL := "abstract type Base {\n  required id: uuid;\n  created_at: datetime;\n}\n"
+	funcASL := "function audit_log() -> trigger { return NEW; };\n"
+	globalASL := "global required tenant_id: uuid;\n"
+	scalarASL := "scalar type Code extends str {\n  constraint min_length(6);\n}\n"
+	modelASL := `type Document extends Base {
+  required title: str;
+  code: Code;
+  trigger audit after insert execute audit_log();
+  policy tenant_isolation for all using ( .id = tenant_id );
+  index on (.title, .created_at);
+}
+`
+	baseFile := SchemaFile{Path: "base.asl", URI: "file:///base.asl", Text: baseASL}
+	funcFile := SchemaFile{Path: "func.asl", URI: "file:///func.asl", Text: funcASL}
+	globalFile := SchemaFile{Path: "global.asl", URI: "file:///global.asl", Text: globalASL}
+	scalarFile := SchemaFile{Path: "scalar.asl", URI: "file:///scalar.asl", Text: scalarASL}
+	modelFile := SchemaFile{Path: "model.asl", URI: "file:///model.asl", Text: modelASL}
+
+	files := []SchemaFile{baseFile, funcFile, globalFile, scalarFile, modelFile}
+	schema := resolveAll(t, files...)
+
+	// ASL: execute audit_log() -> func.asl
+	loc := SchemaDefinitionIn(modelASL, offsetIn(t, modelASL, "audit_log()"), files)
+	if loc == nil || loc.URI != funcFile.URI {
+		t.Fatalf("audit_log loc = %+v, want %s", loc, funcFile.URI)
+	}
+
+	// ASL: tenant_id -> global.asl
+	loc = SchemaDefinitionIn(modelASL, offsetIn(t, modelASL, "tenant_id"), files)
+	if loc == nil || loc.URI != globalFile.URI {
+		t.Fatalf("tenant_id loc = %+v, want %s", loc, globalFile.URI)
+	}
+
+	// ASL: Code -> scalar.asl
+	loc = SchemaDefinitionIn(modelASL, offsetIn(t, modelASL, "Code;"), files)
+	if loc == nil || loc.URI != scalarFile.URI {
+		t.Fatalf("Code loc = %+v, want %s", loc, scalarFile.URI)
+	}
+
+	// ASL: .created_at (inherited from Base) -> base.asl
+	loc = SchemaDefinitionIn(modelASL, offsetIn(t, modelASL, "created_at);"), files)
+	if loc == nil || loc.URI != baseFile.URI {
+		t.Fatalf("created_at loc = %+v, want %s", loc, baseFile.URI)
+	}
+
+	// AQL: select Document { id, title, code } -> id in base.asl, title in model.asl
+	q := "multi select Document { id, title, code };"
+	loc = QueryDefinitionIn(q, offsetIn(t, q, "id,"), schema, files)
+	if loc == nil || loc.URI != baseFile.URI {
+		t.Fatalf("AQL id loc = %+v, want %s", loc, baseFile.URI)
+	}
+
+	loc = QueryDefinitionIn(q, offsetIn(t, q, "title,"), schema, files)
+	if loc == nil || loc.URI != modelFile.URI {
+		t.Fatalf("AQL title loc = %+v, want %s", loc, modelFile.URI)
+	}
+}
+
 func lineOf(text string, line int) string {
 	lines := strings.Split(text, "\n")
 	if line < 0 || line >= len(lines) {
@@ -113,3 +173,4 @@ func lineOf(text string, line int) string {
 	}
 	return lines[line]
 }
+

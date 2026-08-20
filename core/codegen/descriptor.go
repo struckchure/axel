@@ -70,12 +70,14 @@ type EnumDescriptor struct {
 	Values []string `json:"values"`
 }
 
-// ScalarDescriptor describes a named scalar alias or typed JSON scalar.
+// ScalarDescriptor describes a named scalar alias, extended scalar type, or typed JSON scalar.
 type ScalarDescriptor struct {
-	Name    string                  `json:"name"`
-	Base    string                  `json:"base"`
-	SQLType string                  `json:"sql_type"`
-	Fields  []ScalarFieldDescriptor `json:"fields,omitempty"`
+	Name        string                  `json:"name"`
+	Base        string                  `json:"base"`
+	SQLType     string                  `json:"sql_type"`
+	Default     string                  `json:"default,omitempty"`
+	Constraints []ConstraintDescriptor `json:"constraints,omitempty"`
+	Fields      []ScalarFieldDescriptor `json:"fields,omitempty"`
 }
 
 // ScalarFieldDescriptor describes a field on a typed JSON scalar.
@@ -181,7 +183,13 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 	for _, n := range scalarNames {
 		s := ir.ScalarTypes[n]
 		sd := ScalarDescriptor{
-			Name: s.Name, Base: s.Base, SQLType: s.SQLType,
+			Name: s.Name, Base: s.Base, SQLType: s.SQLType, Default: s.Default,
+		}
+		for _, c := range s.Constraints {
+			sd.Constraints = append(sd.Constraints, ConstraintDescriptor{
+				Name: c.Name,
+				Args: append([]string(nil), c.Args...),
+			})
 		}
 		if len(s.Fields) > 0 {
 			fNames := make([]string, 0, len(s.Fields))
@@ -626,10 +634,33 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 		ObjectTypes: make(map[string]*asl.ResolvedType),
 	}
 	for _, s := range sd.Scalars {
+		var constraints []asl.ResolvedConstraint
+		for _, c := range s.Constraints {
+			constraints = append(constraints, asl.ResolvedConstraint{
+				Name: c.Name,
+				Args: append([]string(nil), c.Args...),
+			})
+		}
+		var fields map[string]*asl.ResolvedScalarField
+		if len(s.Fields) > 0 {
+			fields = make(map[string]*asl.ResolvedScalarField)
+			for _, f := range s.Fields {
+				fields[f.Name] = &asl.ResolvedScalarField{
+					Name:       f.Name,
+					AQLType:    f.AQLType,
+					SQLType:    f.SQLType,
+					IsRequired: f.IsRequired,
+					IsMulti:    f.IsMulti,
+				}
+			}
+		}
 		ir.ScalarTypes[s.Name] = &asl.ResolvedScalar{
-			Name:    s.Name,
-			Base:    s.Base,
-			SQLType: s.SQLType,
+			Name:        s.Name,
+			Base:        s.Base,
+			SQLType:     s.SQLType,
+			Default:     s.Default,
+			Constraints: constraints,
+			Fields:      fields,
 		}
 	}
 	for _, e := range sd.Enums {

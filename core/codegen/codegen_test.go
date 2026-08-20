@@ -142,3 +142,34 @@ func (g *recordingGenerator) OnQuery(_ *Context, q QueryDescriptor) error {
 	g.events = append(g.events, "query:"+q.Name)
 	return nil
 }
+
+func TestExtendedScalarDescriptorRoundTrip(t *testing.T) {
+	src, err := asl.Parse([]byte(`
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+  default := '000000';
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir, err := (&asl.Resolver{}).Resolve(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := FromSchemaIR(ir)
+	if len(desc.Scalars) != 1 {
+		t.Fatalf("Scalars len = %d, want 1", len(desc.Scalars))
+	}
+	s := desc.Scalars[0]
+	if s.Name != "Code" || s.Base != "str" || s.Default != "'000000'" || len(s.Constraints) != 2 {
+		t.Fatalf("ScalarDescriptor = %+v", s)
+	}
+	back := ToSchemaIR(desc)
+	bScalar := back.ScalarTypes["Code"]
+	if bScalar == nil || bScalar.Default != "'000000'" || len(bScalar.Constraints) != 2 {
+		t.Fatalf("Reconstructed scalar = %+v", bScalar)
+	}
+}
+

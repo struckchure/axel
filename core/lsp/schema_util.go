@@ -15,6 +15,9 @@ var builtinScalars = []string{
 
 // sqlToAQL maps a resolved SQL type back to its AQL/ASL name for display.
 func sqlToAQL(sqlType string) string {
+	if strings.HasSuffix(sqlType, "[]") {
+		return sqlToAQL(strings.TrimSuffix(sqlType, "[]")) + "[]"
+	}
 	switch sqlType {
 	case "TEXT":
 		return "str"
@@ -66,17 +69,31 @@ func propType(p *asl.ResolvedProp) string {
 // scalarHover renders a markdown summary of a scalar type definition.
 func scalarHover(s *asl.ResolvedScalar) string {
 	var b strings.Builder
-	b.WriteString("```asl\n")
 	base := s.Base
 	if base == "" {
 		base = sqlToAQL(s.SQLType)
 	}
-	if len(s.Fields) == 0 {
+	b.WriteString("```asl\n")
+	hasBody := len(s.Fields) > 0 || len(s.Constraints) > 0 || s.Default != "" || len(s.Rewrites) > 0
+	if !hasBody {
 		b.WriteString("scalar type " + s.Name + " extends " + base + ";\n")
 	} else {
 		b.WriteString("scalar type " + s.Name + " extends " + base + " {\n")
-		for _, fn := range sortedKeys(s.Fields) {
-			f := s.Fields[fn]
+		for _, c := range s.Constraints {
+			args := ""
+			if len(c.Args) > 0 {
+				args = "(" + strings.Join(c.Args, ", ") + ")"
+			}
+			b.WriteString("  constraint " + c.Name + args + ";\n")
+		}
+		if s.Default != "" {
+			b.WriteString("  default := " + s.Default + ";\n")
+		}
+		for _, r := range s.Rewrites {
+			b.WriteString("  rewrite " + strings.Join(r.Events, ", ") + " := " + r.ValueSQL + ";\n")
+		}
+		for _, name := range sortedKeys(s.Fields) {
+			f := s.Fields[name]
 			req := ""
 			if f.IsRequired {
 				req = "required "
@@ -119,6 +136,34 @@ func typeHover(rt *asl.ResolvedType) string {
 		b.WriteString("  " + mod + l.Name + ": " + l.TargetType + ";\n")
 	}
 	b.WriteString("}\n```")
+	return b.String()
+}
+
+// functionHover renders a markdown summary for a declared PostgreSQL function.
+func functionHover(fn *asl.ResolvedFunction) string {
+	var b strings.Builder
+	b.WriteString("```asl\n")
+	if fn.Language != "" && fn.Language != "plpgsql" {
+		b.WriteString("@language " + fn.Language + "\n")
+	}
+	if fn.Volatility != "" {
+		b.WriteString("@" + fn.Volatility + "\n")
+	}
+	if fn.Strict {
+		b.WriteString("@strict\n")
+	}
+	if fn.Parallel != "" {
+		b.WriteString("@parallel " + fn.Parallel + "\n")
+	}
+	if fn.Security != "" {
+		b.WriteString("@security " + fn.Security + "\n")
+	}
+	params := make([]string, len(fn.Params))
+	for i, p := range fn.Params {
+		params[i] = p.Name + ": " + sqlToAQL(p.SQLType)
+	}
+	ret := sqlToAQL(fn.Returns)
+	b.WriteString("function " + fn.Name + "(" + strings.Join(params, ", ") + ") -> " + ret + "\n```")
 	return b.String()
 }
 

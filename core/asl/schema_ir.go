@@ -23,13 +23,16 @@ type ResolvedGlobal struct {
 	Required bool
 }
 
-// ResolvedScalar is a scalar type alias (e.g. EmailStr extends str) or typed JSON scalar.
+// ResolvedScalar is a scalar type alias (e.g. EmailStr extends str), extended scalar type, or typed JSON scalar.
 type ResolvedScalar struct {
 	Name          string
 	Base          string // the builtin type it extends: "json", "jsonb", "str", "int32", etc.
 	SQLType       string // the SQL type to use: "JSON", "JSONB", "TEXT", "INTEGER", etc.
 	Fields        map[string]*ResolvedScalarField
 	ExtendKeyword string // "extends" or "extending"
+	Default       string // SQL default expression
+	Constraints   []ResolvedConstraint
+	Rewrites      []ResolvedRewrite
 }
 
 // ResolvedScalarField is a field in a typed JSON scalar.

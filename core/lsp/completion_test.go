@@ -109,6 +109,35 @@ func TestQueryCompletionRelLoadStrategyOptions(t *testing.T) {
 	}
 }
 
+const funcSchema = `
+function random_string(len: int32) -> str { return 'abc'; };
+function audit_log() -> trigger { return NEW; };
+type User { required name: str; }
+`
+
+func TestQueryCompletionFunctions(t *testing.T) {
+	schema := schemaFor(t, funcSchema)
+	text := `select User filter `
+	got := labels(QueryCompletion(text, len(text), schema))
+	if it, ok := got["random_string"]; !ok {
+		t.Fatalf("expected function 'random_string' in filter completions, got %v", keys(got))
+	} else if it.Kind != CompletionKindFunction {
+		t.Errorf("expected Kind = CompletionKindFunction, got %v", it.Kind)
+	}
+}
+
+func TestSchemaCompletionFunctions(t *testing.T) {
+	schema := schemaFor(t, funcSchema)
+	text := `type Post { trigger audit after insert execute `
+	got := labels(SchemaCompletion(text, len(text), schema))
+	if _, ok := got["audit_log"]; !ok {
+		t.Fatalf("expected trigger function 'audit_log' in execute completions, got %v", keys(got))
+	}
+	if _, ok := got["random_string"]; ok {
+		t.Fatalf("did not expect non-trigger function 'random_string' in trigger execute completions")
+	}
+}
+
 func keys(m map[string]CompletionItem) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -116,4 +145,5 @@ func keys(m map[string]CompletionItem) []string {
 	}
 	return out
 }
+
 

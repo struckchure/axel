@@ -213,3 +213,178 @@ type Place extending Base {
 		t.Errorf("formatted missing Place extends Base:\n%s", formatted)
 	}
 }
+
+func TestExtendedScalarTypes(t *testing.T) {
+	src := `
+scalar type BaseCode extends str {
+  constraint min_length(6);
+  default := '000000';
+}
+
+scalar type Code extends BaseCode {
+  constraint max_length(6);
+}
+
+scalar type AutoDate extends datetime {
+  rewrite update := datetime_current();
+}
+
+type Product {
+  required id: uuid { constraint pk; };
+  code: Code;
+  custom_code: Code {
+    default := '999999';
+    constraint exclusive;
+  };
+  updated_at: AutoDate;
+}
+`
+	ir := resolveSrc(t, src)
+
+	// Check BaseCode scalar
+	baseCode := ir.ScalarTypes["BaseCode"]
+	if baseCode == nil || baseCode.Base != "str" || baseCode.SQLType != "TEXT" {
+		t.Fatalf("BaseCode scalar = %+v", baseCode)
+	}
+	if len(baseCode.Constraints) != 1 || baseCode.Constraints[0].Name != "min_length" || baseCode.Constraints[0].Args[0] != "6" {
+		t.Errorf("BaseCode constraints = %+v", baseCode.Constraints)
+	}
+	if baseCode.Default != "'000000'" {
+		t.Errorf("BaseCode default = %q, want '000000'", baseCode.Default)
+	}
+
+	// Check Code scalar (inherited min_length + added max_length + inherited default)
+	code := ir.ScalarTypes["Code"]
+	if code == nil || code.Base != "BaseCode" || code.SQLType != "TEXT" {
+		t.Fatalf("Code scalar = %+v", code)
+	}
+	if len(code.Constraints) != 2 {
+		t.Fatalf("Code constraints len = %d, want 2: %+v", len(code.Constraints), code.Constraints)
+	}
+	if code.Constraints[0].Name != "min_length" || code.Constraints[1].Name != "max_length" {
+		t.Errorf("Code constraints = %+v", code.Constraints)
+	}
+	if code.Default != "'000000'" {
+		t.Errorf("Code default = %q, want '000000'", code.Default)
+	}
+
+	// Check Product properties
+	product := ir.ObjectTypes["Product"]
+	if product == nil {
+		t.Fatalf("Product type missing")
+	}
+
+	// product.code inherits min_length, max_length, default
+	pCode := product.Properties["code"]
+	if pCode == nil {
+		t.Fatalf("Product.code missing")
+	}
+	if pCode.AQLType != "Code" || pCode.SQLType != "TEXT" {
+		t.Errorf("Product.code types = %s / %s", pCode.AQLType, pCode.SQLType)
+	}
+	if pCode.Default != "'000000'" {
+		t.Errorf("Product.code default = %q, want '000000'", pCode.Default)
+	}
+	if len(pCode.Constraints) != 2 {
+		t.Fatalf("Product.code constraints len = %d, want 2: %+v", len(pCode.Constraints), pCode.Constraints)
+	}
+
+	// product.custom_code overrides default, adds exclusive constraint
+	pCustom := product.Properties["custom_code"]
+	if pCustom == nil {
+		t.Fatalf("Product.custom_code missing")
+	}
+	if pCustom.Default != "'999999'" {
+		t.Errorf("Product.custom_code default = %q, want '999999'", pCustom.Default)
+	}
+	if len(pCustom.Constraints) != 3 {
+		t.Fatalf("Product.custom_code constraints len = %d, want 3: %+v", len(pCustom.Constraints), pCustom.Constraints)
+	}
+	if pCustom.Constraints[2].Name != "exclusive" {
+		t.Errorf("Product.custom_code 3rd constraint = %+v, want exclusive", pCustom.Constraints[2])
+	}
+
+	// product.updated_at inherits rewrite with Origin = Product
+	pUpdated := product.Properties["updated_at"]
+	if pUpdated == nil {
+		t.Fatalf("Product.updated_at missing")
+	}
+	if len(pUpdated.Rewrites) != 1 {
+		t.Fatalf("Product.updated_at rewrites len = %d, want 1", len(pUpdated.Rewrites))
+	}
+	if pUpdated.Rewrites[0].Origin != "Product" || pUpdated.Rewrites[0].ValueSQL != "now()" {
+		t.Errorf("Product.updated_at rewrite = %+v", pUpdated.Rewrites[0])
+	}
+
+	// Check Format
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format failed: %v", err)
+	}
+	if !strings.Contains(formatted, "scalar type Code extends BaseCode {") ||
+		!strings.Contains(formatted, "constraint max_length(6);") {
+		t.Errorf("formatted missing Code body:\n%s", formatted)
+	}
+}
+
+func TestDefaultFunctionWithArgs(t *testing.T) {
+	src := `
+function random_hex(len: int32) -> str { return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len); };
+
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+  default := random_hex(6);
+}
+
+type User {
+  required id: uuid { constraint pk; };
+  code: Code;
+}
+`
+	ir := resolveSrc(t, src)
+	code := ir.ScalarTypes["Code"]
+	if code == nil {
+		t.Fatal("Code scalar not resolved")
+	}
+	if code.Default != "random_hex(6)" {
+		t.Errorf("Code default = %q, want %q", code.Default, "random_hex(6)")
+	}
+
+	userCode := ir.ObjectTypes["User"].Properties["code"]
+	if userCode == nil || userCode.Default != "random_hex(6)" {
+		t.Errorf("User.code default = %+v, want random_hex(6)", userCode)
+	}
+
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	if !strings.Contains(formatted, "default := random_hex(6);") {
+		t.Errorf("formatted output missing function default:\n%s", formatted)
+	}
+}
+
+func TestDefaultFunctionArgumentTypeMismatch(t *testing.T) {
+	src := `
+function random_hex(len: int32) -> str { return 'hex'; };
+
+scalar type Code extends str {
+  default := random_hex('6');
+}
+`
+	sf, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	_, err = (&Resolver{}).Resolve(sf)
+	if err == nil {
+		t.Fatal("expected resolve error for passing string '6' to int32 parameter, got nil")
+	}
+	if !strings.Contains(err.Error(), `function "random_hex" argument 1 expects int32, got str ('6')`) {
+		t.Errorf("unexpected error message: %q", err.Error())
+	}
+}
+
+
+
