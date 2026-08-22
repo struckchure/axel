@@ -9,7 +9,10 @@ import (
 	"github.com/struckchure/axel/studio"
 )
 
-var studioAddr string
+var (
+	studioAddr       string
+	studioQueryGlobs []string
+)
 
 var studioCmd = &cobra.Command{
 	Use:   "studio",
@@ -29,7 +32,18 @@ the AXEL_DATABASE_URL / DATABASE_URL / AXEL_SCHEMA_PATH environment variables.`,
 		url := firstNonEmpty(databaseURL, configDatabaseURL(), envOr("AXEL_DATABASE_URL", os.Getenv("DATABASE_URL")))
 		sp := firstNonEmpty(schemaPath, configSchemaPath(), envOr("AXEL_SCHEMA_PATH", defaultSchemaPath()))
 
-		return studio.Run(studio.Options{Addr: studioAddr, DatabaseURL: url, SchemaPath: sp})
+		var qPaths []string
+		qPaths = append(qPaths, studioQueryGlobs...)
+		if config != nil && config.Codegen != nil {
+			qPaths = append(qPaths, config.Codegen.Queries...)
+		}
+
+		return studio.Run(studio.Options{
+			Addr:        studioAddr,
+			DatabaseURL: url,
+			SchemaPath:  sp,
+			QueryPaths:  qPaths,
+		})
 	},
 }
 
@@ -75,5 +89,6 @@ func firstNonEmpty(vals ...string) string {
 
 func init() {
 	studioCmd.Flags().StringVar(&studioAddr, "addr", studio.DefaultAddr, "listen address")
+	studioCmd.Flags().StringArrayVarP(&studioQueryGlobs, "query", "q", nil, "AQL query file or glob (repeatable)")
 	RootCmd.AddCommand(studioCmd)
 }

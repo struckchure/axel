@@ -1,5 +1,11 @@
 package pages
 
+import (
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/button"
+	"github.com/struckchure/axel/studio/components/icon"
+)
+
 // Studio is the full page. HTMX navigations re-render StudioBody only.
 templ Studio(v StudioView) {
 	@Layout("Axel Studio") {
@@ -10,28 +16,33 @@ templ Studio(v StudioView) {
 
 templ topbar(v StudioView) {
 	<header class="h-12 shrink-0 border-b border-border bg-card flex items-center gap-3 px-4">
-		<div class="flex items-center gap-2 font-semibold tracking-tight">
-			<span class="text-primary">@iconDatabase()</span>
+		<div class="flex items-center gap-2 font-semibold tracking-tight text-sm">
+			<span class="text-primary">@icon.Database(icon.Props{Size: 18})</span>
 			Axel <span class="text-muted-foreground font-normal">Studio</span>
 		</div>
-		<div class="flex items-center gap-2 ml-2 pl-3 border-l border-border">
+		<div class="flex items-center gap-2 ml-2 pl-3 border-l border-border text-xs">
 			<span class={ "size-2", statusDot(v.Live) }></span>
 			<span class="text-muted-foreground">{ v.ConnName }</span>
 			if !v.Live {
-				<span class="text-[11px] px-1.5 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium">offline</span>
+				@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+					offline
+				}
 			}
 			if v.AQLLive {
-				<span class="text-[11px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">AQL live</span>
+				@badge.Badge(badge.Props{Variant: badge.VariantSuccess, Size: badge.SizeSm}) {
+					AQL live
+				}
 			}
 		</div>
 		<div class="ml-auto flex items-center gap-1">
-			<button
-				onclick="toggleTheme()"
-				class="size-8 inline-flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-				title="Toggle theme"
-			>
-				@iconSun()
-			</button>
+			@button.Button(button.Props{
+				Variant: button.VariantGhost,
+				Size:    button.SizeIcon,
+				OnClick: "toggleTheme()",
+				Title:   "Toggle theme",
+			}) {
+				@icon.Sun(icon.Props{Size: 16})
+			}
 		</div>
 	</header>
 }
@@ -43,12 +54,12 @@ func statusDot(live bool) string {
 	return "bg-amber-500 rounded-full"
 }
 
-// StudioBody is the swap target for HTMX navigation.
+// StudioBody is the full layout body with sidebar and panel-container.
 templ StudioBody(v StudioView) {
 	<div id="studio" class="flex h-[calc(100vh-3rem)]">
 		@sidebar(v)
-		<main class="relative flex-1 min-w-0 flex flex-col">
-			@panel(v)
+		<main id="panel-container" class="relative flex-1 min-w-0 flex flex-col bg-background overflow-hidden">
+			@Panel(v)
 		</main>
 	</div>
 }

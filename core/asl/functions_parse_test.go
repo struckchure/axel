@@ -127,24 +127,85 @@ func TestFunctionDirectiveErrors(t *testing.T) {
 }
 
 func TestFunctionFormatting(t *testing.T) {
-	src := `@language sql
+	t.Run("short return single line", func(t *testing.T) {
+		src := `@language sql
+function full_name(first: text, last: text) -> text { return first || ' ' || last; };
+`
+		formatted, err := Format([]byte(src))
+		if err != nil {
+			t.Fatalf("Format error: %v", err)
+		}
+		want := `@language sql
+function full_name(first: text, last: text) -> text {
+  return first || ' ' || last;
+};
+`
+		if formatted != want {
+			t.Errorf("formatted:\n%s\nwant:\n%s", formatted, want)
+		}
+	})
+
+	t.Run("long return argument wrapping", func(t *testing.T) {
+		src := `@language sql
 @volatile
 @strict
 function random_hex(len: int32) -> str { return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len); };
 `
-	formatted, err := Format([]byte(src))
-	if err != nil {
-		t.Fatalf("Format error: %v", err)
-	}
-	want := `@language sql
+		formatted, err := Format([]byte(src))
+		if err != nil {
+			t.Fatalf("Format error: %v", err)
+		}
+		want := `@language sql
 @volatile
 @strict
 function random_hex(len: int32) -> str {
-  return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len);
+  return substr(
+    encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'),
+    1,
+    len
+  );
 };
 `
-	if formatted != want {
-		t.Errorf("formatted:\n%q\nwant:\n%q", formatted, want)
-	}
+		if formatted != want {
+			t.Errorf("formatted:\n%s\nwant:\n%s", formatted, want)
+		}
+	})
+
+	t.Run("haversine distance nested formula wrapping", func(t *testing.T) {
+		src := `@language sql
+@immutable
+@strict
+@parallel safe
+function haversine_distance(lat1: float64, lon1: float64, lat2: float64, lon2: float64) -> float64 {
+  return 2 * 6371000 * asin( sqrt( sin(radians(lat2 - lat1) / 2) ^ 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(radians(lon2 - lon1) / 2) ^ 2 ) );
+};
+`
+		formatted, err := Format([]byte(src))
+		if err != nil {
+			t.Fatalf("Format error: %v", err)
+		}
+		want := `@language sql
+@immutable
+@strict
+@parallel safe
+function haversine_distance(
+  lat1: float64,
+  lon1: float64,
+  lat2: float64,
+  lon2: float64
+) -> float64 {
+  return 2 * 6371000 * asin(
+    sqrt(
+      sin(radians(lat2 - lat1) / 2) ^ 2 +
+      cos(radians(lat1)) * cos(radians(lat2)) *
+      sin(radians(lon2 - lon1) / 2) ^ 2
+    )
+  );
+};
+`
+		if formatted != want {
+			t.Errorf("formatted:\n%s\nwant:\n%s", formatted, want)
+		}
+	})
 }
 

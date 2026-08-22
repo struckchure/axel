@@ -3,6 +3,9 @@ package pages
 import (
 	"fmt"
 
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/button"
+	"github.com/struckchure/axel/studio/components/icon"
 	"github.com/struckchure/axel/studio/db"
 )
 
@@ -16,8 +19,8 @@ templ dataView(v StudioView) {
 
 templ dataError(v StudioView) {
 	<div class="flex-1 flex flex-col items-center justify-center text-center gap-3 p-8">
-		<div class="size-12 bg-destructive/10 flex items-center justify-center text-destructive">
-			@iconDatabase()
+		<div class="size-12 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
+			@icon.Database(icon.Props{Size: 20})
 		</div>
 		<div class="space-y-1 max-w-lg">
 			<p class="font-medium text-foreground">Couldn't read this table</p>
@@ -33,7 +36,7 @@ templ dataGrid(v StudioView) {
 	}
 	<div class="flex-1 min-h-0 overflow-auto">
 		<table
-			class="border-separate border-spacing-0 w-full text-[13px]"
+			class="border-separate border-spacing-0 w-full text-xs"
 			if v.Editable() {
 				data-axel-grid
 				data-type={ v.Active.Type }
@@ -59,6 +62,8 @@ templ dataGrid(v StudioView) {
 								@linkEditCell(v, c, val)
 							} else if c.IsLink {
 								@linkCell(c, val)
+							} else if len(c.EnumValues) > 0 && v.Editable() {
+								@enumEditCell(v, c, val)
 							} else if v.Editable() && isEditable(c) {
 								@editCell(c, val)
 							} else {
@@ -86,13 +91,14 @@ templ dataGrid(v StudioView) {
 
 templ editToolbar() {
 	<div class="h-9 shrink-0 border-b border-border bg-card/60 flex items-center px-3 gap-2">
-		<button
-			type="button"
-			onclick="axelAddRow()"
-			class="inline-flex items-center gap-1.5 h-7 px-2.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-		>
-			<span class="text-base leading-none">+</span> Insert row
-		</button>
+		@button.Button(button.Props{
+			Variant: button.VariantGhost,
+			Size:    button.SizeSm,
+			OnClick: "axelAddRow()",
+		}) {
+			@icon.Plus(icon.Props{Size: 13})
+			Insert row
+		}
 		<span class="text-[11px] text-muted-foreground ml-1">Double-click a cell to edit · edits apply as AQL</span>
 	</div>
 }
@@ -105,7 +111,7 @@ templ rowIndexCell(v StudioView, i int) {
 				type="button"
 				title="Mark row for deletion"
 				onclick="axelToggleDelete(this)"
-				class="hidden group-hover:inline-flex items-center justify-center size-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+				class="hidden group-hover:inline-flex items-center justify-center size-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded cursor-pointer"
 			>×</button>
 		} else {
 			{ fmt.Sprintf("%d", v.Rows.Offset+i+1) }
@@ -117,7 +123,7 @@ templ columnHeader(v StudioView, c db.Column) {
 	<th class="bg-muted border-b border-r border-border px-0 text-left font-medium whitespace-nowrap">
 		if c.IsLink {
 			<div class="flex items-center gap-1.5 px-3 py-1.5">
-				<span class="text-blue-500" title={ "References " + c.ForeignRef }>@iconLink()</span>
+				<span class="text-blue-500" title={ "References " + c.ForeignRef }>@icon.Link(icon.Props{Size: 13})</span>
 				<span>{ c.Name }</span>
 				<span class="text-[10px] font-normal text-muted-foreground lowercase">{ c.DataType }</span>
 			</div>
@@ -125,13 +131,13 @@ templ columnHeader(v StudioView, c db.Column) {
 			<a
 				href={ templ.SafeURL(v.sortURL(c.Name)) }
 				hx-get={ v.sortURL(c.Name) }
-				hx-target="#studio"
-				hx-swap="outerHTML"
+				hx-target="#panel-container"
+				hx-swap="innerHTML"
 				hx-push-url="true"
 				class="flex items-center gap-1.5 px-3 py-1.5 hover:bg-accent/60 transition-colors"
 			>
 				if c.IsPrimaryKey {
-					<span class="text-amber-500" title="Primary key">@iconKey()</span>
+					<span class="text-amber-500" title="Primary key">@icon.Key(icon.Props{Size: 13})</span>
 				}
 				<span>{ c.Name }</span>
 				<span class="text-[10px] font-normal text-muted-foreground lowercase">{ c.DataType }</span>
@@ -175,6 +181,35 @@ templ linkEditCell(v StudioView, c db.Column, val any) {
 	</td>
 }
 
+// enumEditCell is a select-box editor for enum columns in existing rows.
+templ enumEditCell(v StudioView, c db.Column, val any) {
+	<td data-col={ c.Name } class="axel-cell border-b border-r border-border p-0 max-w-xs">
+		@enumSelect(v, c, editText(val))
+	</td>
+}
+
+// enumSelect renders a select dropdown for an enum column.
+templ enumSelect(v StudioView, c db.Column, current string) {
+	<select
+		data-enum
+		onchange="axelSelectEdited(this)"
+		class="w-full bg-transparent px-3 py-1.5 outline-none text-emerald-600 dark:text-emerald-400 font-medium cursor-pointer appearance-none"
+	>
+		if c.Nullable {
+			<option value="" class="bg-popover text-foreground">—</option>
+		}
+		for _, opt := range c.EnumValues {
+			<option
+				value={ opt }
+				selected?={ opt == current }
+				class="bg-popover text-foreground"
+			>
+				{ opt }
+			</option>
+		}
+	</select>
+}
+
 // chipsCell is an editable multi-link cell: selected targets as removable chips
 // plus an "add" dropdown. Membership reconciles against the junction table.
 templ chipsCell(v StudioView, c db.Column, ids []string) {
@@ -189,9 +224,9 @@ templ chipsCell(v StudioView, c db.Column, ids []string) {
 }
 
 templ chip(id, label string) {
-	<span class="axel-chip inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-secondary text-secondary-foreground text-xs font-medium" data-id={ id }>
+	<span class="axel-chip inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-secondary text-secondary-foreground text-xs font-medium rounded" data-id={ id }>
 		{ label }
-		<button type="button" onclick="axelChipRemove(this)" class="hover:text-destructive leading-none">×</button>
+		<button type="button" onclick="axelChipRemove(this)" class="hover:text-destructive leading-none cursor-pointer">×</button>
 	</span>
 }
 
@@ -210,10 +245,10 @@ templ linkCell(c db.Column, val any) {
 	<td class="border-b border-r border-border px-3 py-1.5 max-w-xs truncate" title={ linkTitle(val) }>
 		if c.IsMulti {
 			if n := linkCount(val); n > 0 {
-				<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium">
-					@iconLink()
+				@badge.Badge(badge.Props{Variant: badge.VariantInfo, Size: badge.SizeSm}) {
+					@icon.Link(icon.Props{Size: 11})
 					{ fmt.Sprintf("%d", n) }
-				</span>
+				}
 			} else {
 				<span class="text-muted-foreground/40">—</span>
 			}
@@ -221,7 +256,7 @@ templ linkCell(c db.Column, val any) {
 			<span class="text-muted-foreground/40">—</span>
 		} else {
 			<span class="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
-				@iconLink()
+				@icon.Link(icon.Props{Size: 11})
 				<span class="font-mono text-[12px] truncate">{ linkText(val) }</span>
 			</span>
 		}
@@ -241,7 +276,7 @@ templ cell(c Cell) {
 		if c.Kind == "null" {
 			<span class="text-muted-foreground/50 italic">NULL</span>
 		} else if c.Kind == "bool" {
-			<span class={ "px-1.5 py-0.5 text-[11px] font-medium", boolClass(c.Display) }>{ c.Display }</span>
+			<span class={ "px-1.5 py-0.5 text-[11px] font-medium rounded", boolClass(c.Display) }>{ c.Display }</span>
 		} else {
 			{ c.Display }
 		}
@@ -273,7 +308,7 @@ templ newRowTemplate(v StudioView) {
 	<template id="axel-newrow">
 		<tr class="group axel-draft" data-draft>
 			<td class="sticky left-0 z-10 bg-card border-b border-r border-border text-center w-10">
-				<button type="button" title="Discard draft row" onclick="axelRemoveDraft(this)" class="inline-flex items-center justify-center size-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10">×</button>
+				<button type="button" title="Discard draft row" onclick="axelRemoveDraft(this)" class="inline-flex items-center justify-center size-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded cursor-pointer">×</button>
 			</td>
 			for _, c := range v.Rows.Columns {
 				if c.IsLink && c.IsMulti {
@@ -281,6 +316,10 @@ templ newRowTemplate(v StudioView) {
 				} else if c.IsLink && !c.IsMulti {
 					<td data-col={ c.Name } class="axel-cell border-b border-r border-border p-0">
 						@linkSelect(v, c, "")
+					</td>
+				} else if len(c.EnumValues) > 0 {
+					<td data-col={ c.Name } class="axel-cell border-b border-r border-border p-0">
+						@enumSelect(v, c, c.Default)
 					</td>
 				} else if isEditable(c) {
 					<td data-col={ c.Name } contenteditable="true" spellcheck="false" oninput="axelBar()" class="axel-cell border-b border-r border-border px-3 py-1.5 outline-none" data-placeholder={ c.Name }></td>
@@ -298,12 +337,27 @@ templ newRowTemplate(v StudioView) {
 
 // reviewBar floats above the grid when there are staged changes.
 templ reviewBar() {
-	<div id="axel-review" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-3 py-2 border border-border bg-popover shadow-lg text-[13px]">
+	<div id="axel-review" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-3 py-2 border border-border bg-popover shadow-lg rounded-lg text-xs">
 		<span id="axel-summary" class="text-muted-foreground"></span>
 		<span id="axel-error" class="hidden max-w-md truncate text-destructive text-xs font-mono"></span>
 		<div class="flex items-center gap-1.5">
-			<button type="button" onclick="axelDiscard()" class="h-7 px-2.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">Discard</button>
-			<button id="axel-save" type="button" onclick="axelSave()" class="h-7 px-3 bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors">Save changes</button>
+			@button.Button(button.Props{
+				Variant: button.VariantGhost,
+				Size:    button.SizeSm,
+				OnClick: "axelDiscard()",
+			}) {
+				Discard
+			}
+			@button.Button(button.Props{
+				Variant: button.VariantDefault,
+				Size:    button.SizeSm,
+				OnClick: "axelSave()",
+				Attributes: templ.Attributes{
+					"id": "axel-save",
+				},
+			}) {
+				Save changes
+			}
 		</div>
 	</div>
 }
@@ -314,10 +368,10 @@ templ pagination(v StudioView) {
 		<div class="flex items-center gap-1">
 			<span class="mr-2">Page { fmt.Sprintf("%d", v.Page()) } of { fmt.Sprintf("%d", v.Pages()) }</span>
 			@pageButton(v, v.Page()-1, v.Page() <= 1) {
-				@iconChevronLeft()
+				@icon.ChevronLeft(icon.Props{Size: 14})
 			}
 			@pageButton(v, v.Page()+1, v.Page() >= v.Pages()) {
-				@iconChevronRight()
+				@icon.ChevronRight(icon.Props{Size: 14})
 			}
 		</div>
 	</div>
@@ -325,17 +379,17 @@ templ pagination(v StudioView) {
 
 templ pageButton(v StudioView, page int, disabled bool) {
 	if disabled {
-		<span class="size-7 inline-flex items-center justify-center text-muted-foreground/40">
+		<span class="size-7 inline-flex items-center justify-center text-muted-foreground/40 rounded">
 			{ children... }
 		</span>
 	} else {
 		<a
 			href={ templ.SafeURL(v.pageURL(page)) }
 			hx-get={ v.pageURL(page) }
-			hx-target="#studio"
-			hx-swap="outerHTML"
+			hx-target="#panel-container"
+			hx-swap="innerHTML"
 			hx-push-url="true"
-			class="size-7 inline-flex items-center justify-center hover:bg-accent hover:text-accent-foreground transition-colors"
+			class="size-7 inline-flex items-center justify-center rounded hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
 		>
 			{ children... }
 		</a>

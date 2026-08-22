@@ -33,15 +33,17 @@ var assetsFS embed.FS
 
 // Options configures a studio server.
 type Options struct {
-	Addr        string // listen address, e.g. ":4530"
-	DatabaseURL string // postgres connection url ("" → default)
-	SchemaPath  string // path to an .asl file ("" → AQL disabled)
+	Addr        string   // listen address, e.g. ":4530"
+	DatabaseURL string   // postgres connection url ("" → default)
+	SchemaPath  string   // path to an .asl file ("" → AQL disabled)
+	QueryPaths  []string // paths or globs for queries
 }
 
 type server struct {
-	store  db.Store
-	schema *db.Schema // loaded ASL schema, or nil
-	aql    *db.AQL    // AQL engine (compile-only or live), or nil
+	store      db.Store
+	schema     *db.Schema // loaded ASL schema, or nil
+	aql        *db.AQL    // AQL engine (compile-only or live), or nil
+	queryPaths []string
 }
 
 // Handler builds the studio's HTTP handler for the given options, connecting to
@@ -51,7 +53,10 @@ func Handler(opts Options) http.Handler {
 	if opts.DatabaseURL == "" {
 		opts.DatabaseURL = defaultDBURL
 	}
-	srv := &server{store: openStore(opts.DatabaseURL)}
+	srv := &server{
+		store:      openStore(opts.DatabaseURL),
+		queryPaths: opts.QueryPaths,
+	}
 	srv.loadSchema(opts.SchemaPath)
 
 	assets, _ := fs.Sub(assetsFS, "assets")
@@ -131,13 +136,21 @@ func (s *server) handleStudio(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
 
+	kind := q.Get("kind")
+	if kind == "" {
+		if q.Get("table") != "" {
+			kind = "type"
+		}
+	}
+
 	v := pages.StudioView{
-		ConnName:  s.store.Name(),
-		Live:      s.store.Live(),
-		Tab:       firstNonEmpty(q.Get("tab"), "data"),
-		QuerySQL:  q.Get("sql"),
-		HasSchema: s.aql != nil,
-		AQLLive:   s.aqlLive(),
+		ConnName:   s.store.Name(),
+		Live:       s.store.Live(),
+		ActiveKind: kind,
+		Tab:        firstNonEmpty(q.Get("tab"), "data"),
+		QuerySQL:   q.Get("sql"),
+		HasSchema:  s.aql != nil,
+		AQLLive:    s.aqlLive(),
 	}
 
 	tables, err := s.tables(ctx)
@@ -147,33 +160,115 @@ func (s *server) handleStudio(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Tables = tables
 
-	if s.schema != nil && s.schema.IR != nil {
-		v.Enums = make(map[string][]string)
-		for name, enum := range s.schema.IR.EnumTypes {
-			v.Enums[name] = enum.Values
+	// Discover project queries
+	searchDirs := []string{"."}
+	if s.schema != nil && s.schema.Path != "" {
+		searchDirs = append(searchDirs, s.schema.Path)
+	}
+	searchDirs = append(searchDirs, s.queryPaths...)
+	v.Queries = db.DiscoverQueries(searchDirs...)
+
+	if s.schema != nil {
+		v.Enums = s.schema.Enums()
+		v.Scalars = s.schema.Scalars()
+		v.Policies = s.schema.Policies()
+		v.Triggers = s.schema.Triggers()
+		v.Extensions = s.schema.Extensions()
+		v.Functions = s.schema.Functions()
+
+		if s.schema.IR != nil {
+			v.EnumValues = make(map[string][]string)
+			for name, enum := range s.schema.IR.EnumTypes {
+				v.EnumValues[name] = enum.Values
+			}
 		}
 	}
 
-	schema, table := q.Get("schema"), q.Get("table")
-	if schema != "" && table != "" {
-		if active := findTable(tables, schema, table); active != nil {
-			v.Active = active
-			if sort := q.Get("sort"); sort != "" {
-				v.Order = &db.Order{Column: sort, Desc: q.Get("desc") == "true"}
+	// Resolve active item based on kind
+	switch kind {
+	case "enum":
+		name := q.Get("name")
+		for i := range v.Enums {
+			if v.Enums[i].Name == name {
+				v.ActiveEnum = &v.Enums[i]
+				break
 			}
-			if v.Tab == "data" {
-				rows, err := s.read(ctx, *active, pageOf(q), v.Order)
-				if err != nil {
-					v.DataErr = err.Error()
-				} else {
-					v.Rows = rows
+		}
+	case "scalar":
+		name := q.Get("name")
+		for i := range v.Scalars {
+			if v.Scalars[i].Name == name {
+				v.ActiveScalar = &v.Scalars[i]
+				break
+			}
+		}
+	case "policy":
+		pType, pName := q.Get("type"), q.Get("name")
+		for i := range v.Policies {
+			if v.Policies[i].Type == pType && v.Policies[i].Name == pName {
+				v.ActivePolicy = &v.Policies[i]
+				break
+			}
+		}
+	case "trigger":
+		tType, tName := q.Get("type"), q.Get("name")
+		for i := range v.Triggers {
+			if v.Triggers[i].Type == tType && v.Triggers[i].Name == tName {
+				v.ActiveTrigger = &v.Triggers[i]
+				break
+			}
+		}
+	case "extension":
+		eName := q.Get("name")
+		for i := range v.Extensions {
+			if v.Extensions[i].Name == eName {
+				v.ActiveExtension = &v.Extensions[i]
+				break
+			}
+		}
+	case "function":
+		fName := q.Get("name")
+		for i := range v.Functions {
+			if v.Functions[i].Name == fName {
+				v.ActiveFunction = &v.Functions[i]
+				break
+			}
+		}
+	case "query":
+		qName := q.Get("name")
+		for i := range v.Queries {
+			if v.Queries[i].Name == qName {
+				v.ActiveQuery = &v.Queries[i]
+				break
+			}
+		}
+	default:
+		// Default to type / table
+		schema, table := q.Get("schema"), q.Get("table")
+		if schema == "" && table != "" {
+			schema = "public"
+		}
+		if schema != "" && table != "" {
+			if active := findTable(tables, schema, table); active != nil {
+				v.Active = active
+				v.ActiveKind = "type"
+				if sort := q.Get("sort"); sort != "" {
+					v.Order = &db.Order{Column: sort, Desc: q.Get("desc") == "true"}
 				}
-				v.LinkOptions = s.linkOptions(ctx, *active)
+				if v.Tab == "data" {
+					rows, err := s.read(ctx, *active, pageOf(q), v.Order)
+					if err != nil {
+						v.DataErr = err.Error()
+					} else {
+						v.Rows = rows
+					}
+					v.LinkOptions = s.linkOptions(ctx, *active)
+				}
 			}
 		}
 	}
 
-	render(w, r, hxComponent(r, pages.StudioBody(v), pages.Studio(v)))
+	render(w, r, hxComponent(r, pages.Panel(v), pages.StudioBody(v), pages.Studio(v)))
 }
 
 // linkOptions fetches picker candidates for each single-link column of an
@@ -196,9 +291,9 @@ func (s *server) linkOptions(ctx context.Context, t db.Table) map[string][]db.Op
 	return opts
 }
 
-// tables lists tables from the schema when AQL is live, else from the store.
+// tables lists tables from the schema when loaded, else from the store.
 func (s *server) tables(ctx context.Context) ([]db.Table, error) {
-	if s.aqlLive() {
+	if s.schema != nil {
 		return s.schema.Tables(), nil
 	}
 	return s.store.Tables(ctx)
@@ -210,7 +305,11 @@ func (s *server) read(ctx context.Context, t db.Table, page int, order *db.Order
 	if s.aqlLive() && t.Type != "" {
 		return s.aql.Read(ctx, t, defaultPageSze, offset, order)
 	}
-	return s.store.Read(ctx, t.Schema, t.Name, defaultPageSze, offset, order)
+	rows, err := s.store.Read(ctx, t.Schema, t.Name, defaultPageSze, offset, order)
+	if err != nil {
+		return db.Rows{Columns: t.Columns}, nil
+	}
+	return rows, nil
 }
 
 // handleSQL runs the raw-SQL console.
@@ -366,9 +465,13 @@ func poolOf(store db.Store) *pgxpool.Pool {
 	return nil
 }
 
-func hxComponent(r *http.Request, partial, full templ.Component) templ.Component {
+func hxComponent(r *http.Request, panel, body, full templ.Component) templ.Component {
 	if r.Header.Get("HX-Request") == "true" {
-		return partial
+		target := r.Header.Get("HX-Target")
+		if target == "panel-container" || target == "#panel-container" {
+			return panel
+		}
+		return body
 	}
 	return full
 }

@@ -1,0 +1,116 @@
+package tabs
+
+type Props struct {
+	Class      string
+	Attributes templ.Attributes
+}
+
+type TriggerProps struct {
+	Active     bool
+	Href       string
+	HxGet      string
+	HxTarget   string
+	HxSwap     string
+	HxPushURL  string
+	Class      string
+	Attributes templ.Attributes
+}
+
+templ Tabs(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "flex flex-col", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}
+
+templ List(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}
+
+templ Trigger(props ...TriggerProps) {
+	{{
+		var p TriggerProps
+		if len(props) > 0 {
+			p = props[0]
+		}
+		activeClass := "bg-background text-foreground shadow-sm font-medium"
+		inactiveClass := "hover:bg-background/50 hover:text-foreground text-muted-foreground"
+		baseClass := "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+	}}
+	if p.Href != "" {
+		<a
+			href={ templ.SafeURL(p.Href) }
+			class={
+				baseClass,
+				templ.KV(activeClass, p.Active),
+				templ.KV(inactiveClass, !p.Active),
+				p.Class,
+			}
+			if p.HxGet != "" {
+				hx-get={ p.HxGet }
+			}
+			if p.HxTarget != "" {
+				hx-target={ p.HxTarget }
+			}
+			if p.HxSwap != "" {
+				hx-swap={ p.HxSwap }
+			}
+			if p.HxPushURL != "" {
+				hx-push-url={ p.HxPushURL }
+			}
+			{ p.Attributes... }
+		>
+			{ children... }
+		</a>
+	} else {
+		<button
+			type="button"
+			class={
+				baseClass,
+				templ.KV(activeClass, p.Active),
+				templ.KV(inactiveClass, !p.Active),
+				p.Class,
+			}
+			if p.HxGet != "" {
+				hx-get={ p.HxGet }
+			}
+			if p.HxTarget != "" {
+				hx-target={ p.HxTarget }
+			}
+			if p.HxSwap != "" {
+				hx-swap={ p.HxSwap }
+			}
+			if p.HxPushURL != "" {
+				hx-push-url={ p.HxPushURL }
+			}
+			{ p.Attributes... }
+		>
+			{ children... }
+		</button>
+	}
+}
+
+templ Content(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}

@@ -1,0 +1,147 @@
+package pages
+
+import (
+	"strings"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/card"
+	"github.com/struckchure/axel/studio/components/icon"
+)
+
+templ triggerDetailView(v StudioView) {
+	if v.ActiveTrigger == nil {
+		@emptyState(v)
+	} else {
+		{{ t := *v.ActiveTrigger }}
+		<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-4xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between">
+				<div class="space-y-1">
+					<div class="flex items-center gap-2">
+						<span class="text-primary">@icon.Trigger(icon.Props{Size: 20})</span>
+						<h2 class="text-xl font-bold tracking-tight text-foreground">{ t.Name }</h2>
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							on { t.Type }
+						}
+					</div>
+					<p class="text-xs text-muted-foreground">Database Trigger</p>
+				</div>
+			</div>
+
+			<!-- Metadata Card -->
+			@card.Card() {
+				@card.Header() {
+					@card.Title() {
+						Trigger Configuration
+					}
+					@card.Description() {
+						Execution timing, events, and granularity.
+					}
+				}
+				@card.Content() {
+					<div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Target Type</span>
+							<div class="font-medium text-foreground flex items-center gap-1.5 pt-0.5">
+								<span class="text-muted-foreground">@icon.Table(icon.Props{Size: 13})</span>
+								<span>{ t.Type }</span>
+								if t.Table != "" {
+									<span class="text-muted-foreground font-mono text-[11px]">({ t.Table })</span>
+								}
+							</div>
+						</div>
+
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Timing</span>
+							<div class="pt-0.5">
+								@badge.Badge(badge.Props{Variant: badge.VariantInfo, Size: badge.SizeSm}) {
+									{ strings.ToUpper(t.Timing) }
+								}
+							</div>
+						</div>
+
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Events</span>
+							<div class="flex flex-wrap gap-1 pt-0.5">
+								for _, ev := range t.Events {
+									@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+										{ strings.ToUpper(ev) }
+									}
+								}
+							</div>
+						</div>
+
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Level</span>
+							<div class="pt-0.5">
+								@badge.Badge(badge.Props{Variant: badge.VariantOutline, Size: badge.SizeSm}) {
+									if t.ForEach != "" {
+										FOR EACH { strings.ToUpper(t.ForEach) }
+									} else {
+										FOR EACH ROW
+									}
+								}
+							</div>
+						</div>
+					</div>
+				}
+			}
+
+			<!-- Condition (WHEN) if present -->
+			if t.When != "" {
+				@card.Card() {
+					@card.Header() {
+						@card.Title() {
+							WHEN Condition
+						}
+						@card.Description() {
+							SQL condition that gates trigger execution.
+						}
+					}
+					@card.Content() {
+						<pre class="p-3 rounded-md bg-muted/50 border border-border font-mono text-xs text-foreground overflow-x-auto whitespace-pre-wrap">{ t.When }</pre>
+					}
+				}
+			}
+
+			<!-- Action Body -->
+			@card.Card() {
+				@card.Header() {
+					<div class="flex items-center justify-between">
+						<div>
+							@card.Title() {
+								Trigger Action
+							}
+							@card.Description() {
+								if t.DoAQL != "" {
+									Inline AQL statement executed on trigger activation.
+								} else {
+									Function executed on trigger activation.
+								}
+							}
+						</div>
+						if t.DoAQL != "" {
+							@badge.Badge(badge.Props{Variant: badge.VariantSuccess, Size: badge.SizeSm}) {
+								DO AQL
+							}
+						} else {
+							@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Size: badge.SizeSm}) {
+								EXECUTE FUNCTION
+							}
+						}
+					</div>
+				}
+				@card.Content() {
+					if t.DoAQL != "" {
+						<pre class="p-3 rounded-md bg-muted/50 border border-border font-mono text-xs text-foreground overflow-x-auto whitespace-pre-wrap">{ t.DoAQL }</pre>
+					} else if t.Function != "" {
+						<div class="flex items-center gap-2 p-3 rounded-md bg-muted/50 border border-border font-mono text-xs text-foreground">
+							<span class="text-muted-foreground">execute function</span>
+							<span class="text-blue-600 dark:text-blue-400 font-semibold">{ t.Function }()</span>
+						</div>
+					}
+				}
+			}
+		</div>
+	}
+}

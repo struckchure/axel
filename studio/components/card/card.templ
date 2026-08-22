@@ -1,0 +1,78 @@
+package card
+
+type Props struct {
+	Class      string
+	Attributes templ.Attributes
+}
+
+templ Card(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "rounded-lg border border-border bg-card text-card-foreground shadow-sm", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}
+
+templ Header(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "flex flex-col space-y-1.5 p-4", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}
+
+templ Title(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<h3 class={ "text-base font-semibold leading-none tracking-tight text-foreground", p.Class } { p.Attributes... }>
+		{ children... }
+	</h3>
+}
+
+templ Description(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<p class={ "text-xs text-muted-foreground", p.Class } { p.Attributes... }>
+		{ children... }
+	</p>
+}
+
+templ Content(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "p-4 pt-0", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}
+
+templ Footer(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+	}}
+	<div class={ "flex items-center p-4 pt-0", p.Class } { p.Attributes... }>
+		{ children... }
+	</div>
+}

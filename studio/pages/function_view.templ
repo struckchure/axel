@@ -1,0 +1,187 @@
+package pages
+
+import (
+	"strings"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/card"
+	"github.com/struckchure/axel/studio/components/icon"
+	"github.com/struckchure/axel/studio/components/table"
+)
+
+templ functionDetailView(v StudioView) {
+	if v.ActiveFunction == nil {
+		@emptyState(v)
+	} else {
+		{{ fn := *v.ActiveFunction }}
+		<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between">
+				<div class="space-y-1">
+					<div class="flex items-center gap-2">
+						<span class="text-primary">@icon.Function(icon.Props{Size: 20})</span>
+						<h2 class="text-xl font-bold tracking-tight text-foreground">{ fn.Name }</h2>
+						if fn.Returns != "" {
+							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+								{ "-> " + fn.Returns }
+							}
+						}
+						if fn.Language != "" {
+							@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+								{ strings.ToUpper(fn.Language) }
+							}
+						}
+					</div>
+					<p class="text-xs text-muted-foreground">Top-Level Postgres Function</p>
+				</div>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+				<!-- Main Function Body -->
+				<div class="md:col-span-2 space-y-6">
+					<!-- Parameters Table (if any) -->
+					if len(fn.Params) > 0 {
+						@card.Card() {
+							@card.Header() {
+								@card.Title() {
+									Function Parameters
+								}
+								@card.Description() {
+									Arguments accepted by { fn.Name }.
+								}
+							}
+							@card.Content() {
+								@table.Table() {
+									@table.Header() {
+										@table.Row() {
+											@table.Head() { Parameter }
+											@table.Head() { SQL Type }
+										}
+									}
+									@table.Body() {
+										for _, p := range fn.Params {
+											@table.Row() {
+												@table.Cell(table.Props{Class: "font-mono font-medium text-foreground"}) {
+													{ p.Name }
+												}
+												@table.Cell(table.Props{Class: "font-mono text-blue-600 dark:text-blue-400"}) {
+													{ p.SQLType }
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+					<!-- Implementation / Return Body -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() {
+								Function Body
+							}
+							@card.Description() {
+								Return expression and function logic.
+							}
+						}
+						@card.Content() {
+							if fn.ReturnSQL != "" {
+								<pre class="p-3 rounded-md bg-muted/50 border border-border font-mono text-xs text-foreground overflow-x-auto whitespace-pre-wrap">{ fn.ReturnSQL }</pre>
+							} else {
+								<p class="text-xs text-muted-foreground italic py-2">Function definition declared in schema.</p>
+							}
+						}
+					}
+				</div>
+
+				<!-- Attributes & Usages -->
+				<div class="space-y-6">
+					<!-- Attributes Card -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() {
+								Directives & Attributes
+							}
+							@card.Description() {
+								Postgres function attributes.
+							}
+						}
+						@card.Content() {
+							<div class="space-y-3 text-xs">
+								<div class="flex items-center justify-between py-1 border-b border-border">
+									<span class="text-muted-foreground">Language</span>
+									<span class="font-mono font-medium text-foreground">{ fn.Language }</span>
+								</div>
+								<div class="flex items-center justify-between py-1 border-b border-border">
+									<span class="text-muted-foreground">Returns</span>
+									<span class="font-mono font-medium text-blue-600 dark:text-blue-400">{ fn.Returns }</span>
+								</div>
+								if fn.Volatility != "" {
+									<div class="flex items-center justify-between py-1 border-b border-border">
+										<span class="text-muted-foreground">Volatility</span>
+										@badge.Badge(badge.Props{Variant: badge.VariantInfo, Size: badge.SizeSm}) {
+											{ fn.Volatility }
+										}
+									</div>
+								}
+								if fn.Security != "" {
+									<div class="flex items-center justify-between py-1 border-b border-border">
+										<span class="text-muted-foreground">Security</span>
+										<span class="font-mono text-foreground">{ fn.Security }</span>
+									</div>
+								}
+								if fn.Parallel != "" {
+									<div class="flex items-center justify-between py-1 border-b border-border">
+										<span class="text-muted-foreground">Parallel</span>
+										<span class="font-mono text-foreground">{ fn.Parallel }</span>
+									</div>
+								}
+								if fn.Strict {
+									<div class="flex items-center justify-between py-1 border-b border-border">
+										<span class="text-muted-foreground">Strict</span>
+										@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+											strict
+										}
+									</div>
+								}
+								if fn.RunOnceFor != "" {
+									<div class="flex items-center justify-between py-1 border-b border-border">
+										<span class="text-muted-foreground">Run Once For</span>
+										<span class="font-mono font-medium text-foreground">{ "for " + fn.RunOnceFor }</span>
+									</div>
+								}
+							</div>
+						}
+					}
+
+					<!-- Usages Card -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() {
+								Trigger Usages
+							}
+							@card.Description() {
+								Triggers executing this function.
+							}
+						}
+						@card.Content() {
+							if len(fn.Usages) == 0 {
+								<p class="text-xs text-muted-foreground py-2 italic">No trigger currently executes this function.</p>
+							} else {
+								<div class="space-y-2">
+									for _, u := range fn.Usages {
+										<div class="flex items-center gap-1.5 p-2 rounded-md bg-muted/40 border border-border text-xs">
+											<span class="text-muted-foreground">@icon.Trigger(icon.Props{Size: 13})</span>
+											<span class="font-medium text-foreground">{ u }</span>
+										</div>
+									}
+								</div>
+							}
+						}
+					}
+				</div>
+			</div>
+		</div>
+	}
+}

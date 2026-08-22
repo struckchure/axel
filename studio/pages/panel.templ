@@ -1,59 +1,84 @@
 package pages
 
-import "fmt"
+import (
+	"fmt"
 
-templ panel(v StudioView) {
-	if v.Active == nil {
-		@emptyState(v)
-	} else {
-		<div class="h-11 shrink-0 border-b border-border flex items-center gap-1 px-3">
-			<div class="flex items-center gap-1.5 font-medium mr-3">
-				<span class="text-muted-foreground">@iconTable()</span>
-				<span class="text-muted-foreground">{ v.Active.Schema }.</span>{ v.Active.Name }
-			</div>
-			@tab(v, "data", "Data")
-			@tab(v, "structure", "Structure")
-			@tab(v, "aql", "AQL")
-			@tab(v, "sql", "SQL")
-		</div>
-		switch v.Tab {
-			case "structure":
-				@structureView(v)
-			case "aql":
-				@aqlView(v)
-			case "sql":
-				@sqlView(v)
-			default:
-				@dataView(v)
-		}
+	"github.com/struckchure/axel/studio/components/icon"
+	"github.com/struckchure/axel/studio/components/tabs"
+)
+
+templ Panel(v StudioView) {
+	switch v.ActiveKind {
+		case "enum":
+			@enumDetailView(v)
+		case "scalar":
+			@scalarDetailView(v)
+		case "policy":
+			@policyDetailView(v)
+		case "trigger":
+			@triggerDetailView(v)
+		case "extension":
+			@extensionDetailView(v)
+		case "function":
+			@functionDetailView(v)
+		case "query":
+			@queryDetailView(v)
+		default:
+			if v.Active == nil {
+				@emptyState(v)
+			} else {
+				<div class="h-11 shrink-0 border-b border-border flex items-center justify-between px-4">
+					<div class="flex items-center gap-2 font-medium">
+						<span class="text-primary">@icon.Table(icon.Props{Size: 16})</span>
+						<span class="text-foreground font-semibold">{ v.Active.DisplayName() }</span>
+						if v.Active.Type != "" && v.Active.Type != v.Active.Name {
+							<span class="text-xs text-muted-foreground font-normal font-mono">({ v.Active.Schema }.{ v.Active.Name })</span>
+						} else {
+							<span class="text-xs text-muted-foreground font-normal font-mono">({ v.Active.Schema })</span>
+						}
+					</div>
+					@tabs.List(tabs.Props{Class: "h-8 p-0.5 bg-muted/60"}) {
+						@tabTrigger(v, "data", "Data")
+						@tabTrigger(v, "structure", "Structure")
+						@tabTrigger(v, "aql", "AQL")
+						@tabTrigger(v, "sql", "SQL")
+					}
+				</div>
+				switch v.Tab {
+					case "structure":
+						@structureView(v)
+					case "aql":
+						@aqlView(v)
+					case "sql":
+						@sqlView(v)
+					default:
+						@dataView(v)
+				}
+			}
 	}
 }
 
-templ tab(v StudioView, id, label string) {
-	<a
-		href={ templ.SafeURL(v.nav(id, nil)) }
-		hx-get={ v.nav(id, nil) }
-		hx-target="#studio"
-		hx-swap="outerHTML"
-		hx-push-url="true"
-		class={
-			"px-3 h-7 inline-flex items-center text-[13px] transition-colors cursor-pointer",
-			templ.KV("bg-secondary text-secondary-foreground font-medium", v.Tab == id),
-			templ.KV("text-muted-foreground hover:text-foreground hover:bg-accent/60", v.Tab != id),
-		}
-	>
+templ tabTrigger(v StudioView, id, label string) {
+	@tabs.Trigger(tabs.TriggerProps{
+		Active:    v.Tab == id,
+		Href:      v.nav(id, nil),
+		HxGet:     v.nav(id, nil),
+		HxTarget:  "#panel-container",
+		HxSwap:    "innerHTML",
+		HxPushURL: "true",
+	}) {
 		{ label }
-	</a>
+	}
 }
 
 templ emptyState(v StudioView) {
-	<div class="flex-1 flex flex-col items-center justify-center text-center gap-3 text-muted-foreground">
-		<div class="size-14 bg-secondary flex items-center justify-center text-primary">
-			@iconDatabase()
+	<div class="flex-1 flex flex-col items-center justify-center text-center gap-3 text-muted-foreground p-8">
+		<div class="size-14 rounded-full bg-secondary flex items-center justify-center text-primary">
+			@icon.Database(icon.Props{Size: 24})
 		</div>
 		<div class="space-y-1">
-			<p class="font-medium text-foreground">{ fmt.Sprintf("Connected to %s", v.ConnName) }</p>
-			<p class="text-xs">Select a table from the sidebar to browse its data.</p>
+			<p class="font-semibold text-base text-foreground">{ fmt.Sprintf("Connected to %s", v.ConnName) }</p>
+			<p class="text-xs text-muted-foreground">Select an item from the sidebar to inspect its definition and data.</p>
 		</div>
 	</div>
 }

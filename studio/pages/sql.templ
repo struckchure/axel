@@ -3,6 +3,8 @@ package pages
 import (
 	"fmt"
 
+	"github.com/struckchure/axel/studio/components/button"
+	"github.com/struckchure/axel/studio/components/icon"
 	"github.com/struckchure/axel/studio/db"
 )
 
@@ -42,13 +44,13 @@ templ sqlView(v StudioView) {
 			</script>
 			<div class="flex items-center justify-between mt-2">
 				<span class="text-xs text-muted-foreground">Read-only queries run against { v.ConnName }.</span>
-				<button
-					type="submit"
-					class="inline-flex items-center gap-1.5 h-8 px-3 bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors"
-				>
-					@iconPlay()
+				@button.Button(button.Props{
+					Type:    "submit",
+					Variant: button.VariantDefault,
+				}) {
+					@icon.Play(icon.Props{Size: 14})
 					Run
-				</button>
+				}
 			</div>
 		</form>
 		<div id="sql-result" class="flex-1 min-h-0 overflow-auto">
@@ -76,7 +78,7 @@ func defaultSQL(v StudioView) string {
 // compiledSQL shows the SQL an AQL statement lowers to, when present.
 templ compiledSQL(r db.QueryResult) {
 	if r.SQL != "" {
-		<details class="m-3 border border-border bg-muted/50 text-[12px]" open>
+		<details class="m-3 border border-border bg-muted/50 text-[12px] rounded-md" open>
 			<summary class="px-3 py-1.5 cursor-pointer text-muted-foreground select-none">compiled SQL</summary>
 			<pre class="px-3 pb-3 pt-1 font-mono overflow-x-auto whitespace-pre-wrap text-foreground/90">{ r.SQL }</pre>
 		</details>
@@ -90,7 +92,7 @@ templ QueryResultFragment(r db.QueryResult) {
 
 templ queryResult(r db.QueryResult) {
 	if r.Err != "" {
-		<div class="m-3 p-3 bg-destructive/10 border border-destructive/30 text-destructive text-[13px] font-mono whitespace-pre-wrap">
+		<div class="m-3 p-3 bg-destructive/10 border border-destructive/30 text-destructive text-xs font-mono whitespace-pre-wrap rounded-md">
 			{ r.Err }
 		</div>
 		@compiledSQL(r)
@@ -106,7 +108,7 @@ templ queryResult(r db.QueryResult) {
 		</div>
 		@compiledSQL(r)
 		if len(r.Columns) > 0 {
-			<table class="border-separate border-spacing-0 w-full text-[13px]">
+			<table class="border-separate border-spacing-0 w-full text-xs">
 				<thead class="sticky top-0">
 					<tr>
 						for _, col := range r.Columns {

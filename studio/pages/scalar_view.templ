@@ -1,0 +1,185 @@
+package pages
+
+import (
+	"strings"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/card"
+	"github.com/struckchure/axel/studio/components/icon"
+	"github.com/struckchure/axel/studio/components/table"
+)
+
+templ scalarDetailView(v StudioView) {
+	if v.ActiveScalar == nil {
+		@emptyState(v)
+	} else {
+		{{ s := *v.ActiveScalar }}
+		<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between">
+				<div class="space-y-1">
+					<div class="flex items-center gap-2">
+						<span class="text-primary">@icon.Scalar(icon.Props{Size: 20})</span>
+						<h2 class="text-xl font-bold tracking-tight text-foreground">{ s.Name }</h2>
+						if s.Base != "" {
+							@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+								extends { s.Base }
+							}
+						}
+						if s.SQLType != "" {
+							@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+								SQL: { s.SQLType }
+							}
+						}
+					</div>
+					<p class="text-xs text-muted-foreground">ASL Custom Scalar Type</p>
+				</div>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+				<!-- Main Details -->
+				<div class="md:col-span-2 space-y-6">
+					<!-- Typed JSON Fields (if any) -->
+					if len(s.Fields) > 0 {
+						@card.Card() {
+							@card.Header() {
+								@card.Title() {
+									Fields Schema
+								}
+								@card.Description() {
+									Structured JSON sub-fields defined for this scalar.
+								}
+							}
+							@card.Content() {
+								@table.Table() {
+									@table.Header() {
+										@table.Row() {
+											@table.Head() { Field }
+											@table.Head() { AQL Type }
+											@table.Head() { SQL Type }
+											@table.Head() { Modifier }
+										}
+									}
+									@table.Body() {
+										for _, f := range s.Fields {
+											@table.Row() {
+												@table.Cell(table.Props{Class: "font-mono font-medium text-foreground"}) {
+													{ f.Name }
+												}
+												@table.Cell(table.Props{Class: "font-mono text-blue-600 dark:text-blue-400"}) {
+													{ f.AQLType }
+												}
+												@table.Cell(table.Props{Class: "font-mono text-muted-foreground"}) {
+													{ f.SQLType }
+												}
+												@table.Cell() {
+													if f.IsRequired {
+														@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Size: badge.SizeSm}) { required }
+													}
+													if f.IsMulti {
+														@badge.Badge(badge.Props{Variant: badge.VariantOutline, Size: badge.SizeSm, Class: "ml-1"}) { multi }
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+					<!-- Constraints & Properties -->
+					@card.Card() {
+						@card.Header() {
+							@card.Title() {
+								Properties & Constraints
+							}
+							@card.Description() {
+								Validation rules and scalar definitions.
+							}
+						}
+						@card.Content() {
+							<div class="space-y-4 text-xs">
+								<div class="grid grid-cols-3 gap-2 py-1.5 border-b border-border">
+									<span class="text-muted-foreground">Base Type</span>
+									<span class="col-span-2 font-mono font-medium text-foreground">{ s.Base }</span>
+								</div>
+								<div class="grid grid-cols-3 gap-2 py-1.5 border-b border-border">
+									<span class="text-muted-foreground">SQL Type</span>
+									<span class="col-span-2 font-mono text-foreground">{ s.SQLType }</span>
+								</div>
+								if s.Default != "" {
+									<div class="grid grid-cols-3 gap-2 py-1.5 border-b border-border">
+										<span class="text-muted-foreground">Default Expression</span>
+										<span class="col-span-2 font-mono text-foreground">{ s.Default }</span>
+									</div>
+								}
+								if len(s.Constraints) > 0 {
+									<div class="grid grid-cols-3 gap-2 py-1.5 border-b border-border">
+										<span class="text-muted-foreground">Constraints</span>
+										<div class="col-span-2 flex flex-wrap gap-1">
+											for _, c := range s.Constraints {
+												@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+													{ c.Name }
+													if len(c.Args) > 0 {
+														({ strings.Join(c.Args, ", ") })
+													}
+												}
+											}
+										</div>
+									</div>
+								}
+								if len(s.Rewrites) > 0 {
+									<div class="grid grid-cols-3 gap-2 py-1.5 border-b border-border">
+										<span class="text-muted-foreground">Rewrites</span>
+										<div class="col-span-2 space-y-1">
+											for _, r := range s.Rewrites {
+												<div class="flex items-center gap-2">
+													@badge.Badge(badge.Props{Variant: badge.VariantInfo, Size: badge.SizeSm}) {
+														{ strings.Join(r.Events, ", ") }
+													}
+													<span class="font-mono text-muted-foreground">:= { r.ValueSQL }</span>
+												</div>
+											}
+										</div>
+									</div>
+								}
+							</div>
+						}
+					}
+				</div>
+
+				<!-- Usages Card -->
+				<div>
+					@card.Card() {
+						@card.Header() {
+							@card.Title() {
+								Schema Usages
+							}
+							@card.Description() {
+								Types and properties using { s.Name }.
+							}
+						}
+						@card.Content() {
+							if len(s.Usages) == 0 {
+								<p class="text-xs text-muted-foreground py-2 italic">No property in the schema currently references this scalar.</p>
+							} else {
+								<div class="space-y-2">
+									for _, u := range s.Usages {
+										<div class="flex items-center justify-between p-2 rounded-md bg-muted/40 border border-border text-xs">
+											<div class="flex items-center gap-1.5 font-medium">
+												<span class="text-muted-foreground">@icon.Table(icon.Props{Size: 13})</span>
+												<span>{ u.Type }</span>
+											</div>
+											<span class="font-mono text-muted-foreground">.{ u.Property }</span>
+										</div>
+									}
+								</div>
+							}
+						}
+					}
+				</div>
+			</div>
+		</div>
+	}
+}

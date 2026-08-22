@@ -1,0 +1,70 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/card"
+	"github.com/struckchure/axel/studio/components/icon"
+)
+
+templ extensionDetailView(v StudioView) {
+	if v.ActiveExtension == nil {
+		@emptyState(v)
+	} else {
+		{{ ext := *v.ActiveExtension }}
+		<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-4xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between">
+				<div class="space-y-1">
+					<div class="flex items-center gap-2">
+						<span class="text-primary">@icon.Extension(icon.Props{Size: 20})</span>
+						<h2 class="text-xl font-bold tracking-tight text-foreground">{ ext.Name }</h2>
+						@badge.Badge(badge.Props{Variant: badge.VariantSuccess}) {
+							active
+						}
+					</div>
+					<p class="text-xs text-muted-foreground">Postgres Extension</p>
+				</div>
+			</div>
+
+			<!-- Extension Info Card -->
+			@card.Card() {
+				@card.Header() {
+					@card.Title() {
+						Extension Information
+					}
+					@card.Description() {
+						Postgres extension declared via ASL schema directive.
+					}
+				}
+				@card.Content() {
+					<div class="space-y-4 text-xs">
+						<div class="grid grid-cols-3 gap-2 py-2 border-b border-border">
+							<span class="text-muted-foreground">Extension Name</span>
+							<span class="col-span-2 font-mono font-medium text-foreground">{ ext.Name }</span>
+						</div>
+						<div class="grid grid-cols-3 gap-2 py-2 border-b border-border">
+							<span class="text-muted-foreground">ASL Declaration</span>
+							<span class="col-span-2 font-mono text-blue-600 dark:text-blue-400">use extension '{ ext.Name }';</span>
+						</div>
+						<div class="grid grid-cols-3 gap-2 py-2 border-b border-border">
+							<span class="text-muted-foreground">SQL DDL</span>
+							<span class="col-span-2 font-mono text-foreground">CREATE EXTENSION IF NOT EXISTS "{ ext.Name }";</span>
+						</div>
+						<div class="grid grid-cols-3 gap-2 py-2">
+							<span class="text-muted-foreground">Status</span>
+							<span class="col-span-2 text-muted-foreground">
+								if v.Live {
+									{ fmt.Sprintf("Managed in %s", v.ConnName) }
+								} else {
+									Declared in schema
+								}
+							</span>
+						</div>
+					</div>
+				}
+			}
+		</div>
+	}
+}

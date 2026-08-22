@@ -1,0 +1,186 @@
+package pages
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/button"
+	"github.com/struckchure/axel/studio/components/icon"
+)
+
+templ queryDetailView(v StudioView) {
+	if v.ActiveQuery == nil {
+		@emptyState(v)
+	} else {
+		{{ q := *v.ActiveQuery }}
+		<div class="flex-1 min-h-0 flex flex-col">
+			<!-- Header -->
+			<div class="h-12 shrink-0 border-b border-border bg-card/60 flex items-center justify-between px-4">
+				<div class="flex items-center gap-2">
+					<span class="text-primary">@icon.Query(icon.Props{Size: 18})</span>
+					<span class="font-semibold text-sm text-foreground">{ q.Name }</span>
+					<span class="text-xs text-muted-foreground font-mono">({ q.Path })</span>
+					@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+						{ strings.ToUpper(q.Operation) }
+					}
+					if q.TargetType != "" {
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Size: badge.SizeSm}) {
+							{ q.TargetType }
+						}
+					}
+				</div>
+				@aqlBadge(v)
+			</div>
+
+			<!-- Editor + Parameters Form -->
+			<form
+				class="p-3 border-b border-border"
+				hx-post="/aql"
+				hx-target="#query-test-result"
+				hx-swap="innerHTML"
+			>
+				<div class="flex border border-input min-h-[360px] h-[360px] resize-y overflow-hidden mb-2 rounded-md">
+					<div class="flex-1 min-w-0" id="query-editor-container"></div>
+					<div class="w-1/4 shrink-0 border-l border-border bg-muted/30 p-3 overflow-y-auto hidden" id="query-params-container">
+						<div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Query Parameters</div>
+						<div id="query-params-list" class="space-y-2"></div>
+					</div>
+				</div>
+				<input type="hidden" name="aql" id="query-hidden" value={ q.Raw } />
+				@enumScript(v)
+				<script>
+					require(['vs/editor/editor.main'], function() {
+						const container = document.getElementById('query-editor-container');
+						const hiddenInput = document.getElementById('query-hidden');
+						const paramsContainer = document.getElementById('query-params-container');
+						const paramsList = document.getElementById('query-params-list');
+						
+						const isDark = document.documentElement.classList.contains("dark");
+						const editor = monaco.editor.create(container, {
+							value: hiddenInput.value,
+							language: 'sql',
+							theme: isDark ? 'vs-dark' : 'vs',
+							minimap: { enabled: false },
+							automaticLayout: true,
+							fontSize: 13,
+							fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+							scrollBeyondLastLine: false,
+						});
+						
+						function escapeHTML(str) {
+							return String(str).replace(/[&<>'"]/g, 
+								tag => ({
+									'&': '&amp;',
+									'<': '&lt;',
+									'>': '&gt;',
+									"'": '&#39;',
+									'"': '&quot;'
+								}[tag] || tag)
+							);
+						}
+						
+						function updateParams() {
+							try {
+								const text = editor.getValue();
+								hiddenInput.value = text;
+								
+								const regex = /\$([a-zA-Z0-9_]+)(?:<([^>]+)>)?(\?)?/g;
+								const params = new Map();
+								let match;
+								while ((match = regex.exec(text)) !== null) {
+									if (!params.has(match[1])) {
+										params.set(match[1], { type: match[2] || 'any', optional: match[3] === '?' });
+									}
+								}
+								
+								if (params.size === 0) {
+									paramsContainer.classList.add('hidden');
+									paramsList.innerHTML = '';
+								} else {
+									paramsContainer.classList.remove('hidden');
+									const currentInputs = {};
+									paramsList.querySelectorAll('input, select').forEach(inp => {
+										currentInputs[inp.name] = inp.value;
+									});
+									
+									let html = '';
+									params.forEach((info, name) => {
+										const val = escapeHTML(currentInputs['param_' + name] || '');
+										const typeHtml = escapeHTML(info.type);
+										const reqStar = info.optional ? '' : '<span class="text-destructive ml-0.5">*</span>';
+										
+										let inputHtml = '';
+										if (window.aqlEnums && window.aqlEnums[info.type]) {
+											const options = window.aqlEnums[info.type].map(opt => {
+												const selected = val === opt ? 'selected' : '';
+												return `<option value="${escapeHTML(opt)}" ${selected}>${escapeHTML(opt)}</option>`;
+											}).join('');
+											inputHtml = `
+												<select name="param_${name}" class="w-full h-7 px-1.5 text-xs bg-background border border-input rounded-md outline-none focus-visible:ring-1 focus-visible:ring-ring/40">
+													<option value="" disabled ${val === '' ? 'selected' : ''}>Select ${typeHtml}...</option>
+													${options}
+												</select>
+											`;
+										} else {
+											inputHtml = `<input type="text" name="param_${name}" value="${val}" autocomplete="off" spellcheck="false" class="w-full h-7 px-2 text-xs bg-background border border-input rounded-md outline-none focus-visible:ring-1 focus-visible:ring-ring/40" />`;
+										}
+										
+										html += `
+											<div class="mb-2">
+												<label class="block text-[11px] font-medium text-foreground mb-1 flex items-center justify-between">
+													<span><span class="text-primary font-mono">$${name}</span>${reqStar}</span>
+													<span class="text-muted-foreground text-[9px] ml-1 truncate max-w-[60px]" title="${typeHtml}">${typeHtml}</span>
+												</label>
+												${inputHtml}
+											</div>
+										`;
+									});
+									paramsList.innerHTML = html;
+								}
+							} catch (e) {
+								paramsContainer.classList.remove('hidden');
+								paramsList.innerHTML = '<div class="text-xs text-red-500">' + e.toString() + '</div>';
+							}
+						}
+						
+						editor.onDidChangeModelContent(updateParams);
+						updateParams();
+						
+						container._editor = editor;
+					});
+				</script>
+				<div class="flex items-center justify-between mt-2">
+					<span class="text-xs text-muted-foreground">
+						if v.AQLLive {
+							{ fmt.Sprintf("Executes against %s.", v.ConnName) }
+						} else if v.HasSchema {
+							Compiles AQL to SQL — connect a live database to execute.
+						} else {
+							No schema loaded.
+						}
+					</span>
+					@button.Button(button.Props{
+						Type:     "submit",
+						Variant:  button.VariantDefault,
+						Disabled: !v.HasSchema,
+					}) {
+						@icon.Play(icon.Props{Size: 14})
+						if v.AQLLive {
+							Run Query
+						} else {
+							Compile
+						}
+					}
+				</div>
+			</form>
+
+			<!-- Execution Results Container -->
+			<div id="query-test-result" class="flex-1 min-h-0 overflow-auto">
+				<div class="h-full flex items-center justify-center text-muted-foreground text-xs">
+					Run this query to inspect compiled SQL and live results.
+				</div>
+			</div>
+		</div>
+	}
+}

@@ -307,10 +307,6 @@ func (f *aslFmt) function(fn *FunctionDecl, next int) {
 	if fn.ReturnArray {
 		ret += "[]"
 	}
-	body := ""
-	if fn.Return != nil {
-		body = strings.TrimSpace(fn.Return.Raw)
-	}
 	singleHeader := fmt.Sprintf("function %s(%s) -> %s {", fn.Name, strings.Join(params, ", "), ret)
 	if len(singleHeader) <= maxLineWidth || len(params) <= 1 {
 		f.w(singleHeader)
@@ -331,10 +327,15 @@ func (f *aslFmt) function(fn *FunctionDecl, next int) {
 	}
 	if fn.Return != nil {
 		f.commit(fn.Return.Pos.Offset)
-		f.indent++
-		f.wf("return %s;", body)
-		f.commit(fn.EndPos.Offset)
-		f.indent--
+		lines := formatSQLExprLines(fn.Return.Raw, f.indent+1)
+		for _, line := range lines {
+			content := line
+			if strings.HasPrefix(content, strings.Repeat("  ", f.indent)) {
+				content = content[len(strings.Repeat("  ", f.indent)):]
+			}
+			f.w(content)
+			f.commit(fn.EndPos.Offset)
+		}
 		f.w("};")
 	} else {
 		f.w("};")
@@ -826,3 +827,354 @@ func ownLine(src string, offset int) bool {
 	}
 	return true
 }
+
+// ─────────────────────────────────────────────────────────────
+// SQL Return Expression Formatting
+// ─────────────────────────────────────────────────────────────
+
+type sqlExprNode struct {
+	kind     string // "token", "call", "group"
+	name     string
+	tok      lexer.Token
+	children []*sqlExprNode
+}
+
+func parseSQLExprNodes(toks []lexer.Token) []*sqlExprNode {
+	var nodes []*sqlExprNode
+	for i := 0; i < len(toks); i++ {
+		t := toks[i]
+		if t.Value == "(" {
+			var callNode *sqlExprNode
+			if len(nodes) > 0 && nodes[len(nodes)-1].kind == "token" && nodes[len(nodes)-1].tok.Type == aslLexer.Symbols()["Ident"] {
+				last := nodes[len(nodes)-1]
+				nodes = nodes[:len(nodes)-1]
+				callNode = &sqlExprNode{kind: "call", name: last.tok.Value}
+			}
+
+			depth := 1
+			start := i + 1
+			j := start
+			for ; j < len(toks); j++ {
+				if toks[j].Value == "(" {
+					depth++
+				} else if toks[j].Value == ")" {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+			}
+			var innerToks []lexer.Token
+			if j > start {
+				innerToks = toks[start:j]
+			}
+			children := parseSQLExprNodes(innerToks)
+
+			if callNode != nil {
+				callNode.children = children
+				nodes = append(nodes, callNode)
+			} else {
+				groupNode := &sqlExprNode{kind: "group", children: children}
+				nodes = append(nodes, groupNode)
+			}
+			i = j
+			continue
+		}
+		nodes = append(nodes, &sqlExprNode{kind: "token", tok: t})
+	}
+	return nodes
+}
+
+func isBinaryOp(s string) bool {
+	switch s {
+	case "+", "-", "*", "/", "^", "%", "=", "!=", "<", "<=", ">", ">=", "||", "AND", "OR", "and", "or", "in", "like", "ilike":
+		return true
+	}
+	return false
+}
+
+func needsSpace(prev, next *sqlExprNode) bool {
+	if prev == nil || next == nil {
+		return false
+	}
+	// Inline AQL: aql`...`
+	if prev.kind == "token" && prev.tok.Value == "aql" && next.kind == "token" && next.tok.Type == aslLexer.Symbols()["AQLString"] {
+		return false
+	}
+	// Comma
+	if prev.kind == "token" && prev.tok.Value == "," {
+		return true
+	}
+	if next.kind == "token" && (next.tok.Value == "," || next.tok.Value == ".") {
+		return false
+	}
+	if prev.kind == "token" && prev.tok.Value == "." {
+		return false
+	}
+	// Type cast ::
+	if next.kind == "token" && next.tok.Value == ":" {
+		return false
+	}
+	if prev.kind == "token" && prev.tok.Value == ":" {
+		return false
+	}
+	// Multi-char operators: ||, !=, <=, >=, <>
+	if prev.kind == "token" && next.kind == "token" {
+		if prev.tok.Value == "|" && next.tok.Value == "|" {
+			return false
+		}
+		if (prev.tok.Value == "!" || prev.tok.Value == "<" || prev.tok.Value == ">") && next.tok.Value == "=" {
+			return false
+		}
+		if prev.tok.Value == "<" && next.tok.Value == ">" {
+			return false
+		}
+	}
+	// String concatenation ||
+	if prev.kind == "token" && prev.tok.Value == "|" {
+		return true
+	}
+	if next.kind == "token" && next.tok.Value == "|" {
+		return true
+	}
+	// Binary operators
+	if prev.kind == "token" && isBinaryOp(prev.tok.Value) {
+		return true
+	}
+	if next.kind == "token" && isBinaryOp(next.tok.Value) {
+		return true
+	}
+	if prev.kind == "token" && (prev.tok.Type == aslLexer.Symbols()["Ident"] || prev.tok.Type == aslLexer.Symbols()["Int"] || prev.tok.Type == aslLexer.Symbols()["String"] || prev.tok.Type == aslLexer.Symbols()["AQLString"]) {
+		if next.kind == "token" || next.kind == "call" || next.kind == "group" {
+			return true
+		}
+	}
+	if prev.kind == "call" || prev.kind == "group" {
+		if next.kind == "token" || next.kind == "call" || next.kind == "group" {
+			return true
+		}
+	}
+	return false
+}
+
+func renderSingle(nodes []*sqlExprNode) string {
+	var sb strings.Builder
+	for i, n := range nodes {
+		if i > 0 {
+			if needsSpace(nodes[i-1], n) {
+				sb.WriteByte(' ')
+			}
+		}
+		switch n.kind {
+		case "token":
+			sb.WriteString(n.tok.Value)
+		case "call":
+			sb.WriteString(n.name)
+			sb.WriteByte('(')
+			sb.WriteString(renderSingle(n.children))
+			sb.WriteByte(')')
+		case "group":
+			sb.WriteByte('(')
+			sb.WriteString(renderSingle(n.children))
+			sb.WriteByte(')')
+		}
+	}
+	return sb.String()
+}
+
+func formatSQLExprLines(raw string, indent int) []string {
+	l, err := aslLexer.Lex("", strings.NewReader(raw))
+	if err != nil {
+		return []string{strings.Repeat("  ", indent) + "return " + raw + ";"}
+	}
+	var toks []lexer.Token
+	for {
+		t, err := l.Next()
+		if err != nil || t.EOF() {
+			break
+		}
+		if t.Type != aslLexer.Symbols()["Whitespace"] && t.Type != aslLexer.Symbols()["Comment"] {
+			toks = append(toks, t)
+		}
+	}
+	if len(toks) == 0 {
+		return []string{strings.Repeat("  ", indent) + "return ;"}
+	}
+	nodes := parseSQLExprNodes(toks)
+	return formatExprLines("return ", nodes, ";", indent)
+}
+
+func formatExprLines(prefix string, nodes []*sqlExprNode, suffix string, indent int) []string {
+	single := prefix + renderSingle(nodes) + suffix
+	if len(strings.Repeat("  ", indent)+single) <= maxLineWidth {
+		return []string{strings.Repeat("  ", indent) + single}
+	}
+
+	// Check if nodes contain a trailing call/group that can be expanded
+	if len(nodes) > 0 && (nodes[len(nodes)-1].kind == "call" || nodes[len(nodes)-1].kind == "group") {
+		last := nodes[len(nodes)-1]
+		leadNodes := nodes[:len(nodes)-1]
+		leadStr := renderSingle(leadNodes)
+		if len(leadStr) > 0 && needsSpace(leadNodes[len(leadNodes)-1], last) {
+			leadStr += " "
+		}
+
+		var openStr, closeStr string
+		if last.kind == "call" {
+			openStr = leadStr + last.name + "("
+		} else {
+			openStr = leadStr + "("
+		}
+		closeStr = ")" + suffix
+
+		// Check if children have commas (arguments)
+		args := splitByComma(last.children)
+		if len(args) > 1 {
+			var lines []string
+			lines = append(lines, strings.Repeat("  ", indent)+prefix+openStr)
+			for idx, arg := range args {
+				argSuffix := ","
+				if idx == len(args)-1 {
+					argSuffix = ""
+				}
+				argLines := formatExprLines("", arg, argSuffix, indent+1)
+				lines = append(lines, argLines...)
+			}
+			lines = append(lines, strings.Repeat("  ", indent)+closeStr)
+			return lines
+		}
+
+		// Children is a single expression inside parens (like sqrt(...) or arithmetic)
+		terms := splitByBinaryOp(last.children)
+		if len(terms) > 1 {
+			var lines []string
+			lines = append(lines, strings.Repeat("  ", indent)+prefix+openStr)
+			for _, term := range terms {
+				subTerms := splitByBinaryOp(term.nodes)
+				if len(subTerms) > 1 {
+					subPacked := packTerms(subTerms, indent+1)
+					if len(subPacked) > 0 && term.op != "" {
+						subPacked[len(subPacked)-1] += term.op
+					}
+					lines = append(lines, subPacked...)
+				} else {
+					tStr := renderSingle(term.nodes)
+					if term.op != "" {
+						tStr += term.op
+					}
+					lines = append(lines, strings.Repeat("  ", indent+1)+tStr)
+				}
+			}
+			lines = append(lines, strings.Repeat("  ", indent)+closeStr)
+			return lines
+		}
+
+		// Single child call/group inside
+		if len(last.children) == 1 && (last.children[0].kind == "call" || last.children[0].kind == "group") {
+			var lines []string
+			lines = append(lines, strings.Repeat("  ", indent)+prefix+openStr)
+			innerLines := formatExprLines("", last.children, "", indent+1)
+			lines = append(lines, innerLines...)
+			lines = append(lines, strings.Repeat("  ", indent)+closeStr)
+			return lines
+		}
+	}
+
+	// Fallback: split top-level by binary ops
+	terms := splitByBinaryOp(nodes)
+	if len(terms) > 1 {
+		return packTerms(terms, indent)
+	}
+
+	return []string{strings.Repeat("  ", indent) + single}
+}
+
+type sqlTerm struct {
+	nodes []*sqlExprNode
+	op    string
+}
+
+func packTerms(terms []sqlTerm, indent int) []string {
+	var lines []string
+	curLine := ""
+	for _, t := range terms {
+		tStr := renderSingle(t.nodes)
+		if t.op != "" {
+			tStr += t.op
+		}
+		if curLine == "" {
+			curLine = tStr
+		} else {
+			if len(strings.Repeat("  ", indent)+curLine+" "+tStr) <= maxLineWidth {
+				curLine += " " + tStr
+			} else {
+				lines = append(lines, strings.Repeat("  ", indent)+curLine)
+				curLine = tStr
+			}
+		}
+	}
+	if curLine != "" {
+		lines = append(lines, strings.Repeat("  ", indent)+curLine)
+	}
+	return lines
+}
+
+func splitByComma(nodes []*sqlExprNode) [][]*sqlExprNode {
+	var res [][]*sqlExprNode
+	var cur []*sqlExprNode
+	for _, n := range nodes {
+		if n.kind == "token" && n.tok.Value == "," {
+			res = append(res, cur)
+			cur = nil
+		} else {
+			cur = append(cur, n)
+		}
+	}
+	if len(cur) > 0 || len(res) > 0 {
+		res = append(res, cur)
+	}
+	return res
+}
+
+func splitByBinaryOp(nodes []*sqlExprNode) []sqlTerm {
+	// First look for + or -
+	var res []sqlTerm
+	var cur []*sqlExprNode
+	found := false
+	for i := 0; i < len(nodes); i++ {
+		n := nodes[i]
+		if n.kind == "token" && (n.tok.Value == "+" || n.tok.Value == "-") && len(cur) > 0 {
+			res = append(res, sqlTerm{nodes: cur, op: " " + n.tok.Value})
+			cur = nil
+			found = true
+		} else {
+			cur = append(cur, n)
+		}
+	}
+	if found && len(cur) > 0 {
+		res = append(res, sqlTerm{nodes: cur, op: ""})
+		return res
+	}
+
+	// Next look for * or / if any term is long
+	res = nil
+	cur = nil
+	found = false
+	for i := 0; i < len(nodes); i++ {
+		n := nodes[i]
+		if n.kind == "token" && (n.tok.Value == "*" || n.tok.Value == "/") && len(cur) > 0 {
+			res = append(res, sqlTerm{nodes: cur, op: " " + n.tok.Value})
+			cur = nil
+			found = true
+		} else {
+			cur = append(cur, n)
+		}
+	}
+	if found && len(cur) > 0 {
+		res = append(res, sqlTerm{nodes: cur, op: ""})
+		return res
+	}
+
+	return nil
+}
+

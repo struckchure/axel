@@ -19,8 +19,32 @@ type StudioView struct {
 	HasSchema bool // an ASL schema is loaded (AQL available)
 	AQLLive   bool // AQL executes against a live database
 
-	Tables []db.Table // sidebar, ordered by schema then name
-	Active *db.Table  // currently selected table, if any
+	// ActiveKind is "type" | "enum" | "scalar" | "policy" | "trigger" | "extension" | "function" | "query"
+	ActiveKind string
+
+	Tables []db.Table // sidebar Types / Tables
+	Active *db.Table  // currently selected table/type, if any
+
+	Enums      []db.EnumItem
+	ActiveEnum *db.EnumItem
+
+	Scalars      []db.ScalarItem
+	ActiveScalar *db.ScalarItem
+
+	Policies     []db.PolicyItem
+	ActivePolicy *db.PolicyItem
+
+	Triggers      []db.TriggerItem
+	ActiveTrigger *db.TriggerItem
+
+	Extensions      []db.ExtensionItem
+	ActiveExtension *db.ExtensionItem
+
+	Functions      []db.FunctionItem
+	ActiveFunction *db.FunctionItem
+
+	Queries     []db.QueryItem
+	ActiveQuery *db.QueryItem
 
 	Tab     string // "data" | "structure" | "aql" | "sql"
 	Rows    db.Rows
@@ -34,8 +58,8 @@ type StudioView struct {
 	// active table, keyed by column name (editable views only).
 	LinkOptions map[string][]db.Option
 
-	// Enums provides all enum types and their values from the schema, if any.
-	Enums map[string][]string
+	// EnumValues provides map of enum name -> values for editor parameters / selectors.
+	EnumValues map[string][]string
 }
 
 // Page returns the 1-based current page number.
@@ -67,6 +91,7 @@ func (v StudioView) RangeLabel() string {
 // nav builds a "/?..." studio URL preserving the active table.
 func (v StudioView) nav(tab string, extra map[string]string) string {
 	q := url.Values{}
+	q.Set("kind", "type")
 	if v.Active != nil {
 		q.Set("schema", v.Active.Schema)
 		q.Set("table", v.Active.Name)
@@ -87,10 +112,101 @@ func (v StudioView) nav(tab string, extra map[string]string) string {
 // tableURL links to a table's data view.
 func tableURL(t db.Table) string {
 	q := url.Values{}
+	q.Set("kind", "type")
 	q.Set("schema", t.Schema)
 	q.Set("table", t.Name)
 	q.Set("tab", "data")
 	return "/?" + q.Encode()
+}
+
+// enumURL links to an enum detail view.
+func enumURL(e db.EnumItem) string {
+	q := url.Values{}
+	q.Set("kind", "enum")
+	q.Set("name", e.Name)
+	return "/?" + q.Encode()
+}
+
+// scalarURL links to a scalar detail view.
+func scalarURL(s db.ScalarItem) string {
+	q := url.Values{}
+	q.Set("kind", "scalar")
+	q.Set("name", s.Name)
+	return "/?" + q.Encode()
+}
+
+// policyURL links to a policy detail view.
+func policyURL(p db.PolicyItem) string {
+	q := url.Values{}
+	q.Set("kind", "policy")
+	q.Set("type", p.Type)
+	q.Set("name", p.Name)
+	return "/?" + q.Encode()
+}
+
+// triggerURL links to a trigger detail view.
+func triggerURL(t db.TriggerItem) string {
+	q := url.Values{}
+	q.Set("kind", "trigger")
+	q.Set("type", t.Type)
+	q.Set("name", t.Name)
+	return "/?" + q.Encode()
+}
+
+// extensionURL links to an extension detail view.
+func extensionURL(e db.ExtensionItem) string {
+	q := url.Values{}
+	q.Set("kind", "extension")
+	q.Set("name", e.Name)
+	return "/?" + q.Encode()
+}
+
+// functionURL links to a function detail view.
+func functionURL(f db.FunctionItem) string {
+	q := url.Values{}
+	q.Set("kind", "function")
+	q.Set("name", f.Name)
+	return "/?" + q.Encode()
+}
+
+// queryURL links to a query testing view.
+func queryURL(item db.QueryItem) string {
+	q := url.Values{}
+	q.Set("kind", "query")
+	q.Set("name", item.Name)
+	return "/?" + q.Encode()
+}
+
+func isTypeActive(v StudioView, t db.Table) bool {
+	return v.ActiveKind == "type" && v.Active != nil && v.Active.Schema == t.Schema && v.Active.Name == t.Name
+}
+
+func isEnumActive(v StudioView, e db.EnumItem) bool {
+	return v.ActiveKind == "enum" && v.ActiveEnum != nil && v.ActiveEnum.Name == e.Name
+}
+
+func isScalarActive(v StudioView, s db.ScalarItem) bool {
+	return v.ActiveKind == "scalar" && v.ActiveScalar != nil && v.ActiveScalar.Name == s.Name
+}
+
+func isPolicyActive(v StudioView, p db.PolicyItem) bool {
+	return v.ActiveKind == "policy" && v.ActivePolicy != nil && v.ActivePolicy.Type == p.Type && v.ActivePolicy.Name == p.Name
+}
+
+func isTriggerActive(v StudioView, t db.TriggerItem) bool {
+	return v.ActiveKind == "trigger" && v.ActiveTrigger != nil && v.ActiveTrigger.Type == t.Type && v.ActiveTrigger.Name == t.Name
+}
+
+func isExtensionActive(v StudioView, e db.ExtensionItem) bool {
+	return v.ActiveKind == "extension" && v.ActiveExtension != nil && v.ActiveExtension.Name == e.Name
+}
+
+func isFunctionActive(v StudioView, f db.FunctionItem) bool {
+	return v.ActiveKind == "function" && v.ActiveFunction != nil && v.ActiveFunction.Name == f.Name
+}
+
+func isQueryActive(v StudioView, q db.QueryItem) bool {
+	return v.ActiveKind == "query" && v.ActiveQuery != nil && v.ActiveQuery.Name == q.Name
 }
 
 // sortURL toggles/sets ordering on a column and returns the studio URL.
@@ -116,10 +232,10 @@ func (v StudioView) pageURL(page int) string {
 	return v.nav("data", map[string]string{"page": fmt.Sprintf("%d", page)})
 }
 
-// Editable reports whether rows in the active table can be edited (live AQL +
-// a schema-backed type).
+// Editable reports whether rows in the active table can be edited (live AQL or
+// demo/mock store with a schema-backed type).
 func (v StudioView) Editable() bool {
-	return v.AQLLive && v.Active != nil && v.Active.Type != ""
+	return (v.AQLLive || !v.Live) && v.Active != nil && v.Active.Type != ""
 }
 
 // isEditable reports whether a column's cells are inline-editable. Primary keys
@@ -181,10 +297,6 @@ func groupBySchema(tables []db.Table) []SchemaGroup {
 		groups[i].Tables = append(groups[i].Tables, t)
 	}
 	return groups
-}
-
-func isActive(v StudioView, t db.Table) bool {
-	return v.Active != nil && v.Active.Schema == t.Schema && v.Active.Name == t.Name
 }
 
 // Cell is a rendered table value with a kind used for styling.

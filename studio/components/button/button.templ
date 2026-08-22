@@ -1,0 +1,136 @@
+package button
+
+type Variant string
+type Size string
+
+const (
+	VariantDefault     Variant = "default"
+	VariantSecondary   Variant = "secondary"
+	VariantOutline     Variant = "outline"
+	VariantGhost       Variant = "ghost"
+	VariantDestructive Variant = "destructive"
+	VariantLink        Variant = "link"
+
+	SizeDefault Size = "default"
+	SizeSm      Size = "sm"
+	SizeLg      Size = "lg"
+	SizeIcon    Size = "icon"
+)
+
+type Props struct {
+	Variant    Variant
+	Size       Size
+	Class      string
+	Type       string
+	Disabled   bool
+	Href       string
+	OnClick    string
+	HxGet      string
+	HxPost     string
+	HxTarget   string
+	HxSwap     string
+	HxPushURL  string
+	Title      string
+	Attributes templ.Attributes
+}
+
+func variantClasses(v Variant) string {
+	switch v {
+	case VariantSecondary:
+		return "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+	case VariantOutline:
+		return "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+	case VariantGhost:
+		return "hover:bg-accent hover:text-accent-foreground"
+	case VariantDestructive:
+		return "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+	case VariantLink:
+		return "text-primary underline-offset-4 hover:underline"
+	default:
+		return "bg-primary text-primary-foreground hover:bg-primary/90"
+	}
+}
+
+func sizeClasses(s Size) string {
+	switch s {
+	case SizeSm:
+		return "h-7 px-2.5 text-xs rounded-md"
+	case SizeLg:
+		return "h-10 px-6 text-sm rounded-md"
+	case SizeIcon:
+		return "size-8 p-0 rounded-md"
+	default:
+		return "h-8 px-3 text-xs rounded-md"
+	}
+}
+
+templ Button(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+		btnType := p.Type
+		if btnType == "" && p.Href == "" {
+			btnType = "button"
+		}
+		baseClasses := "inline-flex items-center justify-center gap-1.5 font-medium transition-colors select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+	}}
+	if p.Href != "" {
+		<a
+			href={ templ.SafeURL(p.Href) }
+			class={ baseClasses, variantClasses(p.Variant), sizeClasses(p.Size), p.Class }
+			if p.HxGet != "" {
+				hx-get={ p.HxGet }
+			}
+			if p.HxPost != "" {
+				hx-post={ p.HxPost }
+			}
+			if p.HxTarget != "" {
+				hx-target={ p.HxTarget }
+			}
+			if p.HxSwap != "" {
+				hx-swap={ p.HxSwap }
+			}
+			if p.HxPushURL != "" {
+				hx-push-url={ p.HxPushURL }
+			}
+			if p.Title != "" {
+				title={ p.Title }
+			}
+			{ p.Attributes... }
+		>
+			{ children... }
+		</a>
+	} else {
+		<button
+			type={ btnType }
+			disabled?={ p.Disabled }
+			class={ baseClasses, variantClasses(p.Variant), sizeClasses(p.Size), p.Class }
+			if p.OnClick != "" {
+				onclick={ templ.ComponentScript{Call: p.OnClick} }
+			}
+			if p.HxGet != "" {
+				hx-get={ p.HxGet }
+			}
+			if p.HxPost != "" {
+				hx-post={ p.HxPost }
+			}
+			if p.HxTarget != "" {
+				hx-target={ p.HxTarget }
+			}
+			if p.HxSwap != "" {
+				hx-swap={ p.HxSwap }
+			}
+			if p.HxPushURL != "" {
+				hx-push-url={ p.HxPushURL }
+			}
+			if p.Title != "" {
+				title={ p.Title }
+			}
+			{ p.Attributes... }
+		>
+			{ children... }
+		</button>
+	}
+}

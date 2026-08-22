@@ -1,12 +1,18 @@
 package pages
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/button"
+	"github.com/struckchure/axel/studio/components/icon"
+)
 
 templ enumScript(v StudioView) {
-	if len(v.Enums) > 0 {
+	if len(v.EnumValues) > 0 {
 		<script>
 			window.aqlEnums = {
-				for name, values := range v.Enums {
+				for name, values := range v.EnumValues {
 					"{ name }": [
 						for i, val := range values {
 							"{ val }"if i < len(values)-1 {
@@ -294,18 +300,18 @@ templ aqlView(v StudioView) {
 						No schema loaded. Start with <code class="font-mono">-schema &lt;file.asl&gt;</code>.
 					}
 				</span>
-				<button
-					type="submit"
-					disabled?={ !v.HasSchema }
-					class="inline-flex items-center gap-1.5 h-8 px-3 bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
-				>
-					@iconPlay()
+				@button.Button(button.Props{
+					Type:     "submit",
+					Variant:  button.VariantDefault,
+					Disabled: !v.HasSchema,
+				}) {
+					@icon.Play(icon.Props{Size: 14})
 					if v.AQLLive {
 						Run
 					} else {
 						Compile
 					}
-				</button>
+				}
 			</div>
 		</form>
 		<div id="aql-result" class="flex-1 min-h-0 overflow-auto">
@@ -322,11 +328,17 @@ templ aqlView(v StudioView) {
 
 templ aqlBadge(v StudioView) {
 	if v.AQLLive {
-		<span class="text-[11px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">live</span>
+		@badge.Badge(badge.Props{Variant: badge.VariantSuccess, Size: badge.SizeSm}) {
+			live
+		}
 	} else if v.HasSchema {
-		<span class="text-[11px] px-1.5 py-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium">compile-only</span>
+		@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+			compile-only
+		}
 	} else {
-		<span class="text-[11px] px-1.5 py-0.5 bg-muted text-muted-foreground font-medium">no schema</span>
+		@badge.Badge(badge.Props{Variant: badge.VariantSecondary, Size: badge.SizeSm}) {
+			no schema
+		}
 	}
 }
 

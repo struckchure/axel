@@ -1,0 +1,32 @@
+package separator
+
+type Orientation string
+
+const (
+	OrientationHorizontal Orientation = "horizontal"
+	OrientationVertical   Orientation = "vertical"
+)
+
+type Props struct {
+	Orientation Orientation
+	Class       string
+	Attributes  templ.Attributes
+}
+
+templ Separator(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+		orientationClass := "h-[1px] w-full"
+		if p.Orientation == OrientationVertical {
+			orientationClass = "h-full w-[1px]"
+		}
+	}}
+	<div
+		role="separator"
+		class={ "shrink-0 bg-border", orientationClass, p.Class }
+		{ p.Attributes... }
+	></div>
+}

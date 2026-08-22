@@ -1,0 +1,135 @@
+package pages
+
+import (
+	"strings"
+
+	"github.com/struckchure/axel/studio/components/badge"
+	"github.com/struckchure/axel/studio/components/card"
+	"github.com/struckchure/axel/studio/components/icon"
+)
+
+templ policyDetailView(v StudioView) {
+	if v.ActivePolicy == nil {
+		@emptyState(v)
+	} else {
+		{{ p := *v.ActivePolicy }}
+		<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-4xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between">
+				<div class="space-y-1">
+					<div class="flex items-center gap-2">
+						<span class="text-primary">@icon.Policy(icon.Props{Size: 20})</span>
+						<h2 class="text-xl font-bold tracking-tight text-foreground">{ p.Name }</h2>
+						@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+							on { p.Type }
+						}
+					</div>
+					<p class="text-xs text-muted-foreground">Row-Level Security Policy</p>
+				</div>
+			</div>
+
+			<!-- Metadata Card -->
+			@card.Card() {
+				@card.Header() {
+					@card.Title() {
+						Policy Configuration
+					}
+					@card.Description() {
+						Target commands, roles, and backing table.
+					}
+				}
+				@card.Content() {
+					<div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Target Type / Table</span>
+							<div class="font-medium text-foreground flex items-center gap-1.5 pt-0.5">
+								<span class="text-muted-foreground">@icon.Table(icon.Props{Size: 13})</span>
+								<span>{ p.Type }</span>
+								if p.Table != "" {
+									<span class="text-muted-foreground font-mono text-[11px]">({ p.Table })</span>
+								}
+							</div>
+						</div>
+
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Commands</span>
+							<div class="flex flex-wrap gap-1 pt-0.5">
+								for _, cmd := range p.Commands {
+									@badge.Badge(badge.Props{Variant: badge.VariantWarning, Size: badge.SizeSm}) {
+										{ strings.ToUpper(cmd) }
+									}
+								}
+							</div>
+						</div>
+
+						<div class="p-3 rounded-md bg-muted/40 border border-border space-y-1">
+							<span class="text-muted-foreground">Roles</span>
+							<div class="flex flex-wrap gap-1 pt-0.5">
+								if len(p.Roles) == 0 {
+									@badge.Badge(badge.Props{Variant: badge.VariantOutline, Size: badge.SizeSm}) {
+										PUBLIC
+									}
+								} else {
+									for _, r := range p.Roles {
+										@badge.Badge(badge.Props{Variant: badge.VariantInfo, Size: badge.SizeSm}) {
+											{ r }
+										}
+									}
+								}
+							</div>
+						</div>
+					</div>
+				}
+			}
+
+			<!-- Predicates Cards -->
+			<div class="space-y-4">
+				if p.UsingAQL != "" {
+					@card.Card() {
+						@card.Header() {
+							<div class="flex items-center justify-between">
+								<div>
+									@card.Title() {
+										USING Expression (AQL)
+									}
+									@card.Description() {
+										Predicate that determines row visibility for read/update/delete operations.
+									}
+								</div>
+								@badge.Badge(badge.Props{Variant: badge.VariantSuccess, Size: badge.SizeSm}) {
+									USING
+								}
+							</div>
+						}
+						@card.Content() {
+							<pre class="p-3 rounded-md bg-muted/50 border border-border font-mono text-xs text-foreground overflow-x-auto whitespace-pre-wrap">{ p.UsingAQL }</pre>
+						}
+					}
+				}
+
+				if p.CheckAQL != "" {
+					@card.Card() {
+						@card.Header() {
+							<div class="flex items-center justify-between">
+								<div>
+									@card.Title() {
+										WITH CHECK Expression (AQL)
+									}
+									@card.Description() {
+										Predicate that validates rows being inserted or updated.
+									}
+								</div>
+								@badge.Badge(badge.Props{Variant: badge.VariantInfo, Size: badge.SizeSm}) {
+									WITH CHECK
+								}
+							</div>
+						}
+						@card.Content() {
+							<pre class="p-3 rounded-md bg-muted/50 border border-border font-mono text-xs text-foreground overflow-x-auto whitespace-pre-wrap">{ p.CheckAQL }</pre>
+						}
+					}
+				}
+			</div>
+		</div>
+	}
+}

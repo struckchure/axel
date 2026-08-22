@@ -12,8 +12,10 @@ type Column struct {
 	IsPrimaryKey bool
 	IsForeignKey bool
 	ForeignRef   string // "table.column" when IsForeignKey
-	IsLink       bool   // ASL link (schema-driven)
-	IsMulti      bool   // multi (junction) link — excluded from the row grid
+	IsLink       bool     // ASL link (schema-driven)
+	IsMulti      bool     // multi (junction) link — excluded from the row grid
+	EnumType     string   // ASL enum type name if this column is an enum
+	EnumValues   []string // possible enum values
 }
 
 // Table describes a table within a schema.
@@ -23,6 +25,14 @@ type Table struct {
 	Type    string // ASL type name when schema-driven, else ""
 	Columns []Column
 	Rows    int64 // estimated row count
+}
+
+// DisplayName returns the ASL type name when available, falling back to the table name.
+func (t Table) DisplayName() string {
+	if t.Type != "" {
+		return t.Type
+	}
+	return t.Name
 }
 
 // PrimaryKeys returns the names of the primary-key columns.

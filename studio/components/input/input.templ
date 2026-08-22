@@ -1,0 +1,60 @@
+package input
+
+type Props struct {
+	Type        string
+	Name        string
+	Value       string
+	Placeholder string
+	Class       string
+	Disabled    bool
+	ReadOnly    bool
+	Required    bool
+	AutoFocus   bool
+	OnInput     string
+	OnChange    string
+	OnKeyDown   string
+	Attributes  templ.Attributes
+}
+
+templ Input(props ...Props) {
+	{{
+		var p Props
+		if len(props) > 0 {
+			p = props[0]
+		}
+		inputType := p.Type
+		if inputType == "" {
+			inputType = "text"
+		}
+	}}
+	<input
+		type={ inputType }
+		if p.Name != "" {
+			name={ p.Name }
+		}
+		if p.Value != "" {
+			value={ p.Value }
+		}
+		if p.Placeholder != "" {
+			placeholder={ p.Placeholder }
+		}
+		disabled?={ p.Disabled }
+		readonly?={ p.ReadOnly }
+		required?={ p.Required }
+		autofocus?={ p.AutoFocus }
+		if p.OnInput != "" {
+			oninput={ templ.ComponentScript{Call: p.OnInput} }
+		}
+		if p.OnChange != "" {
+			onchange={ templ.ComponentScript{Call: p.OnChange} }
+		}
+		if p.OnKeyDown != "" {
+			onkeydown={ templ.ComponentScript{Call: p.OnKeyDown} }
+		}
+		class={
+			"flex h-8 w-full rounded-md border border-input bg-background px-2.5 py-1 text-xs text-foreground placeholder:text-muted-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+			p.Class,
+		}
+		{ p.Attributes... }
+	/>
+}
