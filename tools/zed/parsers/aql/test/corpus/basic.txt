@@ -521,3 +521,54 @@ offset $offset<int32>?;
           (identifier)
           (type_identifier
             (identifier)))))))
+
+==================
+update with multi link delta
+==================
+
+update Org filter .id = $id set { members := { "+": (select User filter .id = $u), "-": (select User filter .id = $old) } };
+
+---
+
+(source_file
+  (update_statement
+    type: (type_identifier
+      (identifier))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (parameter
+          name: (identifier))))
+    (assignment_block
+      (assignment
+        name: (field_identifier
+          (identifier))
+        delta: (link_delta
+          (link_delta_item
+            op: (string)
+            value: (expression
+              (subquery
+                type: (type_identifier
+                  (identifier))
+                (filter
+                  (expression
+                    (path
+                      step: (field_identifier
+                        (identifier)))
+                    (parameter
+                      name: (identifier)))))))
+          (link_delta_item
+            op: (string)
+            value: (expression
+              (subquery
+                type: (type_identifier
+                  (identifier))
+                (filter
+                  (expression
+                    (path
+                      step: (field_identifier
+                        (identifier)))
+                    (parameter
+                      name: (identifier))))))))))))

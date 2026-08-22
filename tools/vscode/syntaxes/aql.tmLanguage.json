@@ -52,8 +52,8 @@
       "name": "comment.line.number-sign.aql"
     },
     "strings": {
-      "match": "'[^']*'",
-      "name": "string.quoted.single.aql"
+      "match": "'[^']*'|\"[^\"]*\"",
+      "name": "string.quoted.aql"
     },
     "directives": {
       "match": "(@)([A-Za-z_]\\w*)",
@@ -145,7 +145,7 @@
       "name": "constant.numeric.aql"
     },
     "operators": {
-      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\?",
+      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\?|\\+|\\-",
       "name": "keyword.operator.aql"
     },
     "punctuation": {

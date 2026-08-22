@@ -58,13 +58,13 @@ func TestUpdateLinkFromParam(t *testing.T) {
 	}
 }
 
-// Multi-link assignment in an update is rejected with a clear error.
-func TestUpdateMultiLinkRejected(t *testing.T) {
-	err := compileErr(t, updateLinkSchema, `update Application filter .id = $id<uuid> set {
+// Multi-link assignment in an update compiles to a CTE pipeline.
+func TestUpdateMultiLinkCompiles(t *testing.T) {
+	c := compileAQL(t, updateLinkSchema, `update Application filter .id = $id<uuid> set {
 	  members := (select User filter .id = $u<uuid>)
 	};`)
-	if err == nil || !strings.Contains(err.Error(), "multi-link") {
-		t.Errorf("expected a multi-link-not-supported error, got %v", err)
+	if !strings.Contains(c.SQL, `_del_members AS`) || !strings.Contains(c.SQL, `_ins_members AS`) {
+		t.Errorf("expected multi-link full update CTEs, got:\n%s", c.SQL)
 	}
 }
 

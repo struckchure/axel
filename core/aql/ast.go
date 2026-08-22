@@ -271,10 +271,37 @@ type QualifiedIdent struct {
 // Assignment is a field value assignment used in INSERT and UPDATE.
 //
 //	email := $email
+//	members := { "+": (select User filter .id = $id), "-": (select User filter .id = $old_id) }
 type Assignment struct {
-	Pos   lexer.Position
-	Field string `parser:"@Ident ':='"`
-	Value *Expr  `parser:"@@"`
+	Pos       lexer.Position
+	Field     string     `parser:"@Ident ':='"`
+	LinkDelta *LinkDelta `parser:"( @@"`
+	Value     *Expr      `parser:"| @@ )"`
+}
+
+// LinkDelta represents an addition/removal set for a multi-link in an update or insert.
+//
+//	{ "+": <AQL>, "-": <AQL> }
+type LinkDelta struct {
+	Pos    lexer.Position
+	Items  []*LinkDeltaItem `parser:"'{' @@ ( ',' @@ )* ','? '}'"`
+	EndPos lexer.Position
+}
+
+// LinkDeltaItem is an individual "+" or "-" operation within a LinkDelta.
+type LinkDeltaItem struct {
+	Pos    lexer.Position
+	Op     string `parser:"@( String | '+' | '-' ) ':'"`
+	Value  *Expr  `parser:"@@"`
+	EndPos lexer.Position
+}
+
+// NormalizedOp returns "+" or "-" regardless of whether it was written with quotes or bare.
+func (item *LinkDeltaItem) NormalizedOp() string {
+	if item == nil {
+		return ""
+	}
+	return strings.Trim(item.Op, "'\" \t")
 }
 
 // Filter is a WHERE clause.

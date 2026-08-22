@@ -789,12 +789,54 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		return "", err
 	}
 
+	type multiLinkInsert struct {
+		link    *asl.ResolvedLink
+		isDelta bool
+		isFull  bool
+		deltas  []*aql.LinkDeltaItem
+		fullVal *aql.Expr
+	}
+
 	var cols, vals []string
 	var ctes []string
+	var multiInserts []multiLinkInsert
 
 	for _, a := range assignments {
+		if a.LinkDelta != nil {
+			link, ok := rt.Links[a.Field]
+			if !ok || !link.IsMulti {
+				return "", fmt.Errorf("cannot use delta assignment '{ \"+\": ..., \"-\": ... }' on non-multi field %q", a.Field)
+			}
+			if !topLevel {
+				return "", fmt.Errorf("cannot assign multi-link %q in nested insert expression", a.Field)
+			}
+			for _, item := range a.LinkDelta.Items {
+				op := item.NormalizedOp()
+				if op != "+" && op != "-" {
+					return "", fmt.Errorf("invalid delta operation %q on multi-link %q (expected \"+\" or \"-\")", item.Op, a.Field)
+				}
+			}
+			multiInserts = append(multiInserts, multiLinkInsert{
+				link:    link,
+				isDelta: true,
+				deltas:  a.LinkDelta.Items,
+			})
+			continue
+		}
+
 		// Check if this is a link assignment.
 		if link, ok := rt.Links[a.Field]; ok {
+			if link.IsMulti {
+				if !topLevel {
+					return "", fmt.Errorf("cannot assign multi-link %q in nested insert expression", a.Field)
+				}
+				multiInserts = append(multiInserts, multiLinkInsert{
+					link:    link,
+					isFull:  true,
+					fullVal: a.Value,
+				})
+				continue
+			}
 			col, val, cteFrag, err := c.compileLinkAssignment(a, link, rt)
 			if err != nil {
 				return "", err
@@ -820,19 +862,42 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		vals = append(vals, val)
 	}
 
-	var sb strings.Builder
-	if topLevel {
-		// With-block bindings share the statement's single WITH clause with any
-		// sub-insert CTEs. Only the top-level insert carries them: a nested
-		// (insert ...) operand compiles inside this statement and sees the same
-		// bindings already in scope.
-		sb.WriteString(c.withPrefix(ctes...))
-	} else if len(ctes) > 0 {
-		sb.WriteString("WITH ")
-		sb.WriteString(strings.Join(ctes, ", "))
-		sb.WriteString("\n")
+	if len(multiInserts) == 0 {
+		var sb strings.Builder
+		if topLevel {
+			// With-block bindings share the statement's single WITH clause with any
+			// sub-insert CTEs. Only the top-level insert carries them: a nested
+			// (insert ...) operand compiles inside this statement and sees the same
+			// bindings already in scope.
+			sb.WriteString(c.withPrefix(ctes...))
+		} else if len(ctes) > 0 {
+			sb.WriteString("WITH ")
+			sb.WriteString(strings.Join(ctes, ", "))
+			sb.WriteString("\n")
+		}
+		fmt.Fprintf(&sb, "INSERT INTO \"%s\" (%s)\nVALUES (%s)",
+			rt.Table,
+			strings.Join(cols, ", "),
+			strings.Join(vals, ", "),
+		)
+		if conflict != nil {
+			onConflict, err := c.compileOnConflict(rt, conflict)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(onConflict)
+		}
+		if topLevel {
+			fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
+			return sb.String(), nil
+		}
+		sb.WriteString(" RETURNING id")
+		return sb.String(), nil
 	}
-	fmt.Fprintf(&sb, "INSERT INTO \"%s\" (%s)\nVALUES (%s)",
+
+	// Top-level insert with multi-link operations
+	var insertSQL strings.Builder
+	fmt.Fprintf(&insertSQL, "INSERT INTO \"%s\" (%s)\nVALUES (%s)",
 		rt.Table,
 		strings.Join(cols, ", "),
 		strings.Join(vals, ", "),
@@ -842,13 +907,48 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		if err != nil {
 			return "", err
 		}
-		sb.WriteString(onConflict)
+		insertSQL.WriteString(onConflict)
 	}
-	if topLevel {
-		fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
-		return sb.String(), nil
+	insertSQL.WriteString("\nRETURNING *")
+
+	targetCTE := fmt.Sprintf("_target AS (\n  %s\n)", strings.ReplaceAll(insertSQL.String(), "\n", "\n  "))
+	ctes = append(ctes, targetCTE)
+
+	for _, op := range multiInserts {
+		sourceCol := snakeCase(rt.Name)
+		targetCol := snakeCase(op.link.TargetType)
+		junctionTable := op.link.JunctionTable
+
+		if op.isFull {
+			subSQL, err := c.compileMultiLinkTarget(op.fullVal, op.link, rt)
+			if err != nil {
+				return "", err
+			}
+			insCTE := fmt.Sprintf("_ins_%s AS (\n  INSERT INTO \"%s\" (\"%s\", \"%s\")\n  SELECT _target.id, _sub.id\n  FROM _target\n  CROSS JOIN (%s) AS _sub(id)\n  ON CONFLICT DO NOTHING\n)",
+				op.link.Name, junctionTable, sourceCol, targetCol, subSQL)
+			ctes = append(ctes, insCTE)
+			continue
+		}
+
+		if op.isDelta {
+			for _, item := range op.deltas {
+				if item.NormalizedOp() == "+" {
+					subSQL, err := c.compileMultiLinkTarget(item.Value, op.link, rt)
+					if err != nil {
+						return "", err
+					}
+					insCTE := fmt.Sprintf("_ins_%s AS (\n  INSERT INTO \"%s\" (\"%s\", \"%s\")\n  SELECT _target.id, _sub.id\n  FROM _target\n  CROSS JOIN (%s) AS _sub(id)\n  ON CONFLICT DO NOTHING\n)",
+						op.link.Name, junctionTable, sourceCol, targetCol, subSQL)
+					ctes = append(ctes, insCTE)
+					break
+				}
+			}
+		}
 	}
-	sb.WriteString(" RETURNING id")
+
+	var sb strings.Builder
+	sb.WriteString(c.withPrefix(ctes...))
+	fmt.Fprintf(&sb, "SELECT %s FROM _target;", returningColumns(rt))
 	return sb.String(), nil
 }
 
@@ -1011,6 +1111,9 @@ func dottedFields(fields []string) []string {
 // compileLinkAssignment compiles a link assignment. Returns (column, value, cteFrag, error).
 // cteFrag is non-empty when a sub-insert CTE was generated.
 func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, string, string, error) {
+	if a.LinkDelta != nil || a.Value == nil {
+		return "", "", "", fmt.Errorf("cannot use delta assignment on single link %q", a.Field)
+	}
 	col := fmt.Sprintf("%q", link.JoinColumn)
 	operand := a.Value.SoloPrimary()
 
@@ -1072,6 +1175,67 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 	return col, val, "", nil
 }
 
+// compileMultiLinkTarget compiles the target query/expression for a multi-link addition, removal, or replacement.
+func (c *compiler) compileMultiLinkTarget(expr *aql.Expr, link *asl.ResolvedLink, parentType *asl.ResolvedType) (string, error) {
+	if expr == nil {
+		return "", fmt.Errorf("multi-link expression cannot be empty")
+	}
+
+	targetType, err := c.resolveType(link.TargetType)
+	if err != nil {
+		return "", err
+	}
+
+	operand := expr.SoloPrimary()
+
+	// 1. With-binding reference: `members := { "+": new_users }`
+	if operand != nil && operand.Ident != nil {
+		if b, ok := c.lookupWith(*operand.Ident); ok {
+			return fmt.Sprintf("SELECT id FROM \"_with_%s\"", b.name), nil
+		}
+	}
+
+	// 2. Solo SubQuery: `(select User filter ...)` or `(multi select User filter ...)`
+	if operand != nil && operand.SubQuery != nil && operand.SubQueryField == "" && operand.Cast == "" {
+		sub := operand.SubQuery
+		alias := c.newAlias(link.TargetType)
+
+		var whereClause string
+		if sub.Filter != nil {
+			where, err := c.compileValueFilter(sub.Filter.Expr, alias, targetType)
+			if err != nil {
+				return "", err
+			}
+			whereClause = " WHERE " + where
+		}
+
+		joinField := link.JoinField
+		if joinField == "" {
+			joinField = "id"
+		}
+
+		subSQL := fmt.Sprintf(
+			"SELECT %s.%s AS id FROM \"%s\" %s%s",
+			alias, joinField, targetType.Table, alias, whereClause,
+		)
+		return subSQL, nil
+	}
+
+	// 3. Projected subquery, bare param, or general expression
+	val, err := c.compileExpr(expr, "", parentType)
+	if err != nil {
+		return "", err
+	}
+	inferAssignmentParamType(c.params, expr, "uuid", "")
+
+	trimmed := strings.TrimSpace(val)
+	if strings.HasPrefix(trimmed, "(SELECT") && strings.HasSuffix(trimmed, ")") {
+		inner := strings.TrimSuffix(strings.TrimPrefix(trimmed, "("), ")")
+		return inner, nil
+	}
+	return fmt.Sprintf("SELECT %s AS id", val), nil
+}
+
 // compileSubQuery compiles a (select ...) subquery used as an expression. By
 // default it projects the row's id; a non-empty projectField selects that
 // property (or link FK) instead — e.g. (select Org filter .id = $id).slug. A
@@ -1084,7 +1248,6 @@ func (c *compiler) compileLinkAssignment(a *aql.Assignment, link *asl.ResolvedLi
 // membership into "member of one arbitrary row". A plain (single) select stays
 // scalar and keeps the implicit LIMIT 1.
 func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string, multi bool) (string, error) {
-	// Aggregate subquery: (select count(TypeName filter ...)) used as a scalar.
 	if body.AggFunc != nil {
 		if projectField != "" {
 			return "", fmt.Errorf("cannot project field %q from an aggregate subquery", projectField)
@@ -1168,8 +1331,37 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 	}
 	alias := c.newAlias(stmt.TypeName)
 
+	type multiLinkUpdate struct {
+		link    *asl.ResolvedLink
+		isDelta bool
+		isFull  bool
+		deltas  []*aql.LinkDeltaItem
+		fullVal *aql.Expr
+	}
+
 	var sets []string
+	var multiUpdates []multiLinkUpdate
+
 	for _, a := range stmt.Assignments {
+		if a.LinkDelta != nil {
+			link, ok := rt.Links[a.Field]
+			if !ok || !link.IsMulti {
+				return "", fmt.Errorf("cannot use delta assignment '{ \"+\": ..., \"-\": ... }' on non-multi field %q", a.Field)
+			}
+			for _, item := range a.LinkDelta.Items {
+				op := item.NormalizedOp()
+				if op != "+" && op != "-" {
+					return "", fmt.Errorf("invalid delta operation %q on multi-link %q (expected \"+\" or \"-\")", item.Op, a.Field)
+				}
+			}
+			multiUpdates = append(multiUpdates, multiLinkUpdate{
+				link:    link,
+				isDelta: true,
+				deltas:  a.LinkDelta.Items,
+			})
+			continue
+		}
+
 		if prop, ok := rt.Properties[a.Field]; ok {
 			val, err := c.compileExpr(a.Value, alias, rt)
 			if err != nil {
@@ -1180,20 +1372,19 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 			continue
 		}
 
-		// Single-link assignment: set the FK column. The value is a scalar that
-		// resolves to the target's id — typically a subquery, e.g.
-		//   installation := (select GithubInstallation filter .installation_id = $id)
-		// and it composes with `??` to keep the current value:
-		//   installation := (select ...) ?? .installation
 		if link, ok := rt.Links[a.Field]; ok {
 			if link.IsMulti {
-				return "", fmt.Errorf("cannot assign multi-link %q in update: multi-link updates are not supported", a.Field)
+				multiUpdates = append(multiUpdates, multiLinkUpdate{
+					link:    link,
+					isFull:  true,
+					fullVal: a.Value,
+				})
+				continue
 			}
 			val, err := c.compileExpr(a.Value, alias, rt)
 			if err != nil {
 				return "", err
 			}
-			// A bare FK param is a uuid (the target's id column).
 			inferAssignmentParamType(c.params, a.Value, "uuid", "")
 			sets = append(sets, fmt.Sprintf("%s = %s", link.JoinColumn, val))
 			continue
@@ -1202,17 +1393,102 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		return "", fmt.Errorf("type %q has no property or link %q", stmt.TypeName, a.Field)
 	}
 
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "UPDATE \"%s\" %s SET\n  %s", rt.Table, alias, strings.Join(sets, ",\n  "))
+	if len(sets) == 0 && len(multiUpdates) == 0 {
+		return "", fmt.Errorf("update must set at least one field")
+	}
 
+	// Simple update without multi-link operations
+	if len(multiUpdates) == 0 {
+		var sb strings.Builder
+		if len(c.withCTEs) > 0 {
+			sb.WriteString(c.withPrefix())
+		}
+		fmt.Fprintf(&sb, "UPDATE \"%s\" %s SET\n  %s", rt.Table, alias, strings.Join(sets, ",\n  "))
+
+		if stmt.Filter != nil {
+			where, err := c.compileExpr(stmt.Filter.Expr, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&sb, "\nWHERE %s", where)
+		}
+		fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
+		return sb.String(), nil
+	}
+
+	// Multi-link update CTE pipeline
+	var ctes []string
+
+	var whereClause string
 	if stmt.Filter != nil {
 		where, err := c.compileExpr(stmt.Filter.Expr, alias, rt)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&sb, "\nWHERE %s", where)
+		whereClause = fmt.Sprintf("\n  WHERE %s", where)
 	}
-	fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
+
+	var targetCTE string
+	if len(sets) > 0 {
+		targetCTE = fmt.Sprintf("_target AS (\n  UPDATE \"%s\" %s SET\n    %s%s\n  RETURNING *\n)",
+			rt.Table, alias, strings.Join(sets, ",\n    "), whereClause)
+	} else {
+		targetCTE = fmt.Sprintf("_target AS (\n  SELECT %s.* FROM \"%s\" %s%s\n)",
+			alias, rt.Table, alias, whereClause)
+	}
+	ctes = append(ctes, targetCTE)
+
+	for _, op := range multiUpdates {
+		sourceCol := snakeCase(rt.Name)
+		targetCol := snakeCase(op.link.TargetType)
+		junctionTable := op.link.JunctionTable
+
+		if op.isFull {
+			delCTE := fmt.Sprintf("_del_%s AS (\n  DELETE FROM \"%s\"\n  WHERE \"%s\" IN (SELECT id FROM _target)\n)",
+				op.link.Name, junctionTable, sourceCol)
+			ctes = append(ctes, delCTE)
+
+			subSQL, err := c.compileMultiLinkTarget(op.fullVal, op.link, rt)
+			if err != nil {
+				return "", err
+			}
+			insCTE := fmt.Sprintf("_ins_%s AS (\n  INSERT INTO \"%s\" (\"%s\", \"%s\")\n  SELECT _target.id, _sub.id\n  FROM _target\n  CROSS JOIN (%s) AS _sub(id)\n  ON CONFLICT DO NOTHING\n)",
+				op.link.Name, junctionTable, sourceCol, targetCol, subSQL)
+			ctes = append(ctes, insCTE)
+			continue
+		}
+
+		if op.isDelta {
+			for _, item := range op.deltas {
+				if item.NormalizedOp() == "-" {
+					subSQL, err := c.compileMultiLinkTarget(item.Value, op.link, rt)
+					if err != nil {
+						return "", err
+					}
+					delCTE := fmt.Sprintf("_del_%s AS (\n  DELETE FROM \"%s\"\n  WHERE \"%s\" IN (SELECT id FROM _target)\n    AND \"%s\" IN (%s)\n)",
+						op.link.Name, junctionTable, sourceCol, targetCol, subSQL)
+					ctes = append(ctes, delCTE)
+					break
+				}
+			}
+			for _, item := range op.deltas {
+				if item.NormalizedOp() == "+" {
+					subSQL, err := c.compileMultiLinkTarget(item.Value, op.link, rt)
+					if err != nil {
+						return "", err
+					}
+					insCTE := fmt.Sprintf("_ins_%s AS (\n  INSERT INTO \"%s\" (\"%s\", \"%s\")\n  SELECT _target.id, _sub.id\n  FROM _target\n  CROSS JOIN (%s) AS _sub(id)\n  ON CONFLICT DO NOTHING\n)",
+						op.link.Name, junctionTable, sourceCol, targetCol, subSQL)
+					ctes = append(ctes, insCTE)
+					break
+				}
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(c.withPrefix(ctes...))
+	fmt.Fprintf(&sb, "SELECT %s FROM _target;", returningColumns(rt))
 	return sb.String(), nil
 }
 

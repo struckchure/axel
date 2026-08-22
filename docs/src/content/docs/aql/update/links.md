@@ -73,3 +73,82 @@ existing link instead of matching an arbitrary installation.
 A subquery projection may be coalesced the same way — `(select … ).installation_id ?? .installation_id`
 selects the linked FK column rather than the row id, and an optional cast (`.field<str>`) applies to
 the projected value.
+
+---
+
+## Multi-links
+
+Many-to-many relationships (`multi link members: User`) can be modified using either delta assignments (`{ "+": ..., "-": ... }`) or full set replacement.
+
+### Delta modification (`+` and `-`)
+
+Use `"+"` to add items and `"-"` to remove items from a multi-link:
+
+```aql
+update Organization
+filter .id = $id<uuid>
+set {
+  members := {
+    "+": (multi select User filter .email in $invite_emails),
+    "-": (select User filter .id = $removed_user_id<uuid>)
+  }
+};
+```
+
+This compiles to a clean CTE pipeline that applies the deletions and insertions on the underlying junction table:
+
+```sql
+WITH _target AS (
+  SELECT o.* FROM "organization" o
+  WHERE o.id = $1
+),
+_del_members AS (
+  DELETE FROM "organization_members"
+  WHERE "organization" IN (SELECT id FROM _target)
+    AND "user" IN (SELECT u.id FROM "user" u WHERE u.id = $2)
+),
+_ins_members AS (
+  INSERT INTO "organization_members" ("organization", "user")
+  SELECT _target.id, _sub.id
+  FROM _target
+  CROSS JOIN (SELECT u.id FROM "user" u WHERE u.email IN (...)) AS _sub(id)
+  ON CONFLICT DO NOTHING
+)
+SELECT o.id, o.name FROM _target o;
+```
+
+- Removals (`"-"`) always execute before additions (`"+"`).
+- Either `"+"` or `"-"` or both can be provided.
+- Keys can be written as `"+"` / `"-"`, `'+'` / `'-'`, or bare `+` / `-`.
+
+### Full replacement
+
+Assigning an expression directly to a multi-link reconciles the relation by replacing all existing links with the new set:
+
+```aql
+update Organization
+filter .id = $id<uuid>
+set {
+  members := (multi select User filter .department = 'Engineering')
+};
+```
+
+```sql
+WITH _target AS (
+  SELECT o.* FROM "organization" o
+  WHERE o.id = $1
+),
+_del_members AS (
+  DELETE FROM "organization_members"
+  WHERE "organization" IN (SELECT id FROM _target)
+),
+_ins_members AS (
+  INSERT INTO "organization_members" ("organization", "user")
+  SELECT _target.id, _sub.id
+  FROM _target
+  CROSS JOIN (SELECT u.id FROM "user" u WHERE u.department = 'Engineering') AS _sub(id)
+  ON CONFLICT DO NOTHING
+)
+SELECT o.id, o.name FROM _target o;
+```
+

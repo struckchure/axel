@@ -587,7 +587,28 @@ func (f *aqlFmt) assignmentBlock(as []*Assignment) {
 	for i, a := range as {
 		f.leading(a.Pos.Offset)
 		f.wf("%s := ", a.Field)
-		printExpr(&f.cur, a.Value)
+		if a.LinkDelta != nil {
+			f.w("{\n")
+			f.indent++
+			for j, item := range a.LinkDelta.Items {
+				f.leading(item.Pos.Offset)
+				op := item.NormalizedOp()
+				f.wf("%q: ", op)
+				printExpr(&f.cur, item.Value)
+				if j < len(a.LinkDelta.Items)-1 {
+					f.w(",")
+				}
+				itemNext := 1 << 30
+				if j+1 < len(a.LinkDelta.Items) {
+					itemNext = a.LinkDelta.Items[j+1].Pos.Offset
+				}
+				f.clauseBreak(itemNext)
+			}
+			f.indent--
+			f.w("}")
+		} else {
+			printExpr(&f.cur, a.Value)
+		}
 		if i < len(as)-1 {
 			f.w(",")
 		}

@@ -12,9 +12,10 @@ Before touching any `.asl` or `.aql` file, read:
 - [`references/aql.md`](./references/aql.md) — full query grammar
 - [`references/cli.md`](./references/cli.md) — every command, `axel.yaml`, codegen
 
-The three commands worth running instead of guessing, none of which need a database except the last:
+The four commands worth running instead of guessing, none of which need a database except the last:
 
 ```sh
+axel fmt -w .                                  # format .asl / .aql files in place (always run after editing)
 axel validate                                  # does the schema resolve?
 axel compile --aql 'select User { id }'        # what SQL does this shape produce?
 axel diff -n "wip" && cat migrations/*/up.sql  # what DDL does this change produce?

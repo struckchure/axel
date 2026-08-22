@@ -61,6 +61,22 @@ multi select Post { id, title, author: { id, email }, total := count(.id) filter
 			},
 		},
 		{
+			name:  "update multi link delta",
+			query: `update Organization filter .id = $id<uuid> set { name := $name, members := { "+": (multi select User filter .email in $emails), "-": (select User filter .id = $old_id) } };`,
+			check: func(t *testing.T, stmt *Statement) {
+				if stmt.Update == nil || len(stmt.Update.Assignments) != 2 {
+					t.Fatalf("expected 2 assignments, got %+v", stmt.Update)
+				}
+				delta := stmt.Update.Assignments[1].LinkDelta
+				if delta == nil || len(delta.Items) != 2 {
+					t.Fatalf("expected LinkDelta with 2 items, got %+v", delta)
+				}
+				if delta.Items[0].NormalizedOp() != "+" || delta.Items[1].NormalizedOp() != "-" {
+					t.Errorf("expected ops + and -, got %s and %s", delta.Items[0].NormalizedOp(), delta.Items[1].NormalizedOp())
+				}
+			},
+		},
+		{
 			name:  "delete",
 			query: `delete Post filter .id = $id<uuid>;`,
 			check: func(t *testing.T, stmt *Statement) {

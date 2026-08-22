@@ -39,6 +39,16 @@
     "type": "assignment",
     "named": true,
     "fields": {
+      "delta": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "link_delta",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -51,7 +61,7 @@
       },
       "value": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "expression",
@@ -439,6 +449,55 @@
     }
   },
   {
+    "type": "link_delta",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "link_delta_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "link_delta_item",
+    "named": true,
+    "fields": {
+      "op": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "null",
     "named": true,
     "fields": {}
@@ -755,6 +814,11 @@
     }
   },
   {
+    "type": "string",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "subquery",
     "named": true,
     "fields": {
@@ -936,7 +1000,15 @@
     "named": false
   },
   {
+    "type": "+",
+    "named": false
+  },
+  {
     "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
     "named": false
   },
   {
@@ -1111,10 +1183,6 @@
   {
     "type": "set",
     "named": false
-  },
-  {
-    "type": "string",
-    "named": true
   },
   {
     "type": "true",

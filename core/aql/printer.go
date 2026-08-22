@@ -207,8 +207,7 @@ func printSelectBodyInline(b *strings.Builder, body *SelectBody) {
 func printInsert(b *strings.Builder, s *InsertStmt) {
 	fmt.Fprintf(b, "insert %s {\n", s.TypeName)
 	for i, a := range s.Assignments {
-		fmt.Fprintf(b, "  %s := ", a.Field)
-		printExpr(b, a.Value)
+		printAssignment(b, a)
 		if i < len(s.Assignments)-1 {
 			b.WriteString(",")
 		}
@@ -217,6 +216,29 @@ func printInsert(b *strings.Builder, s *InsertStmt) {
 	b.WriteString("}")
 	printConflict(b, s.Conflict)
 	b.WriteString(";")
+}
+
+func printAssignment(b *strings.Builder, a *Assignment) {
+	fmt.Fprintf(b, "  %s := ", a.Field)
+	if a.LinkDelta != nil {
+		printLinkDelta(b, a.LinkDelta)
+	} else {
+		printExpr(b, a.Value)
+	}
+}
+
+func printLinkDelta(b *strings.Builder, d *LinkDelta) {
+	b.WriteString("{\n")
+	for i, item := range d.Items {
+		op := item.NormalizedOp()
+		fmt.Fprintf(b, "    %q: ", op)
+		printExpr(b, item.Value)
+		if i < len(d.Items)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("  }")
 }
 
 func printConflict(b *strings.Builder, c *OnConflict) {
@@ -243,8 +265,7 @@ func printConflict(b *strings.Builder, c *OnConflict) {
 	if c.Else != nil {
 		fmt.Fprintf(b, " else (update %s set {\n", c.Else.TypeName)
 		for i, a := range c.Else.Assignments {
-			fmt.Fprintf(b, "  %s := ", a.Field)
-			printExpr(b, a.Value)
+			printAssignment(b, a)
 			if i < len(c.Else.Assignments)-1 {
 				b.WriteString(",")
 			}
@@ -262,8 +283,7 @@ func printUpdate(b *strings.Builder, s *UpdateStmt) {
 	}
 	b.WriteString("\nset {\n")
 	for i, a := range s.Assignments {
-		fmt.Fprintf(b, "  %s := ", a.Field)
-		printExpr(b, a.Value)
+		printAssignment(b, a)
 		if i < len(s.Assignments)-1 {
 			b.WriteString(",")
 		}

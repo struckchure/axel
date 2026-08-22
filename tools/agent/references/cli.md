@@ -68,9 +68,11 @@ An external plugin reads a JSON `CodegenRequest` on stdin and writes a `CodegenR
 
 ### fmt
 
+Always run `axel fmt -w .` (or `axel fmt -w <path>`) after editing or generating `.asl` and `.aql` files to apply canonical formatting in place.
+
 ```sh
 axel fmt schema.asl        # to stdout
-axel fmt -w .              # rewrite in place
+axel fmt -w .              # rewrite in place (recommended after every edit)
 axel fmt --check .         # CI: lists unformatted files, exits non-zero
 ```
 

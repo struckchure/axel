@@ -41,16 +41,18 @@ the binary.
 
 ## The loop
 
-Editing a schema is always the same cycle, and every step is cheap:
+Editing a schema or query is always the same cycle, and every step is cheap:
 
 ```bash
+axel fmt -w .                   # canonical formatting (run after EVERY edit to .asl / .aql)
 axel validate                   # parse + resolve + validate; no database needed
 axel diff -n "add comments"     # write migrations/NNNN/{up,down}.sql from the change
 axel up                         # apply pending migrations (needs a database)
 axel compile -f queries/x.aql   # see the SQL a query compiles to
 axel codegen -g go -o ./gen     # regenerate the typed client
-axel fmt -w .                   # canonical formatting
 ```
+
+**Always format after modifying `.asl` or `.aql` files.** Run `axel fmt -w .` (or `axel fmt -w <path>`) so code matches Axel's canonical style before validation, diffing, or committing.
 
 **Run `axel validate` after every schema edit.** It is fast, needs no database, and catches the
 entire class of errors that otherwise surface as a confusing migration. Then run `axel diff` and
@@ -147,6 +149,18 @@ insert User { email := $email, role := Role.Member }
   else ( update User set { role := Role.Member } );
 
 update Post filter .id = $id set { title := $title };
+
+# Multi-link updates: delta (+ and -) or full set replacement
+update Organization filter .id = $id set {
+  members := {
+    "+": (multi select User filter .email in $invite_emails),
+    "-": (select User filter .id = $removed_user)
+  }
+};
+update Organization filter .id = $id set {
+  members := (multi select User filter .active = true)
+};
+
 delete Post filter .created_at < $cutoff;
 ```
 
@@ -170,6 +184,7 @@ Full grammar — `with` blocks, sub-selects, casts, `group by`/`having`, conflic
 The compiler is the source of truth and it is fast. Prefer running it over reasoning about it:
 
 ```bash
+axel fmt -w .                                    # format all .asl / .aql files in place
 axel validate                                    # schema resolves?
 axel compile --aql 'select User { id }'          # what SQL does this shape produce?
 axel diff -n "wip" && cat migrations/*/up.sql    # what DDL does this change produce?

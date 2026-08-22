@@ -33,7 +33,9 @@ ConflictUpdate = "update" TypeName "set" "{" Assignment ("," Assignment)* ","? "
 Shape       = "{" ShapeField ("," ShapeField)* ","? "}"
 ShapeField  = Ident (":" Shape)?          # leaf, or nested link shape
             | Ident ":=" Expr Filter?     # computed or aggregate field
-Assignment  = Ident ":=" Expr
+Assignment  = Ident ":=" (LinkDelta | Expr)
+LinkDelta   = "{" LinkDeltaItem ("," LinkDeltaItem)* ","? "}"
+LinkDeltaItem = (String | "+" | "-") ":" Expr
 
 Filter      = "filter" Expr
 GroupBy     = "group" "by" Expr ("," Expr)*
@@ -136,6 +138,17 @@ insert User { email := $email } unless conflict;        # ON CONFLICT DO NOTHING
 
 update Post filter .id = $id set { title := $title };
 update Post filter .id = $id set { author := (select User filter .email = $email).id };
+
+# Multi-link updates: delta (+ and -) or full set replacement
+update Organization filter .id = $id set {
+  members := {
+    "+": (multi select User filter .email in $emails),
+    "-": (select User filter .id = $removed_user_id)
+  }
+};
+update Organization filter .id = $id set {
+  members := (multi select User filter .active = true)
+};
 
 delete Post filter .created_at < $cutoff;
 ```

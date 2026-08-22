@@ -180,7 +180,30 @@ module.exports = grammar({
       ),
 
     assignment: ($) =>
-      seq(field("name", $.field_identifier), ":=", field("value", $.expression)),
+      seq(
+        field("name", $.field_identifier),
+        ":=",
+        choice(
+          field("value", $.expression),
+          field("delta", $.link_delta),
+        ),
+      ),
+
+    link_delta: ($) =>
+      seq(
+        "{",
+        optional(
+          seq($.link_delta_item, repeat(seq(",", $.link_delta_item)), optional(",")),
+        ),
+        "}",
+      ),
+
+    link_delta_item: ($) =>
+      seq(
+        field("op", choice($.string, "+", "-")),
+        ":",
+        field("value", $.expression),
+      ),
 
     // { id, email, posts: { ... }, count := (...) }
     shape: ($) =>
@@ -347,7 +370,7 @@ module.exports = grammar({
 
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
-    string: ($) => /'[^']*'/,
+    string: ($) => choice(/'[^']*'/, /"[^"]*"/),
 
     float: ($) => /[0-9]+\.[0-9]+/,
 

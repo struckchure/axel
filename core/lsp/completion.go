@@ -357,9 +357,10 @@ func insideBraces(text string, pos int) bool {
 			for i < pos && i < len(text) && text[i] != '\n' {
 				i++
 			}
-		case '\'':
+		case '\'', '"':
+			quote := text[i]
 			i++
-			for i < pos && i < len(text) && text[i] != '\'' {
+			for i < pos && i < len(text) && text[i] != quote {
 				i++
 			}
 		case '{':
