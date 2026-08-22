@@ -1,6 +1,6 @@
 id = "axel"
 name = "Axel"
-version = "0.0.15"
+version = "0.0.16"
 schema_version = 1
 authors = ["Mohammed Al-Ameen"]
 description = "Syntax highlighting and language server for Axel Schema (.asl) and Query (.aql)."
@@ -22,10 +22,10 @@ languages = ["Axel Schema", "Axel Query"]
 [grammars.asl]
 repository = "https://github.com/struckchure/axel"
 path = "tools/zed/parsers/asl"
-rev = "c31fa34afe4b480a99c7e7a3b0d4c76887efcd9e"
+rev = "cac6763c6c65b6c55b78e93c1375411e506198eb"
 
 [grammars.aql]
 repository = "https://github.com/struckchure/axel"
 path = "tools/zed/parsers/aql"
-rev = "c31fa34afe4b480a99c7e7a3b0d4c76887efcd9e"
+rev = "cac6763c6c65b6c55b78e93c1375411e506198eb"
 
