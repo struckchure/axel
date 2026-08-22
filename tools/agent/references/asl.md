@@ -25,8 +25,8 @@ scalar type Coordinate extends json {  # typed JSON scalar
 }
 # Custom PostgreSQL Extension Types with client codegen typing:
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 };
 scalar type Embedding extends sql "vector(1536)" as multi float32;
 scalar type Citext extends sql "citext" as str;

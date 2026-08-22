@@ -179,8 +179,8 @@ use extension 'postgis';
 use extension 'vector';
 
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 };
 scalar type Embedding extends sql "vector(1536)" as multi float32;
 `))
@@ -200,6 +200,9 @@ scalar type Embedding extends sql "vector(1536)" as multi float32;
 	pt := back.ScalarTypes["Point"]
 	if pt == nil || pt.SQLType != "geography(Point, 4326)" || !pt.IsCustomSQL || len(pt.Fields) != 2 {
 		t.Fatalf("Reconstructed Point = %+v", pt)
+	}
+	if pt.Fields["latitude"].ExprSQL != "ST_Y(__self__::geometry)" {
+		t.Errorf("Point.latitude ExprSQL = %q, want ST_Y(__self__::geometry)", pt.Fields["latitude"].ExprSQL)
 	}
 
 	emb := back.ScalarTypes["Embedding"]

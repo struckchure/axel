@@ -52,10 +52,11 @@ use extension 'postgis';
 use extension 'vector';
 use extension 'citext';
 
-# 1. Structured record representation (for codegen interfaces & AQL dot-access)
+# 1. Structured record representation with custom SQL extraction expressions
+# (__self__ refers to the column instance in AQL queries)
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 };
 
 # 2. Multi-dimensional array representation (codegen emits number[] / []float32)

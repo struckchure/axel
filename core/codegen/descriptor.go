@@ -89,6 +89,7 @@ type ScalarFieldDescriptor struct {
 	SQLType    string `json:"sql_type"`
 	IsRequired bool   `json:"is_required"`
 	IsMulti    bool   `json:"is_multi"`
+	ExprSQL    string `json:"expr_sql,omitempty"`
 }
 
 // ComputedDescriptor describes a computed (non-stored) field.
@@ -207,6 +208,7 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 					SQLType:    f.SQLType,
 					IsRequired: f.IsRequired,
 					IsMulti:    f.IsMulti,
+					ExprSQL:    f.ExprSQL,
 				})
 			}
 		}
@@ -653,6 +655,7 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 					SQLType:    f.SQLType,
 					IsRequired: f.IsRequired,
 					IsMulti:    f.IsMulti,
+					ExprSQL:    f.ExprSQL,
 				}
 			}
 		}

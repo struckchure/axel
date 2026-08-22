@@ -37,13 +37,14 @@ type ResolvedScalar struct {
 	Rewrites      []ResolvedRewrite
 }
 
-// ResolvedScalarField is a field in a typed JSON scalar.
+// ResolvedScalarField is a field in a typed JSON or custom SQL scalar.
 type ResolvedScalarField struct {
 	Name       string
 	AQLType    string // "str", "int32", "float64", etc.
 	SQLType    string // "TEXT", "INTEGER", "DOUBLE PRECISION", etc.
 	IsRequired bool
 	IsMulti    bool
+	ExprSQL    string // custom SQL extraction expression, e.g. "ST_Y(__self__::geometry)"
 }
 
 // ResolvedEnum is an enum type.

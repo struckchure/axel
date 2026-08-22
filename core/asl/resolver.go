@@ -290,12 +290,17 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 						if !ok {
 							return fmt.Errorf("scalar type %q field %q: unknown type %q", s.Name, f.Name, f.Type)
 						}
+						exprSQL := ""
+						if f.Computed != nil {
+							exprSQL = strings.TrimSpace(f.Computed.Raw)
+						}
 						fields[f.Name] = &ResolvedScalarField{
 							Name:       f.Name,
 							AQLType:    f.Type,
 							SQLType:    fSQLType,
 							IsRequired: f.Required,
 							IsMulti:    f.Multi,
+							ExprSQL:    exprSQL,
 						}
 					}
 					if isCustomSQL {

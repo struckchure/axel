@@ -120,8 +120,8 @@ use extension 'postgis';
 use extension 'vector';
 
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 };
 scalar type Embedding extends sql "vector(1536)" as multi float32;
 scalar type Citext extends sql "citext" as str;
@@ -143,7 +143,7 @@ type Place {
 		t.Fatalf("resolve schema: %v", err)
 	}
 
-	// 1. Query with typed JSON dot-access on custom SQL Point
+	// 1. Query with custom SQL dot-access on Point
 	stmt, err := aql.ParseString(`multi select Place { id, name, lat := .loc.latitude } filter .name = $name<Citext>;`)
 	if err != nil {
 		t.Fatalf("parse query: %v", err)
@@ -152,8 +152,8 @@ type Place {
 	if err != nil {
 		t.Fatalf("compile query: %v", err)
 	}
-	if !strings.Contains(compiled.SQL, `(p.loc->>'latitude')::REAL`) {
-		t.Errorf("expected dot access on Point scalar, got:\n%s", compiled.SQL)
+	if !strings.Contains(compiled.SQL, `(ST_Y(p.loc::geometry)) AS lat`) {
+		t.Errorf("expected custom SQL dot access on Point scalar, got:\n%s", compiled.SQL)
 	}
 
 	// 2. Query with aggregate expression
@@ -165,7 +165,7 @@ type Place {
 	if err != nil {
 		t.Fatalf("compile aggregate query: %v", err)
 	}
-	if !strings.Contains(compiledAgg.SQL, `MIN(haversine(((p.loc->>'latitude')::REAL), ((p.loc->>'longitude')::REAL), $1::REAL, $2::REAL)) AS best`) {
+	if !strings.Contains(compiledAgg.SQL, `MIN(haversine(ST_Y(p.loc::geometry), ST_X(p.loc::geometry), $1::REAL, $2::REAL)) AS best`) {
 		t.Errorf("expected aggregate expression compilation, got:\n%s", compiledAgg.SQL)
 	}
 

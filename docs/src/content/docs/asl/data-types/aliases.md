@@ -70,9 +70,10 @@ For PostgreSQL extension types (such as PostGIS `geography`, `geometry`, `pgvect
 
 ```asl
 # Record representation: generates interfaces/structs in codegen, enables AQL dot-access (.loc.lat)
+# __self__ refers to the column instance in AQL queries
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 };
 
 # Multi-dimensional array representation: generates number[] / []float32 in codegen

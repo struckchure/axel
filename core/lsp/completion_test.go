@@ -138,6 +138,32 @@ func TestSchemaCompletionFunctions(t *testing.T) {
 	}
 }
 
+func TestQueryCompletionScalarPropertySubfields(t *testing.T) {
+	schemaText := `
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
+};
+type Venue {
+  required id: uuid;
+  location: Point;
+}
+`
+	schema := schemaFor(t, schemaText)
+	text := `select Venue filter .location.`
+	got := labels(QueryCompletion(text, len(text), schema))
+	for _, want := range []string{"latitude", "longitude"} {
+		it, ok := got[want]
+		if !ok {
+			t.Errorf("missing scalar subfield %q; got %v", want, keys(got))
+			continue
+		}
+		if it.Kind != CompletionKindField {
+			t.Errorf("%q kind = %d, want %d", want, it.Kind, CompletionKindField)
+		}
+	}
+}
+
 func keys(m map[string]CompletionItem) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

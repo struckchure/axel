@@ -1993,11 +1993,15 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 			}
 			if scalar != nil && len(scalar.Fields) > 0 {
 				if len(remaining) > 1 {
-					return "", fmt.Errorf("cannot traverse nested path in JSON scalar %q (nested JSON is not supported)", scalar.Name)
+					return "", fmt.Errorf("cannot traverse nested path in scalar %q (nested traversal is not supported)", scalar.Name)
 				}
 				field, ok := scalar.Fields[remaining[0]]
 				if !ok {
 					return "", fmt.Errorf("scalar type %q has no field %q", scalar.Name, remaining[0])
+				}
+				if field.ExprSQL != "" {
+					expanded := strings.ReplaceAll(field.ExprSQL, "__self__", colRef)
+					return expanded, nil
 				}
 				if field.SQLType == "TEXT" {
 					return fmt.Sprintf("(%s->>'%s')", colRef, remaining[0]), nil

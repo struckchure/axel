@@ -592,8 +592,8 @@ use extension 'postgis';
 use extension 'vector';
 
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 };
 
 scalar type Embedding extends sql "vector(1536)" as multi float32;
@@ -616,7 +616,13 @@ type Venue {
 		t.Fatalf("Point scalar = %+v", point)
 	}
 	if len(point.Fields) != 2 || point.Fields["latitude"] == nil || point.Fields["longitude"] == nil {
-		t.Errorf("Point fields = %+v", point.Fields)
+		t.Fatalf("Point fields = %+v", point.Fields)
+	}
+	if point.Fields["latitude"].ExprSQL != "ST_Y(__self__::geometry)" {
+		t.Errorf("Point.latitude ExprSQL = %q, want ST_Y(__self__::geometry)", point.Fields["latitude"].ExprSQL)
+	}
+	if point.Fields["longitude"].ExprSQL != "ST_X(__self__::geometry)" {
+		t.Errorf("Point.longitude ExprSQL = %q, want ST_X(__self__::geometry)", point.Fields["longitude"].ExprSQL)
 	}
 
 	// Check Embedding scalar
@@ -661,8 +667,8 @@ func TestFormatCustomSQLExtensionScalars(t *testing.T) {
 use extension 'vector';
 
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32;
-  longitude: float32;
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
 }
 scalar type Embedding extends sql "vector(1536)" as multi float32;
 scalar type Citext extends sql "citext" as str;

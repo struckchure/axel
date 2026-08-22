@@ -64,4 +64,43 @@ scalar type Code extends str {
 	}
 }
 
+func TestSchemaHoverAndQueryHoverCustomSQLScalars(t *testing.T) {
+	schemaText := `
+use extension 'postgis';
+
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
+};
+
+type Venue {
+  required id: uuid;
+  location: Point;
+}
+`
+	schema := schemaFor(t, schemaText)
+
+	// 1. Schema hover on Point
+	hPoint := SchemaHover(schemaText, strings.Index(schemaText, "Point"), schema)
+	if hPoint == nil || !strings.Contains(hPoint.Contents, `scalar type Point extends sql "geography(Point, 4326)" as {`) {
+		t.Fatalf("Point schema hover mismatch:\n%v", hPoint)
+	}
+	if !strings.Contains(hPoint.Contents, `latitude: float32 := ST_Y(__self__::geometry);`) {
+		t.Errorf("Point schema hover missing field expression:\n%s", hPoint.Contents)
+	}
+
+	// 2. Query hover on .location.latitude
+	qText := "select Venue { lat := .location.latitude };"
+	hLat := QueryHover(qText, strings.Index(qText, "latitude"), schema)
+	if hLat == nil {
+		t.Fatalf("expected hover for latitude subfield, got nil")
+	}
+	if !strings.Contains(hLat.Contents, "latitude: float32 := ST_Y(__self__::geometry)") {
+		t.Errorf("latitude subfield hover mismatch:\n%s", hLat.Contents)
+	}
+	if !strings.Contains(hLat.Contents, "field of `scalar type Point`") {
+		t.Errorf("latitude subfield hover missing parent scalar reference:\n%s", hLat.Contents)
+	}
+}
+
 

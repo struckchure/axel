@@ -96,8 +96,12 @@ func QueryHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 								if sf.IsMulti {
 									multi = "multi "
 								}
+								expr := ""
+								if sf.ExprSQL != "" {
+									expr = " := " + sf.ExprSQL
+								}
 								return &Hover{
-									Contents: "```asl\n" + req + multi + sf.Name + ": " + sf.AQLType + "\n```\n\n(field of `scalar type " + scalar.Name + "`)\n\n" + scalarHover(scalar),
+									Contents: "```asl\n" + req + multi + sf.Name + ": " + sf.AQLType + expr + "\n```\n\n(field of `scalar type " + scalar.Name + "`)\n\n" + scalarHover(scalar),
 									Range:    rng,
 								}
 							}

@@ -77,13 +77,14 @@ type ScalarTypeBody struct {
 	Fields []*ScalarFieldDecl `parser:"| @@ )*"`
 }
 
-// ScalarFieldDecl is one property in a typed JSON scalar body.
+// ScalarFieldDecl is one property in a typed JSON or custom SQL scalar body.
 type ScalarFieldDecl struct {
 	Pos      lexer.Position
-	Required bool   `parser:"@'required'?"`
-	Multi    bool   `parser:"@'multi'?"`
-	Name     string `parser:"@Ident ':'"`
-	Type     string `parser:"@Ident ';'"`
+	Required bool        `parser:"@'required'?"`
+	Multi    bool        `parser:"@'multi'?"`
+	Name     string      `parser:"@Ident ':'"`
+	Type     string      `parser:"@Ident"`
+	Computed *ReturnExpr `parser:"( ':=' @@ | ';' )"`
 	EndPos   lexer.Position
 }
 

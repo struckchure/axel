@@ -295,7 +295,11 @@ func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
 		if field.Multi {
 			multi = "multi "
 		}
-		f.wf("%s%s%s: %s;", req, multi, field.Name, field.Type)
+		if field.Computed != nil {
+			f.wf("%s%s%s: %s := %s;", req, multi, field.Name, field.Type, field.Computed.Raw)
+		} else {
+			f.wf("%s%s%s: %s;", req, multi, field.Name, field.Type)
+		}
 		f.commit(fieldNext)
 	}
 	f.indent--

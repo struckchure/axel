@@ -69,42 +69,76 @@ func propType(p *asl.ResolvedProp) string {
 // scalarHover renders a markdown summary of a scalar type definition.
 func scalarHover(s *asl.ResolvedScalar) string {
 	var b strings.Builder
-	base := s.Base
-	if base == "" {
-		base = sqlToAQL(s.SQLType)
-	}
 	b.WriteString("```asl\n")
-	hasBody := len(s.Fields) > 0 || len(s.Constraints) > 0 || s.Default != "" || len(s.Rewrites) > 0
-	if !hasBody {
-		b.WriteString("scalar type " + s.Name + " extends " + base + ";\n")
+	if s.IsCustomSQL {
+		b.WriteString("scalar type " + s.Name + " extends sql \"" + s.SQLType + "\"")
+		if len(s.Fields) > 0 {
+			b.WriteString(" as {\n")
+			for _, name := range sortedKeys(s.Fields) {
+				f := s.Fields[name]
+				req := ""
+				if f.IsRequired {
+					req = "required "
+				}
+				multi := ""
+				if f.IsMulti {
+					multi = "multi "
+				}
+				expr := ""
+				if f.ExprSQL != "" {
+					expr = " := " + f.ExprSQL
+				}
+				b.WriteString("  " + req + multi + f.Name + ": " + f.AQLType + expr + ";\n")
+			}
+			b.WriteString("}\n")
+		} else if s.IsMulti {
+			b.WriteString(" as multi " + s.Base + ";\n")
+		} else if s.Base != "" && s.Base != "str" {
+			b.WriteString(" as " + s.Base + ";\n")
+		} else {
+			b.WriteString(";\n")
+		}
 	} else {
-		b.WriteString("scalar type " + s.Name + " extends " + base + " {\n")
-		for _, c := range s.Constraints {
-			args := ""
-			if len(c.Args) > 0 {
-				args = "(" + strings.Join(c.Args, ", ") + ")"
+		base := s.Base
+		if base == "" {
+			base = sqlToAQL(s.SQLType)
+		}
+		hasBody := len(s.Fields) > 0 || len(s.Constraints) > 0 || s.Default != "" || len(s.Rewrites) > 0
+		if !hasBody {
+			b.WriteString("scalar type " + s.Name + " extends " + base + ";\n")
+		} else {
+			b.WriteString("scalar type " + s.Name + " extends " + base + " {\n")
+			for _, c := range s.Constraints {
+				args := ""
+				if len(c.Args) > 0 {
+					args = "(" + strings.Join(c.Args, ", ") + ")"
+				}
+				b.WriteString("  constraint " + c.Name + args + ";\n")
 			}
-			b.WriteString("  constraint " + c.Name + args + ";\n")
-		}
-		if s.Default != "" {
-			b.WriteString("  default := " + s.Default + ";\n")
-		}
-		for _, r := range s.Rewrites {
-			b.WriteString("  rewrite " + strings.Join(r.Events, ", ") + " := " + r.ValueSQL + ";\n")
-		}
-		for _, name := range sortedKeys(s.Fields) {
-			f := s.Fields[name]
-			req := ""
-			if f.IsRequired {
-				req = "required "
+			if s.Default != "" {
+				b.WriteString("  default := " + s.Default + ";\n")
 			}
-			multi := ""
-			if f.IsMulti {
-				multi = "multi "
+			for _, r := range s.Rewrites {
+				b.WriteString("  rewrite " + strings.Join(r.Events, ", ") + " := " + r.ValueSQL + ";\n")
 			}
-			b.WriteString("  " + req + multi + f.Name + ": " + f.AQLType + ";\n")
+			for _, name := range sortedKeys(s.Fields) {
+				f := s.Fields[name]
+				req := ""
+				if f.IsRequired {
+					req = "required "
+				}
+				multi := ""
+				if f.IsMulti {
+					multi = "multi "
+				}
+				expr := ""
+				if f.ExprSQL != "" {
+					expr = " := " + f.ExprSQL
+				}
+				b.WriteString("  " + req + multi + f.Name + ": " + f.AQLType + expr + ";\n")
+			}
+			b.WriteString("}\n")
 		}
-		b.WriteString("}\n")
 	}
 	b.WriteString("```")
 	return b.String()

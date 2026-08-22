@@ -55,8 +55,11 @@ func QueryCompletion(text string, offset int, schema *asl.SchemaIR) []Completion
 	case pw == "request" || pw == "response":
 		return typeNameCompletions(schema)
 	case prev == '.':
-		// `EnumName.` completes enum members; otherwise the query type's fields.
+		// `EnumName.` completes enum members; otherwise the query type's fields or scalar subfields.
 		if items := enumMemberCompletions(text, prevIdx, schema); items != nil {
+			return items
+		}
+		if items := scalarPropertyFieldCompletions(text, prevIdx, schema); items != nil {
 			return items
 		}
 		return fieldCompletions(text, schema)
@@ -244,6 +247,44 @@ func enumMemberCompletions(text string, dotIdx int, schema *asl.SchemaIR) []Comp
 		return nil
 	}
 	return enumValueItems(enum, "")
+}
+
+// scalarPropertyFieldCompletions returns subfields when typing `.<prop>.` where `<prop>`
+// is a property on the query type typed with a structured scalar (typed JSON or custom SQL).
+func scalarPropertyFieldCompletions(text string, dotIdx int, schema *asl.SchemaIR) []CompletionItem {
+	if schema == nil || dotIdx < 0 {
+		return nil
+	}
+	pw := prevWord(text, dotIdx)
+	if pw == "" {
+		return nil
+	}
+	rt := queryType(text, schema)
+	if rt == nil {
+		return nil
+	}
+	p, ok := rt.Properties[pw]
+	if !ok || p.AQLType == "" {
+		return nil
+	}
+	scalar, ok := schema.ScalarTypes[p.AQLType]
+	if !ok || len(scalar.Fields) == 0 {
+		return nil
+	}
+	items := make([]CompletionItem, 0, len(scalar.Fields))
+	for _, name := range sortedKeys(scalar.Fields) {
+		f := scalar.Fields[name]
+		detail := f.AQLType
+		if f.ExprSQL != "" {
+			detail += " := " + f.ExprSQL
+		}
+		items = append(items, CompletionItem{
+			Label:  f.Name,
+			Detail: detail,
+			Kind:   CompletionKindField,
+		})
+	}
+	return items
 }
 
 // enumComparisonCompletions handles the RHS of a comparison operator ending at
