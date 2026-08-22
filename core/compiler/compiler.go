@@ -1265,6 +1265,30 @@ func (c *compiler) compileSubQuery(body *aql.SelectBody, projectField string, mu
 	}
 	alias := c.newAlias(body.TypeName)
 
+	if body.Shape != nil && shapeIsAggregation(body.Shape) {
+		if projectField != "" {
+			return "", fmt.Errorf("cannot project field %q from an aggregate subquery", projectField)
+		}
+		cols := make([]string, 0, len(body.Shape.Fields))
+		for _, f := range body.Shape.Fields {
+			col, err := c.compileAggField(f, rt, alias)
+			if err != nil {
+				return "", err
+			}
+			cols = append(cols, col)
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "SELECT %s FROM \"%s\" %s", strings.Join(cols, ", "), rt.Table, alias)
+		if body.Filter != nil {
+			where, err := c.compileValueFilter(body.Filter.Expr, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&sb, " WHERE %s", where)
+		}
+		return "(" + sb.String() + ")", nil
+	}
+
 	column := "id"
 	if projectField != "" {
 		col, err := subQueryColumn(rt, projectField)
@@ -1960,7 +1984,7 @@ func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.Resolve
 		if c.schema != nil && prop.AQLType != "" {
 			scalar = c.schema.ScalarTypes[prop.AQLType]
 		}
-		isJSON := prop.SQLType == "JSON" || prop.SQLType == "JSONB" || (scalar != nil && (scalar.SQLType == "JSON" || scalar.SQLType == "JSONB"))
+		isJSON := prop.SQLType == "JSON" || prop.SQLType == "JSONB" || (scalar != nil && (scalar.SQLType == "JSON" || scalar.SQLType == "JSONB" || len(scalar.Fields) > 0))
 		if isJSON {
 			remaining := path.Steps[1:]
 			colRef := prop.Column

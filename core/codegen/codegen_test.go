@@ -173,3 +173,39 @@ scalar type Code extends str {
 	}
 }
 
+func TestCustomSQLExtensionScalarDescriptors(t *testing.T) {
+	src, err := asl.Parse([]byte(`
+use extension 'postgis';
+use extension 'vector';
+
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir, err := (&asl.Resolver{}).Resolve(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := FromSchemaIR(ir)
+	if len(desc.Scalars) != 2 {
+		t.Fatalf("Scalars len = %d, want 2", len(desc.Scalars))
+	}
+
+	back := ToSchemaIR(desc)
+	pt := back.ScalarTypes["Point"]
+	if pt == nil || pt.SQLType != "geography(Point, 4326)" || !pt.IsCustomSQL || len(pt.Fields) != 2 {
+		t.Fatalf("Reconstructed Point = %+v", pt)
+	}
+
+	emb := back.ScalarTypes["Embedding"]
+	if emb == nil || emb.SQLType != "vector(1536)" || !emb.IsCustomSQL || !emb.IsMulti || emb.Base != "float32" {
+		t.Fatalf("Reconstructed Embedding = %+v", emb)
+	}
+}
+
+

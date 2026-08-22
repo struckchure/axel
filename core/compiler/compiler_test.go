@@ -113,3 +113,73 @@ func TestCompilerPublicHelpers(t *testing.T) {
 		t.Errorf("Full() = %q, want %q", got, want)
 	}
 }
+
+func TestCompileExtensionTypesAndAggregates(t *testing.T) {
+	schemaSrc := `
+use extension 'postgis';
+use extension 'vector';
+
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+scalar type Citext extends sql "citext" as str;
+
+type Place {
+  required id: uuid;
+  name: Citext;
+  loc: Point;
+  vec: Embedding;
+  rating: float32;
+}
+`
+	src, err := asl.Parse([]byte(schemaSrc))
+	if err != nil {
+		t.Fatalf("parse schema: %v", err)
+	}
+	ir, err := (&asl.Resolver{}).Resolve(src)
+	if err != nil {
+		t.Fatalf("resolve schema: %v", err)
+	}
+
+	// 1. Query with typed JSON dot-access on custom SQL Point
+	stmt, err := aql.ParseString(`multi select Place { id, name, lat := .loc.latitude } filter .name = $name<Citext>;`)
+	if err != nil {
+		t.Fatalf("parse query: %v", err)
+	}
+	compiled, err := Compile(stmt, ir)
+	if err != nil {
+		t.Fatalf("compile query: %v", err)
+	}
+	if !strings.Contains(compiled.SQL, `(p.loc->>'latitude')::REAL`) {
+		t.Errorf("expected dot access on Point scalar, got:\n%s", compiled.SQL)
+	}
+
+	// 2. Query with aggregate expression
+	stmtAgg, err := aql.ParseString(`select Place { best := min(haversine(.loc.latitude, .loc.longitude, $target_lat<float32>, $target_lon<float32>)) };`)
+	if err != nil {
+		t.Fatalf("parse aggregate query: %v", err)
+	}
+	compiledAgg, err := Compile(stmtAgg, ir)
+	if err != nil {
+		t.Fatalf("compile aggregate query: %v", err)
+	}
+	if !strings.Contains(compiledAgg.SQL, `MIN(haversine(((p.loc->>'latitude')::REAL), ((p.loc->>'longitude')::REAL), $1::REAL, $2::REAL)) AS best`) {
+		t.Errorf("expected aggregate expression compilation, got:\n%s", compiledAgg.SQL)
+	}
+
+	// 3. Query with subquery aggregate
+	stmtSub, err := aql.ParseString(`select Place { id } filter (select count(Place filter .rating > 4.0)) > 0;`)
+	if err != nil {
+		t.Fatalf("parse subquery aggregate query: %v", err)
+	}
+	compiledSub, err := Compile(stmtSub, ir)
+	if err != nil {
+		t.Fatalf("compile subquery aggregate query: %v", err)
+	}
+	if !strings.Contains(compiledSub.SQL, `(SELECT COUNT(*) FROM (`) {
+		t.Errorf("expected subquery count compilation, got:\n%s", compiledSub.SQL)
+	}
+}
+

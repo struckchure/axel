@@ -22,7 +22,7 @@ var aslLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Arrow", Pattern: `->`},
 	{Name: "Coalesce", Pattern: `\?\?`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
-	{Name: "String", Pattern: `'[^']*'`},
+	{Name: "String", Pattern: `'[^']*'|"[^"]*"`},
 	{Name: "Int", Pattern: `[0-9]+`},
 	// `$` (AQL param prefix) and `*` (AQL splat) are here so an embedded AQL body
 	// (see AQLBlock) tokenizes without error; the arithmetic/operator chars

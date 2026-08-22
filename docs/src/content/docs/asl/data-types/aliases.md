@@ -64,6 +64,28 @@ scalar type ExactCode extends ShortStr {
 
 ---
 
+# Custom SQL Extension Scalars
+
+For PostgreSQL extension types (such as PostGIS `geography`, `geometry`, `pgvector` `vector`, `citext`, `ltree`), declare custom SQL scalars with `extends sql "<type>"`. You can optionally supply client-side representation typing using `as`:
+
+```asl
+# Record representation: generates interfaces/structs in codegen, enables AQL dot-access (.loc.lat)
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+
+# Multi-dimensional array representation: generates number[] / []float32 in codegen
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+
+# Primitive scalar mapping: generates string in codegen
+scalar type Citext extends sql "citext" as str;
+
+# Opaque type: defaults to string in codegen
+scalar type Geometry extends sql "geometry";
+```
+
+---
 
 # Typed JSON Scalars
 

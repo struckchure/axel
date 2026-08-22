@@ -28,6 +28,8 @@ type ResolvedScalar struct {
 	Name          string
 	Base          string // the builtin type it extends: "json", "jsonb", "str", "int32", etc.
 	SQLType       string // the SQL type to use: "JSON", "JSONB", "TEXT", "INTEGER", etc.
+	IsMulti       bool   // true when declared as `as multi <Type>`
+	IsCustomSQL   bool   // true when declared with `extends sql "..."`
 	Fields        map[string]*ResolvedScalarField
 	ExtendKeyword string // "extends" or "extending"
 	Default       string // SQL default expression

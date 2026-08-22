@@ -10,6 +10,9 @@ Comments start with `#`. Every top-level declaration and every member inside a t
 
 ```asl
 use extension 'pgcrypto';              # CREATE EXTENSION IF NOT EXISTS
+use extension 'postgis';
+use extension 'vector';
+
 scalar type EmailStr extends str;      # named alias over a builtin scalar
 scalar type Code extends str {         # extended scalar with field descriptors
   constraint min_length(6);
@@ -20,6 +23,15 @@ scalar type Coordinate extends json {  # typed JSON scalar
   lat: str;
   lng: str;
 }
+# Custom PostgreSQL Extension Types with client codegen typing:
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+scalar type Citext extends sql "citext" as str;
+scalar type Geometry extends sql "geometry";
+
 enum Role { Admin, Member, Guest }     # TEXT column + CHECK constraint
 global current_user: uuid;             # session GUC, not DDL
 global required tenant: str;

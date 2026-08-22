@@ -586,6 +586,99 @@ func TestFormatTriggerOrderAuditLog(t *testing.T) {
 	}
 }
 
+func TestCustomSQLExtensionScalars(t *testing.T) {
+	src := `
+use extension 'postgis';
+use extension 'vector';
+
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+scalar type Citext extends sql "citext" as str;
+scalar type Geometry extends sql "geometry";
+
+type Venue {
+  required id: uuid { constraint pk; };
+  name: Citext;
+  location: Point;
+  feature_vec: Embedding;
+  geom: Geometry;
+}
+`
+	ir := resolveSrc(t, src)
+
+	// Check Point scalar
+	point := ir.ScalarTypes["Point"]
+	if point == nil || point.SQLType != "geography(Point, 4326)" || !point.IsCustomSQL {
+		t.Fatalf("Point scalar = %+v", point)
+	}
+	if len(point.Fields) != 2 || point.Fields["latitude"] == nil || point.Fields["longitude"] == nil {
+		t.Errorf("Point fields = %+v", point.Fields)
+	}
+
+	// Check Embedding scalar
+	embedding := ir.ScalarTypes["Embedding"]
+	if embedding == nil || embedding.SQLType != "vector(1536)" || !embedding.IsCustomSQL || !embedding.IsMulti || embedding.Base != "float32" {
+		t.Fatalf("Embedding scalar = %+v", embedding)
+	}
+
+	// Check Citext scalar
+	citext := ir.ScalarTypes["Citext"]
+	if citext == nil || citext.SQLType != "citext" || !citext.IsCustomSQL || citext.Base != "str" {
+		t.Fatalf("Citext scalar = %+v", citext)
+	}
+
+	// Check Geometry scalar
+	geom := ir.ScalarTypes["Geometry"]
+	if geom == nil || geom.SQLType != "geometry" || !geom.IsCustomSQL || geom.Base != "str" {
+		t.Fatalf("Geometry scalar = %+v", geom)
+	}
+
+	// Check Venue properties
+	venue := ir.ObjectTypes["Venue"]
+	if venue == nil {
+		t.Fatalf("Venue type not found")
+	}
+	if venue.Properties["name"].SQLType != "citext" {
+		t.Errorf("Venue.name SQLType = %q, want citext", venue.Properties["name"].SQLType)
+	}
+	if venue.Properties["location"].SQLType != "geography(Point, 4326)" {
+		t.Errorf("Venue.location SQLType = %q, want geography(Point, 4326)", venue.Properties["location"].SQLType)
+	}
+	if venue.Properties["feature_vec"].SQLType != "vector(1536)" {
+		t.Errorf("Venue.feature_vec SQLType = %q, want vector(1536)", venue.Properties["feature_vec"].SQLType)
+	}
+	if venue.Properties["geom"].SQLType != "geometry" {
+		t.Errorf("Venue.geom SQLType = %q, want geometry", venue.Properties["geom"].SQLType)
+	}
+}
+
+func TestFormatCustomSQLExtensionScalars(t *testing.T) {
+	src := `use extension 'postgis';
+use extension 'vector';
+
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+}
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+scalar type Citext extends sql "citext" as str;
+scalar type Geometry extends sql "geometry";
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	if formatted != src {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, src)
+	}
+}
+
+
 
 
 

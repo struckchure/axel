@@ -65,8 +65,17 @@ Never hand-edit a file under `migrations/`. Change the schema and re-diff.
 
 ```asl
 use extension 'pgcrypto';
+use extension 'postgis';
+use extension 'vector';
 
-scalar type EmailStr extending str;
+scalar type EmailStr extends str;
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+scalar type Citext extends sql "citext" as str;
+
 enum Role { Admin, Member, Guest }
 global current_user: uuid;
 
@@ -79,9 +88,11 @@ abstract type Base {
   };
 }
 
-type User extending Base {
+type User extends Base {
   required email: EmailStr { constraint exclusive; };
-  name: str { default := 'n/a'; };
+  name: Citext { default := 'n/a'; };
+  location: Point;
+  bio_vec: Embedding;
   required role: Role;
   active: bool { default := true };
 
@@ -89,7 +100,7 @@ type User extending Base {
   index on (.email);
 }
 
-type Post extending Base {
+type Post extends Base {
   required title: str;
   required link author: User;      # single link  → author_id FK column
   multi link tags: Tag;            # many-to-many → junction table
@@ -105,6 +116,7 @@ Things that reliably trip people up:
 - **`link` vs `multi link`.** A single link becomes a nullable-or-not FK column on *this* table. A
   `multi link` becomes a junction table — Axel creates and manages it. There is no "belongs to /
   has many" pair to declare on both sides.
+- **Custom SQL extension types.** Declare scalars using `scalar type Point extends sql "geography(Point, 4326)" as { ... };` or `as multi <Type>` or `as <Type>`. This maps to PostgreSQL DDL while providing client typing in codegen and dot-access in AQL.
 - **Every member ends with `;`**, including the closing brace of a field body: `name: str { … };`.
 - **`required` is a prefix**, not a modifier in the body: `required email: str;`.
 - **Order never matters.** A type may extend a parent declared below it, or in another file; a link
@@ -139,6 +151,11 @@ multi select User { email, upper_email := upper(.email) };
 
 # Aggregate select — its own form; it may not be mixed with row fields
 select count(User filter .active = true);
+
+# Aggregate shape with expressions (e.g. min/sum/avg/count with math or func calls)
+select Place {
+  nearest := min(haversine(.location.latitude, .location.longitude, $target_lat, $target_lon))
+};
 
 # …or as a scalar subquery correlated to the outer row
 multi select User { id, email }

@@ -113,11 +113,17 @@ multi select User { email, upper_email := upper(.email) };
 
 select count(User filter .active = true);         # aggregate select: aggregates only, one row
 
-multi select User { id, email }                   # correlated aggregate as a scalar operand
+# Aggregate shape with expressions (min/max/sum/avg/count with arbitrary expressions or math)
+select Place {
+  nearest := min(haversine(.loc.latitude, .loc.longitude, $target_lat, $target_lon))
+};
+
+# Correlated aggregate subquery as a scalar operand in filter or update
+multi select User { id, email }
   filter (select count(Post filter .author.id = User.id)) > 0;
 ```
 
-An aggregate select may not mix aggregate fields with row fields, and is never `multi`.
+An aggregate select may not mix aggregate fields with plain row fields unless grouped with `group by`, and is never `multi`. Aggregate shape fields accept general expressions inside aggregate function calls.
 
 ## Group by
 

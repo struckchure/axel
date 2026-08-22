@@ -2249,6 +2249,29 @@ scalar type ExactCode extends ShortStr {
 
 ---
 
+# Custom SQL Extension Scalars
+
+For PostgreSQL extension types (such as PostGIS `geography`, `geometry`, `pgvector` `vector`, `citext`, `ltree`), declare custom SQL scalars with `extends sql "<type>"`. You can optionally supply client-side representation typing using `as`:
+
+```asl
+# Record representation: generates interfaces/structs in codegen, enables AQL dot-access (.loc.lat)
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+
+# Multi-dimensional array representation: generates number[] / []float32 in codegen
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+
+# Primitive scalar mapping: generates string in codegen
+scalar type Citext extends sql "citext" as str;
+
+# Opaque type: defaults to string in codegen
+scalar type Geometry extends sql "geometry";
+```
+
+---
+
 # Typed JSON Scalars
 
 You can define structured, typed JSON and JSONB scalars that give type safety, autocomplete, and query capabilities to document data in PostgreSQL.
@@ -3171,7 +3194,45 @@ function slugify(value: text) -> text {
 };
 ```
 
-See [Functions](/asl/functions) for the full function syntax.
+## Custom Extension Types
+
+Extensions like **PostGIS** (`postgis`), **pgvector** (`vector`), and **citext** introduce custom PostgreSQL data types. You can declare scalars that map directly to these extension types using `extends sql "<type>"`, and define client-side typing with `as`:
+
+```asl
+use extension 'postgis';
+use extension 'vector';
+use extension 'citext';
+
+# 1. Structured record representation (for codegen interfaces & AQL dot-access)
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+
+# 2. Multi-dimensional array representation (codegen emits number[] / []float32)
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+
+# 3. Primitive scalar alias (codegen emits string)
+scalar type Citext extends sql "citext" as str;
+
+# 4. Opaque custom SQL type (defaults to 'str' in host codegen)
+scalar type Geometry extends sql "geometry";
+
+type Venue {
+  required id: uuid { constraint pk; };
+  name: Citext;
+  location: Point;
+  feature_vec: Embedding;
+  geom: Geometry;
+}
+```
+
+### Benefits:
+- **Exact DDL**: Generated migration SQL produces columns with the precise PostgreSQL type (e.g. `geography(Point, 4326)`, `vector(1536)`).
+- **Client Typing**: SDK generators produce typed interfaces/structs (`Point` as `{ latitude: number, longitude: number }`, `Embedding` as `number[]`).
+- **AQL Dot-Access**: Structured fields can be traversed directly in AQL expressions (`.location.latitude`).
+
+See [Functions](/asl/functions) for the full function syntax and [Aliases & Extended Types](/asl/data-types/aliases) for more on custom scalar types.
 
 ---
 
@@ -3924,7 +3985,7 @@ The result is a **single row** (one `*Row` in generated code); `multi`, `order b
 ### Rules
 
 - Aggregate functions: `sum`, `avg`, `min`, `max`, `count`. `count()` (no argument)
-  is `COUNT(*)`; the others take one `.column` argument. The per-field `filter` is
+  is `COUNT(*)`; the others take an argument expression (such as `.column`, or a math / function expression like `min(haversine(.loc.lat, .loc.lon, $target_lat, $target_lon))`). The per-field `filter` is
   optional.
 - A shape is an **aggregate shape** as soon as one field is an aggregate; **every**
   field must then be an aggregate — mixing aggregates with plain row fields requires

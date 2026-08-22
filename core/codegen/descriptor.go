@@ -75,6 +75,8 @@ type ScalarDescriptor struct {
 	Name        string                  `json:"name"`
 	Base        string                  `json:"base"`
 	SQLType     string                  `json:"sql_type"`
+	IsMulti     bool                    `json:"is_multi,omitempty"`
+	IsCustomSQL bool                    `json:"is_custom_sql,omitempty"`
 	Default     string                  `json:"default,omitempty"`
 	Constraints []ConstraintDescriptor `json:"constraints,omitempty"`
 	Fields      []ScalarFieldDescriptor `json:"fields,omitempty"`
@@ -183,7 +185,7 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 	for _, n := range scalarNames {
 		s := ir.ScalarTypes[n]
 		sd := ScalarDescriptor{
-			Name: s.Name, Base: s.Base, SQLType: s.SQLType, Default: s.Default,
+			Name: s.Name, Base: s.Base, SQLType: s.SQLType, IsMulti: s.IsMulti, IsCustomSQL: s.IsCustomSQL, Default: s.Default,
 		}
 		for _, c := range s.Constraints {
 			sd.Constraints = append(sd.Constraints, ConstraintDescriptor{
@@ -658,6 +660,8 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 			Name:        s.Name,
 			Base:        s.Base,
 			SQLType:     s.SQLType,
+			IsMulti:     s.IsMulti,
+			IsCustomSQL: s.IsCustomSQL,
 			Default:     s.Default,
 			Constraints: constraints,
 			Fields:      fields,

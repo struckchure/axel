@@ -238,36 +238,54 @@ func (f *aslFmt) enumTypeDef(e *EnumTypeDef, next int) {
 }
 
 func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
-	if s.Body == nil || (len(s.Body.Fields) == 0 && len(s.Body.Items) == 0) {
-		f.wf("scalar type %s extends %s;", s.Name, s.Extends)
+	extendsStr := s.Extends
+	if s.ExtendsSQL != nil {
+		extendsStr = fmt.Sprintf("sql %s", *s.ExtendsSQL)
+	}
+	asStr := ""
+	if s.AsMulti {
+		asStr = fmt.Sprintf(" as multi %s", s.AsBase)
+	} else if s.AsBase != "" {
+		asStr = fmt.Sprintf(" as %s", s.AsBase)
+	} else if s.AsBody != nil {
+		asStr = " as"
+	}
+
+	body := s.Body
+	if s.AsBody != nil {
+		body = s.AsBody
+	}
+
+	if body == nil || (len(body.Fields) == 0 && len(body.Items) == 0) {
+		f.wf("scalar type %s extends %s%s;", s.Name, extendsStr, asStr)
 		f.commit(next)
 		return
 	}
-	f.wf("scalar type %s extends %s {", s.Name, s.Extends)
-	if len(s.Body.Items) > 0 {
-		f.commit(fieldBodyItemOffset(s.Body.Items[0], next))
-	} else if len(s.Body.Fields) > 0 {
-		f.commit(s.Body.Fields[0].Pos.Offset)
+	f.wf("scalar type %s extends %s%s {", s.Name, extendsStr, asStr)
+	if len(body.Items) > 0 {
+		f.commit(fieldBodyItemOffset(body.Items[0], next))
+	} else if len(body.Fields) > 0 {
+		f.commit(body.Fields[0].Pos.Offset)
 	} else {
 		f.commit(next)
 	}
 	f.indent++
-	for i, it := range s.Body.Items {
+	for i, it := range body.Items {
 		f.leading(fieldBodyItemOffset(it, next))
 		f.bodyItem(it)
 		end := next
-		if i+1 < len(s.Body.Items) {
-			end = fieldBodyItemOffset(s.Body.Items[i+1], next)
-		} else if len(s.Body.Fields) > 0 {
-			end = s.Body.Fields[0].Pos.Offset
+		if i+1 < len(body.Items) {
+			end = fieldBodyItemOffset(body.Items[i+1], next)
+		} else if len(body.Fields) > 0 {
+			end = body.Fields[0].Pos.Offset
 		}
 		f.commit(end)
 	}
-	for i, field := range s.Body.Fields {
+	for i, field := range body.Fields {
 		f.leading(field.Pos.Offset)
 		fieldNext := next
-		if i+1 < len(s.Body.Fields) {
-			fieldNext = s.Body.Fields[i+1].Pos.Offset
+		if i+1 < len(body.Fields) {
+			fieldNext = body.Fields[i+1].Pos.Offset
 		}
 		req := ""
 		if field.Required {

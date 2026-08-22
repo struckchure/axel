@@ -99,7 +99,7 @@ The result is a **single row** (one `*Row` in generated code); `multi`, `order b
 ### Rules
 
 - Aggregate functions: `sum`, `avg`, `min`, `max`, `count`. `count()` (no argument)
-  is `COUNT(*)`; the others take one `.column` argument. The per-field `filter` is
+  is `COUNT(*)`; the others take an argument expression (such as `.column`, or a math / function expression like `min(haversine(.loc.lat, .loc.lon, $target_lat, $target_lon))`). The per-field `filter` is
   optional.
 - A shape is an **aggregate shape** as soon as one field is an aggregate; **every**
   field must then be an aggregate — mixing aggregates with plain row fields requires

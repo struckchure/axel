@@ -188,35 +188,66 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 			resolving[name] = true
 			defer delete(resolving, name)
 
-			// A scalar extending another user scalar needs that one resolved first.
-			if _, isBuiltin := builtinTypes[s.Extends]; !isBuiltin {
-				if _, isDeclared := scalarDefs[s.Extends]; isDeclared {
-					if err := resolveScalar(s.Extends); err != nil {
-						return err
+			var (
+				sqlType     string
+				base        string
+				isMulti     bool
+				isCustomSQL bool
+				constraints []ResolvedConstraint
+				defaultVal  string
+				rewrites    []ResolvedRewrite
+			)
+
+			if s.ExtendsSQL != nil {
+				rawSQL := strings.TrimSpace(*s.ExtendsSQL)
+				rawSQL = strings.Trim(rawSQL, "\"'")
+				if rawSQL == "" {
+					return fmt.Errorf("scalar type %q: sql type cannot be empty", s.Name)
+				}
+				sqlType = rawSQL
+				base = "str"
+				if s.AsBase != "" {
+					if _, isBuiltin := builtinTypes[s.AsBase]; !isBuiltin {
+						return fmt.Errorf("scalar type %q: 'as %s' must name a valid scalar type", s.Name, s.AsBase)
+					}
+					base = s.AsBase
+				}
+				isMulti = s.AsMulti
+				isCustomSQL = true
+			} else {
+				// A scalar extending another user scalar needs that one resolved first.
+				if _, isBuiltin := builtinTypes[s.Extends]; !isBuiltin {
+					if _, isDeclared := scalarDefs[s.Extends]; isDeclared {
+						if err := resolveScalar(s.Extends); err != nil {
+							return err
+						}
 					}
 				}
-			}
-			sqlType, err := r.resolveBaseType(s.Extends, ir)
-			if err != nil {
-				return fmt.Errorf("scalar type %q: %w", s.Name, err)
-			}
-			var constraints []ResolvedConstraint
-			var defaultVal string
-			var rewrites []ResolvedRewrite
-			if parentScalar, isScalar := ir.ScalarTypes[s.Extends]; isScalar {
-				if len(parentScalar.Constraints) > 0 {
-					constraints = append(constraints, parentScalar.Constraints...)
+				st, err := r.resolveBaseType(s.Extends, ir)
+				if err != nil {
+					return fmt.Errorf("scalar type %q: %w", s.Name, err)
 				}
-				defaultVal = parentScalar.Default
-				if len(parentScalar.Rewrites) > 0 {
-					rewrites = append(rewrites, parentScalar.Rewrites...)
+				sqlType = st
+				base = s.Extends
+				if parentScalar, isScalar := ir.ScalarTypes[s.Extends]; isScalar {
+					if len(parentScalar.Constraints) > 0 {
+						constraints = append(constraints, parentScalar.Constraints...)
+					}
+					defaultVal = parentScalar.Default
+					if len(parentScalar.Rewrites) > 0 {
+						rewrites = append(rewrites, parentScalar.Rewrites...)
+					}
 				}
 			}
 
 			var fields map[string]*ResolvedScalarField
-			if s.Body != nil {
-				if len(s.Body.Items) > 0 {
-					for _, item := range s.Body.Items {
+			body := s.Body
+			if s.AsBody != nil {
+				body = s.AsBody
+			}
+			if body != nil {
+				if len(body.Items) > 0 {
+					for _, item := range body.Items {
 						switch {
 						case item.Default != nil:
 							if item.Default.QualEnum != nil {
@@ -243,17 +274,17 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 					}
 				}
 
-				if len(s.Body.Fields) > 0 {
-					if sqlType != "JSON" && sqlType != "JSONB" {
-						return fmt.Errorf("scalar type %q extending %q cannot define fields: fields are only supported on json/jsonb scalars", s.Name, s.Extends)
+				if len(body.Fields) > 0 {
+					if !isCustomSQL && sqlType != "JSON" && sqlType != "JSONB" {
+						return fmt.Errorf("scalar type %q extending %q cannot define fields: fields are only supported on json/jsonb scalars or custom sql scalars", s.Name, s.Extends)
 					}
 					fields = make(map[string]*ResolvedScalarField)
-					for _, f := range s.Body.Fields {
+					for _, f := range body.Fields {
 						if _, exists := fields[f.Name]; exists {
 							return fmt.Errorf("scalar type %q: field %q declared more than once", s.Name, f.Name)
 						}
 						if !allowedJsonScalarFieldTypes[f.Type] {
-							return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON fields currently only support strings (str) and numbers (int16, int32, int64, float32, float64, decimal)", s.Name, f.Name, f.Type)
+							return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON/custom scalar fields currently only support strings (str) and numbers (int16, int32, int64, float32, float64, decimal)", s.Name, f.Name, f.Type)
 						}
 						fSQLType, ok := builtinTypes[f.Type]
 						if !ok {
@@ -267,12 +298,17 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 							IsMulti:    f.Multi,
 						}
 					}
+					if isCustomSQL {
+						base = "jsonb"
+					}
 				}
 			}
 			ir.ScalarTypes[s.Name] = &ResolvedScalar{
 				Name:          s.Name,
-				Base:          s.Extends,
+				Base:          base,
 				SQLType:       sqlType,
+				IsMulti:       isMulti,
+				IsCustomSQL:   isCustomSQL,
 				Fields:        fields,
 				ExtendKeyword: s.ExtendKeyword,
 				Default:       defaultVal,

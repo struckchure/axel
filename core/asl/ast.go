@@ -51,11 +51,22 @@ type ExtensionDecl struct {
 //	  lat: str;
 //	  lng: str;
 //	}
+//	scalar type Point extends sql "geography(Point, 4326)" as {
+//	  latitude: float32;
+//	  longitude: float32;
+//	};
+//	scalar type Embedding extends sql "vector(1536)" as multi float32;
+//	scalar type Citext extends sql "citext" as str;
+//	scalar type Geometry extends sql "geometry";
 type ScalarTypeDef struct {
 	Pos           lexer.Position
 	Name          string          `parser:"'scalar' 'type' @Ident"`
 	ExtendKeyword string          `parser:"@( 'extends' | 'extending' )"`
-	Extends       string          `parser:"@Ident"`
+	ExtendsSQL    *string         `parser:"( 'sql' @String"`
+	Extends       string          `parser:"| @Ident )"`
+	AsMulti       bool            `parser:"( 'as' @'multi'?"`
+	AsBase        string          `parser:"( @Ident"`
+	AsBody        *ScalarTypeBody `parser:"| '{' @@ '}' ) )?"`
 	Body          *ScalarTypeBody `parser:"( '{' @@ '}' )? ';'?"`
 	EndPos        lexer.Position
 }
