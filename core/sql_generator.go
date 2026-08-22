@@ -32,8 +32,8 @@ func generateTable(model Model, abstractModels map[string]Model) string {
 
 	// Add model's own fields
 	for _, field := range model.Fields {
-		// Skip multi fields - they need junction tables
-		if field.IsMulti {
+		// Skip multi link fields - they need junction tables
+		if field.IsLink && field.IsMulti {
 			continue
 		}
 
@@ -64,14 +64,6 @@ func generateTable(model Model, abstractModels map[string]Model) string {
 
 	sql.WriteString(");")
 
-	// Generate junction tables for multi fields
-	for _, field := range model.Fields {
-		if field.IsMulti {
-			sql.WriteString("\n\n")
-			sql.WriteString(generateJunctionTable(model.Name, field))
-		}
-	}
-
 	// Generate indexes
 	for _, stmt := range generateIndexes(model) {
 		sql.WriteString("\n\n")
@@ -83,19 +75,10 @@ func generateTable(model Model, abstractModels map[string]Model) string {
 
 func generateColumn(field Field, modelName string) (string, string) {
 	colName := formatIdentifier(field.Name)
-	sqlType := mapType(field.Type)
 
-	var parts []string
-	parts = append(parts, colName)
-	parts = append(parts, sqlType)
-
-	// Check if it's a link (foreign key)
-	isLink := !isBuiltinType(field.Type)
-	var foreignKey string
-
-	if isLink {
+	if field.IsLink {
 		// Foreign key column
-		parts = []string{colName, mapType(field.OnTarget.Type)}
+		parts := []string{colName, mapType(field.OnTarget.Type)}
 
 		if field.IsRequired {
 			parts = append(parts, "NOT NULL")
@@ -119,38 +102,50 @@ func generateColumn(field Field, modelName string) (string, string) {
 		if field.OnTarget.Name != "" {
 			fkBody += " ON DELETE CASCADE"
 		}
-		foreignKey = namedConstraint(fkConstraintName(modelName, field.Name), fkBody)
-	} else {
-		// Regular column
-		if field.IsRequired {
-			parts = append(parts, "NOT NULL")
-		}
+		foreignKey := namedConstraint(fkConstraintName(modelName, field.Name), fkBody)
+		return strings.Join(parts, " "), foreignKey
+	}
 
-		if field.Default != "" {
-			defaultVal := mapDefault(field.Default, sqlType)
-			parts = append(parts, "DEFAULT "+defaultVal)
-		}
-
-		// Add constraints
-		for _, constraint := range field.Constraints {
-			switch constraint.Name {
-			case "exclusive":
-				parts = append(parts, namedConstraint(uniqueConstraintName(modelName, field.Name), "UNIQUE"))
-			case "pk":
-				parts = append(parts, namedConstraint(pkConstraintName(modelName), "PRIMARY KEY"))
-			}
-		}
-
-		// Length constraints → named CHECK clauses.
-		parts = append(parts, lengthCheckClauses(modelName, field)...)
-
-		// Enum-backed column → named membership CHECK.
-		if clause := enumCheckClause(modelName, field); clause != "" {
-			parts = append(parts, clause)
+	// Regular scalar column
+	sqlType := mapType(field.Type)
+	if field.IsMulti {
+		if field.Type != "json" && field.Type != "jsonb" {
+			sqlType += "[]"
 		}
 	}
 
-	return strings.Join(parts, " "), foreignKey
+	var parts []string
+	parts = append(parts, colName)
+	parts = append(parts, sqlType)
+
+	if field.IsRequired {
+		parts = append(parts, "NOT NULL")
+	}
+
+	if field.Default != "" {
+		defaultVal := mapDefault(field.Default, sqlType)
+		parts = append(parts, "DEFAULT "+defaultVal)
+	}
+
+	// Add constraints
+	for _, constraint := range field.Constraints {
+		switch constraint.Name {
+		case "exclusive":
+			parts = append(parts, namedConstraint(uniqueConstraintName(modelName, field.Name), "UNIQUE"))
+		case "pk":
+			parts = append(parts, namedConstraint(pkConstraintName(modelName), "PRIMARY KEY"))
+		}
+	}
+
+	// Length constraints → named CHECK clauses.
+	parts = append(parts, lengthCheckClauses(modelName, field)...)
+
+	// Enum-backed column → named membership CHECK.
+	if clause := enumCheckClause(modelName, field); clause != "" {
+		parts = append(parts, clause)
+	}
+
+	return strings.Join(parts, " "), ""
 }
 
 // enumCheckClause returns a named CHECK clause restricting an enum-backed column

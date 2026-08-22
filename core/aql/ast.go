@@ -260,11 +260,12 @@ func (f *ShapeField) AggCall() (fc *FuncCall, cast string, ok bool) {
 	return p.FuncCall, p.Cast, true
 }
 
-// QualifiedIdent is a TypeName.field reference used in expressions (e.g. User.id).
+// QualifiedIdent is a TypeName.field or __new__.field.subfield reference used in expressions.
 type QualifiedIdent struct {
 	Pos      lexer.Position
-	TypeName string `parser:"@Ident '.'"`
-	Field    string `parser:"@Ident"`
+	TypeName string   `parser:"@Ident '.'"`
+	Field    string   `parser:"@Ident"`
+	Fields   []string `parser:"( '.' @Ident )*"`
 }
 
 // Assignment is a field value assignment used in INSERT and UPDATE.

@@ -203,3 +203,80 @@ type Payload {
 		}
 	}
 }
+
+func TestMultiScalarPropertyDDL(t *testing.T) {
+	schema := `
+scalar type Route extends jsonb {
+  order: int16;
+  required latitude: float32;
+  required longitude: float32;
+  description: str;
+  radius: float32;
+}
+
+scalar type PackageSize extends jsonb {
+  order: int16;
+  required length: float32;
+  required breadth: float32;
+  required height: float32;
+  required price: int32;
+}
+
+type PackageCondition {
+  required id: uuid;
+  name: str;
+}
+
+type Coverage {
+  required id: uuid;
+  required name: str;
+  multi routes: Route;
+  multi sizes: PackageSize;
+  multi conditions: PackageCondition;
+}
+`
+
+	up, down := genMigrationFull(t, "", schema)
+
+	// Coverage table should have "routes" JSONB and "sizes" JSONB columns directly
+	if !strings.Contains(up, `"routes" JSONB`) {
+		t.Errorf("expected \"routes\" JSONB column in Coverage table:\n%s", up)
+	}
+	if !strings.Contains(up, `"sizes" JSONB`) {
+		t.Errorf("expected \"sizes\" JSONB column in Coverage table:\n%s", up)
+	}
+
+	// Should NOT generate coverage_routes or coverage_sizes junction tables
+	if strings.Contains(up, "coverage_routes") {
+		t.Errorf("did not expect junction table coverage_routes:\n%s", up)
+	}
+	if strings.Contains(up, "coverage_sizes") {
+		t.Errorf("did not expect junction table coverage_sizes:\n%s", up)
+	}
+
+	// PackageCondition is an ObjectType, so multi conditions SHOULD generate a junction table
+	if !strings.Contains(up, "coverage_conditions") {
+		t.Errorf("expected junction table coverage_conditions:\n%s", up)
+	}
+
+	// Junction table must be created AFTER both base tables
+	ci := strings.Index(up, `CREATE TABLE "coverage"`)
+	pci := strings.Index(up, `CREATE TABLE "package_condition"`)
+	jci := strings.Index(up, `CREATE TABLE "coverage_conditions"`)
+	if ci < 0 || pci < 0 || jci < 0 {
+		t.Fatalf("expected coverage, package_condition, and coverage_conditions in up migration:\n%s", up)
+	}
+	if !(ci < jci && pci < jci) {
+		t.Errorf("expected coverage (%d) and package_condition (%d) to precede junction table (%d):\n%s", ci, pci, jci, up)
+	}
+
+	// Down should drop coverage_conditions, but not coverage_routes
+	if strings.Contains(down, "coverage_routes") {
+		t.Errorf("did not expect DROP TABLE coverage_routes:\n%s", down)
+	}
+	if !strings.Contains(down, "coverage_conditions") {
+		t.Errorf("expected DROP TABLE coverage_conditions in down:\n%s", down)
+	}
+}
+
+

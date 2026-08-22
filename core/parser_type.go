@@ -42,6 +42,7 @@ type Field struct {
 	Type        string
 	IsRequired  bool
 	IsMulti     bool
+	IsLink      bool
 	Constraints []Constraint
 	Default     string
 	OnTarget    OnTarget // For links
@@ -75,6 +76,7 @@ func SchemaIRToModels(ir *asl.SchemaIR) ([]Model, error) {
 				Type:       sqlTypeToASLType(prop.SQLType),
 				IsRequired: prop.IsRequired,
 				IsMulti:    prop.IsMulti,
+				IsLink:     false,
 				Default:    prop.Default,
 			}
 			for _, c := range prop.Constraints {
@@ -107,6 +109,7 @@ func SchemaIRToModels(ir *asl.SchemaIR) ([]Model, error) {
 				Type:       link.TargetType,
 				IsRequired: link.IsRequired,
 				IsMulti:    link.IsMulti,
+				IsLink:     true,
 				OnTarget: OnTarget{
 					Name: joinField,
 					Type: joinFieldType,

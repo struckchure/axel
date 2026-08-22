@@ -386,5 +386,209 @@ scalar type Code extends str {
 	}
 }
 
+func TestFormatGrouping(t *testing.T) {
+	src := `use extension 'uuid-ossp';
+use extension 'pgcrypto';
+
+global current_user: uuid;
+global required tenant_id: str;
+
+scalar type Email extends str;
+scalar type Slug extends str;
+
+enum Status { Draft, Published, Archived }
+enum Role { Admin, Member, Guest }
+
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+}
+
+type User {
+  required id: uuid {
+    constraint pk;
+  };
+  email: Email;
+  status: Status;
+}
+
+type Organization {
+  required id: uuid {
+    constraint pk;
+  };
+  slug: Slug;
+}
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	if formatted != src {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, src)
+	}
+}
+
+func TestFormatGroupingWithSpacingInput(t *testing.T) {
+	// Input with excessive blank lines between enums and scalars
+	src := `
+enum Status { Draft, Published }
+
+enum Role { Admin, Member }
+
+scalar type Email extends str;
+
+scalar type Slug extends str;
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	want := `enum Status { Draft, Published }
+enum Role { Admin, Member }
+
+scalar type Email extends str;
+scalar type Slug extends str;
+`
+	if formatted != want {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, want)
+	}
+}
+
+func TestFormatGroupingWithComments(t *testing.T) {
+	src := `# Auth roles
+enum Role { Admin, Member }
+enum Status { Active, Suspended }  # Account state
+
+# Next section
+enum Priority { Low, High }
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	want := `# Auth roles
+enum Role { Admin, Member }
+enum Status { Active, Suspended }  # Account state
+
+# Next section
+enum Priority { Low, High }
+`
+	if formatted != want {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, want)
+	}
+}
+
+func TestFormatEnumWrapping(t *testing.T) {
+	// A long enum that exceeds 80 characters
+	src := `enum OrderStatus { Pending, Processing, PaymentConfirmed, Packaging, Shipped, OutForDelivery, Delivered, Cancelled, Refunded }`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	want := `enum OrderStatus {
+  Pending,
+  Processing,
+  PaymentConfirmed,
+  Packaging,
+  Shipped,
+  OutForDelivery,
+  Delivered,
+  Cancelled,
+  Refunded,
+}
+`
+	if formatted != want {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, want)
+	}
+}
+
+func TestFormatFunctionWrapping(t *testing.T) {
+	// A function with a long parameter signature that exceeds 80 characters
+	src := `@language sql
+function calculate_complex_order_discount(customer_id: uuid, order_total: decimal, loyalty_tier: str, discount_rate: float64) -> decimal {
+  return order_total * (1.0 - discount_rate);
+};
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	want := `@language sql
+function calculate_complex_order_discount(
+  customer_id: uuid,
+  order_total: decimal,
+  loyalty_tier: str,
+  discount_rate: float64
+) -> decimal {
+  return order_total * (1.0 - discount_rate);
+};
+`
+	if formatted != want {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, want)
+	}
+}
+
+func TestFormatTriggerMultiLine(t *testing.T) {
+	src := `type Application {
+  required id: uuid {
+    constraint pk;
+  };
+  required name: str;
+
+  trigger audit after insert, update, delete do (
+    insert AuditLog {
+      table_name := 'application',
+      action := event,
+      new_data := to_jsonb(__new__)
+    }
+  );
+  trigger touch before update execute slugify_name();
+}
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	if formatted != src {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, src)
+	}
+}
+
+func TestFormatTriggerOrderAuditLog(t *testing.T) {
+	src := `type Order {
+  required user: User;
+
+  trigger audit after insert, update do (
+    insert AuditLog {
+      entity_id := __new__.id,
+      entity_type := __new__.id,
+      actor := __new__.user.id,
+      action := event,
+      old := to_jsonb(__new__),
+      new := to_jsonb(__new__)
+    }
+  );
+}
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+
+	if formatted != src {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, src)
+	}
+}
+
+
+
+
+
 
 

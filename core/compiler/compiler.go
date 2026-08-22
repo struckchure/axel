@@ -1540,7 +1540,7 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		// NEW."col" / OLD."col", validated against the enclosing type.
 		if c.trig != nil {
 			if row, ok := triggerRowRef(qi.TypeName); ok {
-				return c.compileTriggerField(row, qi.Field)
+				return c.compileTriggerField(row, qi.Field, qi.Fields)
 			}
 		}
 		// Enum member reference: EnumName.Value → SQL string literal. Enums are
@@ -1620,17 +1620,27 @@ func triggerRowRef(name string) (string, bool) {
 
 // compileTriggerField resolves a magic-row field access to NEW/OLD."column",
 // validating the field against the enclosing type when one is bound.
-func (c *compiler) compileTriggerField(row, field string) (string, error) {
+func (c *compiler) compileTriggerField(row, field string, subfields []string) (string, error) {
 	if c.trig.enclosing == nil {
 		// Standalone function: no table bound, pass the field through snake-cased.
-		return fmt.Sprintf(`%s.%q`, row, snakeCase(field)), nil
+		col := fmt.Sprintf(`%s.%q`, row, snakeCase(field))
+		for _, sub := range subfields {
+			col += fmt.Sprintf("->>%q", sub)
+		}
+		return col, nil
 	}
 	rt := c.trig.enclosing
 	if prop, ok := rt.Properties[field]; ok {
-		return fmt.Sprintf("%s.%q", row, prop.Column), nil
+		col := fmt.Sprintf("%s.%q", row, prop.Column)
+		for _, sub := range subfields {
+			col += fmt.Sprintf("->>%q", sub)
+		}
+		return col, nil
 	}
 	if link, ok := rt.Links[field]; ok {
-		return fmt.Sprintf("%s.%q", row, link.JoinColumn), nil
+		if len(subfields) == 0 || (len(subfields) == 1 && subfields[0] == "id") {
+			return fmt.Sprintf("%s.%q", row, link.JoinColumn), nil
+		}
 	}
 	return "", fmt.Errorf("type %q has no field %q (in trigger row reference)", rt.Name, field)
 }

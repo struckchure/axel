@@ -32,17 +32,24 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 		}
 	}
 
-	// Separate extension and AddModel changes from others. Extensions must be
-	// created before any table/function that may depend on them, so they lead;
-	// AddModel follows (dependency-sorted); everything else keeps its order.
+	// Extensions must be created before any table/function that may depend on them,
+	// so they lead; Functions (declared top-level / rewrites) must be created
+	// before tables so that default expressions and check constraints referencing
+	// them resolve cleanly; AddModel follows (dependency-sorted); everything else
+	// keeps its order.
 	var extChanges []SchemaChange
+	var fnChanges []SchemaChange
 	var addModelChanges []SchemaChange
 	var otherChanges []SchemaChange
+	var runOnceCalls []string
+	var junctionUpStatements []string
 
 	for _, change := range changes {
 		switch change.Type {
 		case AddExtension, DropExtension:
 			extChanges = append(extChanges, change)
+		case AddFunction, ModifyFunction:
+			fnChanges = append(fnChanges, change)
 		case AddModel:
 			addModelChanges = append(addModelChanges, change)
 		default:
@@ -68,11 +75,12 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 		}
 	}
 
-	// Merge back: extensions first, then AddModel (sorted), then others. Because
+	// Merge back: extensions first, then functions, then AddModel (sorted), then others. Because
 	// down statements are reversed for rollback, processing extensions first also
 	// makes their DROPs run last on the way down.
-	sortedChanges := make([]SchemaChange, 0, len(extChanges)+len(addModelChanges)+len(otherChanges))
+	sortedChanges := make([]SchemaChange, 0, len(extChanges)+len(fnChanges)+len(addModelChanges)+len(otherChanges))
 	sortedChanges = append(sortedChanges, extChanges...)
+	sortedChanges = append(sortedChanges, fnChanges...)
 	sortedChanges = append(sortedChanges, addModelChanges...)
 	sortedChanges = append(sortedChanges, otherChanges...)
 
@@ -86,11 +94,12 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 			up := generateTable(model, newAbstract)
 			down := fmt.Sprintf("DROP TABLE IF EXISTS \"%s\" CASCADE;", tableName)
 
-			// Handle junction tables for multi fields
+			// Handle junction tables for multi link fields
 			for _, field := range model.Fields {
-				if field.IsMulti {
+				if field.IsLink && field.IsMulti {
 					junctionTable := fmt.Sprintf("%s_%s", tableName, lo.SnakeCase(field.Name))
-					down += fmt.Sprintf("\nDROP TABLE IF EXISTS \"%s\" CASCADE;", junctionTable)
+					junctionUpStatements = append(junctionUpStatements, generateJunctionTable(model.Name, field))
+					down = fmt.Sprintf("DROP TABLE IF EXISTS \"%s\" CASCADE;\n", junctionTable) + down
 				}
 			}
 
@@ -106,7 +115,7 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 
 			// Handle junction tables
 			for _, field := range model.Fields {
-				if field.IsMulti {
+				if field.IsLink && field.IsMulti {
 					junctionTable := fmt.Sprintf("%s_%s", tableName, lo.SnakeCase(field.Name))
 					up = fmt.Sprintf("DROP TABLE IF EXISTS \"%s\" CASCADE;\n", junctionTable) + up
 				}
@@ -119,7 +128,7 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 			field := change.NewValue.(Field)
 			tableName := lo.SnakeCase(change.ModelName)
 
-			if field.IsMulti {
+			if field.IsLink && field.IsMulti {
 				// Create junction table
 				junctionSQL := generateJunctionTableForField(change.ModelName, field)
 				junctionTable := fmt.Sprintf("%s_%s", tableName, lo.SnakeCase(field.Name))
@@ -138,7 +147,7 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 			field := change.OldValue.(Field)
 			tableName := lo.SnakeCase(change.ModelName)
 
-			if field.IsMulti {
+			if field.IsLink && field.IsMulti {
 				junctionTable := fmt.Sprintf("%s_%s", tableName, lo.SnakeCase(field.Name))
 				upStatements = append(upStatements, fmt.Sprintf("DROP TABLE IF EXISTS \"%s\" CASCADE;", junctionTable))
 				downStatements = append(downStatements, generateJunctionTableForField(change.ModelName, field))
@@ -206,12 +215,11 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 
 		case AddFunction:
 			fn := change.NewValue.(Function)
-			create := fn.CreateSQL
-			// @for setup functions run once when first created.
+			upStatements = append(upStatements, fn.CreateSQL)
+			// @for setup functions run once when first created, after tables exist.
 			if fn.RunOnce {
-				create += fmt.Sprintf("\nSELECT %q();", fn.Name)
+				runOnceCalls = append(runOnceCalls, fmt.Sprintf("SELECT %q();", fn.Name))
 			}
-			upStatements = append(upStatements, create)
 			downStatements = append(downStatements, fn.DropSQL)
 
 		case DropFunction:
@@ -262,12 +270,22 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 		}
 	}
 
+	// Junction tables must be created after all base tables exist so both foreign
+	// keys resolve cleanly.
+	if len(junctionUpStatements) > 0 {
+		upStatements = append(upStatements, junctionUpStatements...)
+	}
+
 	// Reverse down statements for rollback
 	for i := len(downStatements) - 1; i >= 0; i-- {
 		if downSQL != "" {
 			downSQL += "\n\n"
 		}
 		downSQL += downStatements[i]
+	}
+
+	if len(runOnceCalls) > 0 {
+		upStatements = append(upStatements, runOnceCalls...)
 	}
 
 	upSQL = strings.Join(upStatements, "\n\n")
@@ -289,7 +307,7 @@ func topologicalSort(models []Model) []Model {
 			// Only consider non-multi foreign keys as dependencies. Skip
 			// self-references: a table can always reference itself once created,
 			// and treating it as a dependency would drop it from the sort below.
-			if !isBuiltinType(field.Type) && !field.IsMulti && field.Type != model.Name {
+			if field.IsLink && !field.IsMulti && field.Type != model.Name {
 				deps[model.Name] = append(deps[model.Name], field.Type)
 			}
 		}
@@ -354,13 +372,16 @@ func topologicalSort(models []Model) []Model {
 func generateAddColumn(tableName string, field Field) string {
 	colName := lo.SnakeCase(field.Name)
 	sqlType := mapType(field.Type)
+	if field.IsMulti {
+		if field.Type != "json" && field.Type != "jsonb" {
+			sqlType += "[]"
+		}
+	}
 
 	var parts []string
 	parts = append(parts, fmt.Sprintf("ALTER TABLE \"%s\" ADD COLUMN %s", tableName, colName))
 
-	isLink := !isBuiltinType(field.Type)
-
-	if isLink {
+	if field.IsLink {
 		parts = append(parts, mapType(field.OnTarget.Type))
 	} else {
 		parts = append(parts, sqlType)
@@ -370,7 +391,7 @@ func generateAddColumn(tableName string, field Field) string {
 		parts = append(parts, "NOT NULL")
 	}
 
-	if !isLink && field.Default != "" {
+	if !field.IsLink && field.Default != "" {
 		defaultVal := mapDefault(field.Default, sqlType)
 		parts = append(parts, "DEFAULT "+defaultVal)
 	}
@@ -384,7 +405,7 @@ func generateAddColumn(tableName string, field Field) string {
 	}
 
 	// Length + enum constraints → named CHECK clauses.
-	if !isLink {
+	if !field.IsLink {
 		parts = append(parts, lengthCheckClauses(tableName, field)...)
 		if clause := enumCheckClause(tableName, field); clause != "" {
 			parts = append(parts, clause)
@@ -394,7 +415,7 @@ func generateAddColumn(tableName string, field Field) string {
 	stmt := strings.Join(parts, " ") + ";"
 
 	// Add foreign key if it's a link
-	if isLink {
+	if field.IsLink {
 		refTable := lo.SnakeCase(field.Type)
 		refColumn := lo.SnakeCase(field.OnTarget.Name)
 		stmt += fmt.Sprintf("\nALTER TABLE \"%s\" ADD %s;",

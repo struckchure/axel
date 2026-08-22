@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
+	"github.com/struckchure/axel/core/aql"
 )
 
 // Format parses an .asl schema and returns it re-printed in canonical form,
@@ -113,10 +114,20 @@ func (f *aslFmt) done() string {
 	return s
 }
 
+func (f *aslFmt) hasLeadingComment(offset int) bool {
+	return f.ci < len(f.cmts) && f.cmts[f.ci].Offset < offset
+}
+
 func (f *aslFmt) file(sf *SourceFile) {
 	for i, d := range sf.Definitions {
 		if i > 0 {
-			f.blank()
+			prev := sf.Definitions[i-1]
+			prevKind := defKind(prev)
+			currKind := defKind(d)
+			shouldGroup := prevKind == currKind && isSingleLineKind(currKind) && !f.hasLeadingComment(defOffset(d))
+			if !shouldGroup {
+				f.blank()
+			}
 		}
 		f.leading(defOffset(d))
 		next := 1 << 30
@@ -124,6 +135,44 @@ func (f *aslFmt) file(sf *SourceFile) {
 			next = defOffset(sf.Definitions[i+1])
 		}
 		f.definition(d, next)
+	}
+}
+
+const maxLineWidth = 80
+
+func defKind(d *Definition) string {
+	switch {
+	case d.Extension != nil:
+		return "extension"
+	case d.Global != nil:
+		return "global"
+	case d.EnumType != nil:
+		single := fmt.Sprintf("enum %s { %s }", d.EnumType.Name, strings.Join(d.EnumType.Values, ", "))
+		if len(single) <= maxLineWidth {
+			return "enum"
+		}
+		return "enum_multi"
+	case d.ScalarType != nil:
+		s := d.ScalarType
+		if s.Body == nil || (len(s.Body.Fields) == 0 && len(s.Body.Items) == 0) {
+			return "scalar_single"
+		}
+		return "scalar_multi"
+	case d.Function != nil:
+		return "function"
+	case d.TypeDef != nil:
+		return "type"
+	default:
+		return "other"
+	}
+}
+
+func isSingleLineKind(k string) bool {
+	switch k {
+	case "extension", "global", "enum", "scalar_single":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -161,14 +210,31 @@ func (f *aslFmt) definition(d *Definition, next int) {
 	case d.ScalarType != nil:
 		f.scalarTypeDef(d.ScalarType, next)
 	case d.EnumType != nil:
-		e := d.EnumType
-		f.wf("enum %s { %s }", e.Name, strings.Join(e.Values, ", "))
-		f.commit(next)
+		f.enumTypeDef(d.EnumType, next)
 	case d.Function != nil:
 		f.function(d.Function, next)
 	case d.TypeDef != nil:
 		f.typeDef(d.TypeDef, next)
 	}
+}
+
+func (f *aslFmt) enumTypeDef(e *EnumTypeDef, next int) {
+	single := fmt.Sprintf("enum %s { %s }", e.Name, strings.Join(e.Values, ", "))
+	if len(single) <= maxLineWidth {
+		f.w(single)
+		f.commit(next)
+		return
+	}
+	f.wf("enum %s {", e.Name)
+	f.commit(next)
+	f.indent++
+	for _, val := range e.Values {
+		f.wf("%s,", val)
+		f.commit(next)
+	}
+	f.indent--
+	f.w("}")
+	f.commit(next)
 }
 
 func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
@@ -245,7 +311,24 @@ func (f *aslFmt) function(fn *FunctionDecl, next int) {
 	if fn.Return != nil {
 		body = strings.TrimSpace(fn.Return.Raw)
 	}
-	f.wf("function %s(%s) -> %s {", fn.Name, strings.Join(params, ", "), ret)
+	singleHeader := fmt.Sprintf("function %s(%s) -> %s {", fn.Name, strings.Join(params, ", "), ret)
+	if len(singleHeader) <= maxLineWidth || len(params) <= 1 {
+		f.w(singleHeader)
+	} else {
+		f.wf("function %s(", fn.Name)
+		f.commit(next)
+		f.indent++
+		for i, p := range params {
+			comma := ","
+			if i == len(params)-1 {
+				comma = ""
+			}
+			f.wf("%s%s", p, comma)
+			f.commit(next)
+		}
+		f.indent--
+		f.wf(") -> %s {", ret)
+	}
 	if fn.Return != nil {
 		f.commit(fn.Return.Pos.Offset)
 		f.indent++
@@ -575,20 +658,54 @@ func (f *aslFmt) bodyItem(it *FieldBodyItem) {
 }
 
 func (f *aslFmt) trigger(t *TriggerDecl, next int) {
-	f.wf("trigger %s %s %s", t.Name, t.Timing, strings.Join(t.Events, ", "))
+	header := fmt.Sprintf("trigger %s %s %s", t.Name, t.Timing, strings.Join(t.Events, ", "))
 	if t.ForEach != "" {
-		f.wf(" for each %s", t.ForEach)
+		header += " for each " + t.ForEach
 	}
 	if t.When != nil {
-		f.wf(" when (%s)", *t.When)
+		header += fmt.Sprintf(" when (%s)", *t.When)
 	}
+
+	if t.ExecFn != nil {
+		f.wf("%s execute %s();", header, *t.ExecFn)
+		f.commit(next)
+		return
+	}
+
 	if t.Do != nil {
-		f.wf(" do ( %s )", strings.TrimSpace(t.Do.Raw))
-	} else if t.ExecFn != nil {
-		f.wf(" execute %s()", *t.ExecFn)
+		raw := strings.TrimSpace(t.Do.Raw)
+		stmtSrc := strings.TrimSuffix(raw, ";")
+		formatted := stmtSrc
+		if aqlOut, err := aql.Format([]byte(stmtSrc)); err == nil {
+			formatted = strings.TrimSpace(aqlOut)
+			formatted = strings.TrimSuffix(formatted, ";")
+		}
+
+		lines := strings.Split(formatted, "\n")
+		indentLen := f.indent * 2
+		if len(lines) == 1 && indentLen+len(header)+len(lines[0])+10 <= maxLineWidth {
+			f.wf("%s do ( %s );", header, lines[0])
+			f.commit(next)
+			return
+		}
+
+		f.wf("%s do (", header)
+		f.commit(next)
+		f.indent++
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
+			extraIndent := leadingSpaces / 2
+			f.w(strings.Repeat("  ", extraIndent) + trimmed)
+			f.commit(next)
+		}
+		f.indent--
+		f.w(");")
+		f.commit(next)
 	}
-	f.w(";")
-	f.commit(next)
 }
 
 func (f *aslFmt) policy(p *PolicyDecl, next int) {

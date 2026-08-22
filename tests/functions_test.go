@@ -150,3 +150,48 @@ type Widget { id: uuid; name: str; }`
 		t.Errorf("unchanged extension should not re-emit:\n%s", up)
 	}
 }
+
+func TestFunctionPrecedesTableDefault(t *testing.T) {
+	schema := `
+use extension 'pgcrypto';
+
+@language sql
+@volatile
+@strict
+function random_hex(len: int32) -> str {
+  return substr(encode(gen_random_bytes(ceil(len / 2.0)::integer), 'hex'), 1, len);
+};
+
+scalar type Code extends str {
+  constraint min_length(6);
+  constraint max_length(6);
+  default := random_hex(6);
+}
+
+type Order {
+  required id: uuid { constraint pk; };
+  code: Code;
+}
+`
+	up, down := genMigrationFull(t, "", schema)
+
+	ei := strings.Index(up, `CREATE EXTENSION IF NOT EXISTS "pgcrypto";`)
+	fi := strings.Index(up, `CREATE OR REPLACE FUNCTION "random_hex"`)
+	ti := strings.Index(up, `CREATE TABLE "order"`)
+
+	if ei < 0 || fi < 0 || ti < 0 {
+		t.Fatalf("expected extension, function, and table in up migration:\n%s", up)
+	}
+
+	if !(ei < fi && fi < ti) {
+		t.Errorf("expected extension (%d) < function (%d) < table (%d) in up migration:\n%s", ei, fi, ti, up)
+	}
+
+	// On down, table should drop before function
+	dti := strings.Index(down, `DROP TABLE IF EXISTS "order"`)
+	dfi := strings.Index(down, `DROP FUNCTION IF EXISTS "random_hex"`)
+	if !(dti < dfi) {
+		t.Errorf("expected table drop (%d) < function drop (%d) on down migration:\n%s", dti, dfi, down)
+	}
+}
+

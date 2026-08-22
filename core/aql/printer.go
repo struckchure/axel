@@ -418,7 +418,10 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		}
 		b.WriteString(")")
 	case p.QualifiedIdent != nil:
-		fmt.Fprintf(b, "%s.%s", p.QualifiedIdent.TypeName, p.QualifiedIdent.Field)
+		b.WriteString(p.QualifiedIdent.TypeName + "." + p.QualifiedIdent.Field)
+		for _, fld := range p.QualifiedIdent.Fields {
+			b.WriteString("." + fld)
+		}
 	case p.Path != nil:
 		b.WriteString("." + strings.Join(p.Path.Steps, "."))
 	case p.Param != nil:
