@@ -34,6 +34,9 @@
       "include": "#default-functions"
     },
     {
+      "include": "#functions"
+    },
+    {
       "include": "#booleans"
     },
     {
@@ -123,7 +126,7 @@
           "name": "keyword.control.directive.asl"
         },
         {
-          "match": "\\b(extends|extending|constraint|index|on|filter|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body|return|safe|unsafe|restricted|definer|invoker|policy|using|with|check|to)\\b",
+          "match": "\\b(extends|extending|sql|as|constraint|index|on|filter|computed|default|func|rewrite|trigger|before|after|for|each|row|statement|when|do|execute|language|body|return|safe|unsafe|restricted|definer|invoker|policy|using|with|check|to)\\b",
           "name": "keyword.control.asl"
         }
       ]
@@ -180,8 +183,12 @@
       "name": "support.type.builtin.asl"
     },
     "default-functions": {
-      "match": "\\b(gen_uuid|gen_random_uuid|now|datetime_current)\\b",
+      "match": "\\b(gen_uuid|gen_random_uuid|now|datetime_current|ST_Distance|ST_3DDistance|ST_DWithin|ST_MakePoint|ST_SetSRID|ST_GeogFromText|ST_GeomFromText|ST_Y|ST_X|ST_Z|ST_M|haversine)\\b(?=\\s*\\()",
       "name": "support.function.builtin.asl"
+    },
+    "functions": {
+      "match": "\\b[A-Za-z_]\\w*\\b(?=\\s*\\()",
+      "name": "entity.name.function.asl"
     },
     "booleans": {
       "match": "\\b(true|false)\\b",

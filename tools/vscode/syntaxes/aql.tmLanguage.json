@@ -116,11 +116,11 @@
     "functions": {
       "patterns": [
         {
-          "match": "\\b(count|sum|avg|min|max)\\b(?=\\s*\\()",
+          "match": "\\b(count|sum|avg|min|max|gen_uuid|now|datetime_current|lower|upper|coalesce|length|abs|round|floor|ceil|ST_Distance|ST_3DDistance|ST_DWithin|ST_MakePoint|ST_SetSRID|ST_GeogFromText|ST_GeomFromText|ST_Y|ST_X|ST_Z|ST_M|haversine)\\b(?=\\s*\\()",
           "name": "support.function.builtin.aql"
         },
         {
-          "match": "\\b[a-z_]\\w*\\b(?=\\s*\\()",
+          "match": "\\b[A-Za-z_]\\w*\\b(?=\\s*\\()",
           "name": "entity.name.function.aql"
         }
       ]

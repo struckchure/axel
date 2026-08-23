@@ -64,10 +64,13 @@
 ((aggregate function: (identifier) @function.builtin)
   (#eq? @function.builtin "count"))
 
-; Built-in aggregate functions used as aggregate-shape values
-; (total := sum(.amount), n := count(), ...).
+; Built-in aggregate and standard/PostGIS functions
 ((function_call name: (identifier) @function.builtin)
-  (#any-of? @function.builtin "count" "sum" "avg" "min" "max"))
+  (#any-of? @function.builtin
+    "count" "sum" "avg" "min" "max"
+    "gen_uuid" "now" "datetime_current" "lower" "upper" "coalesce" "length" "abs" "round" "floor" "ceil"
+    "ST_Distance" "ST_3DDistance" "ST_DWithin" "ST_MakePoint" "ST_SetSRID"
+    "ST_GeogFromText" "ST_GeomFromText" "ST_Y" "ST_X" "ST_Z" "ST_M" "haversine"))
 
 ; Query parameters ($name, $name<type>). The <type> annotation's name is a
 ; type_identifier (highlighted as @type above); its "<" ">" fall through to the

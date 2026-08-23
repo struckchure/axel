@@ -43,6 +43,8 @@
   "check"
   "to"
   "global"
+  "sql"
+  "as"
 ] @keyword
 
 ; Function attribute directives (@immutable, @language, @parallel, …)
@@ -80,10 +82,12 @@
     "str" "int16" "int32" "int64" "float32" "float64"
     "bool" "uuid" "datetime" "date" "time" "json" "jsonb" "bytes" "decimal"))
 
-; Default functions and boolean literals (bare identifiers in a default)
+; Default and SQL functions and boolean literals
 ((default (identifier) @function.builtin)
   (#any-of? @function.builtin
-    "gen_uuid" "gen_random_uuid" "now" "datetime_current"))
+    "gen_uuid" "gen_random_uuid" "now" "datetime_current"
+    "ST_Distance" "ST_3DDistance" "ST_DWithin" "ST_MakePoint" "ST_SetSRID"
+    "ST_GeogFromText" "ST_GeomFromText" "ST_Y" "ST_X" "ST_Z" "ST_M" "haversine"))
 ((default (identifier) @boolean)
   (#any-of? @boolean "true" "false"))
 
