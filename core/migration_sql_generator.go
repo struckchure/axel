@@ -137,7 +137,7 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 				downStatements = append(downStatements, fmt.Sprintf("DROP TABLE IF EXISTS \"%s\" CASCADE;", junctionTable))
 			} else {
 				up := generateAddColumn(tableName, field)
-				down := fmt.Sprintf("ALTER TABLE \"%s\" DROP COLUMN IF EXISTS %s;", tableName, lo.SnakeCase(field.Name))
+				down := fmt.Sprintf("ALTER TABLE \"%s\" DROP COLUMN IF EXISTS %s;", tableName, formatIdentifier(field.Name))
 
 				upStatements = append(upStatements, up)
 				downStatements = append(downStatements, down)
@@ -152,7 +152,7 @@ func GenerateMigrationSQL(changes []SchemaChange, oldSchema, newSchema []Model) 
 				upStatements = append(upStatements, fmt.Sprintf("DROP TABLE IF EXISTS \"%s\" CASCADE;", junctionTable))
 				downStatements = append(downStatements, generateJunctionTableForField(change.ModelName, field))
 			} else {
-				up := fmt.Sprintf("ALTER TABLE \"%s\" DROP COLUMN IF EXISTS %s;", tableName, lo.SnakeCase(field.Name))
+				up := fmt.Sprintf("ALTER TABLE \"%s\" DROP COLUMN IF EXISTS %s;", tableName, formatIdentifier(field.Name))
 				down := generateAddColumn(tableName, field)
 
 				upStatements = append(upStatements, up)
@@ -370,7 +370,7 @@ func topologicalSort(models []Model) []Model {
 
 // generateAddColumn generates ALTER TABLE ADD COLUMN statement
 func generateAddColumn(tableName string, field Field) string {
-	colName := lo.SnakeCase(field.Name)
+	colName := formatIdentifier(field.Name)
 	sqlType := field.SQLType
 	if sqlType == "" {
 		sqlType = mapType(field.Type)
@@ -419,12 +419,12 @@ func generateAddColumn(tableName string, field Field) string {
 
 	// Add foreign key if it's a link
 	if field.IsLink {
-		refTable := lo.SnakeCase(field.Type)
-		refColumn := lo.SnakeCase(field.OnTarget.Name)
+		refTable := formatIdentifier(field.Type)
+		refColumn := formatIdentifier(field.OnTarget.Name)
 		stmt += fmt.Sprintf("\nALTER TABLE \"%s\" ADD %s;",
 			tableName,
 			namedConstraint(fkConstraintName(tableName, field.Name),
-				fmt.Sprintf("FOREIGN KEY (%s) REFERENCES \"%s\"(%s) ON DELETE CASCADE", colName, refTable, refColumn)))
+				fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", colName, refTable, refColumn)))
 	}
 
 	return stmt
@@ -432,7 +432,7 @@ func generateAddColumn(tableName string, field Field) string {
 
 // generateModifyColumn generates ALTER statements for field modifications
 func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, downSQL string) {
-	colName := lo.SnakeCase(newField.Name)
+	colName := formatIdentifier(newField.Name)
 
 	var upParts []string
 	var downParts []string
@@ -493,7 +493,7 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 			continue
 		}
 
-		name := formatIdentifier(lengthConstraintName(tableName, colName, kind))
+		name := formatIdentifier(lengthConstraintName(tableName, newField.Name, kind))
 		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
 
 		if hasNew {
@@ -518,7 +518,7 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 
 	// Enum membership change (add / remove / change of allowed values).
 	if !slices.Equal(oldField.EnumValues, newField.EnumValues) {
-		name := formatIdentifier(enumConstraintName(tableName, colName))
+		name := formatIdentifier(enumConstraintName(tableName, newField.Name))
 		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
 		addNew := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s IN (%s));",
 			tableName, name, formatIdentifier(newField.Name), quotedEnumValues(newField.EnumValues))

@@ -40,7 +40,7 @@ type Thing {
 `
 	up, _ := genMigration(t, base, withLink)
 
-	if !strings.Contains(up, "ADD COLUMN application") || !strings.Contains(up, "UNIQUE") {
+	if !strings.Contains(up, `ADD COLUMN "application"`) || !strings.Contains(up, "UNIQUE") {
 		t.Errorf("up SQL missing add-column with UNIQUE:\n%s", up)
 	}
 }

@@ -354,9 +354,9 @@ func generateJunctionTable(modelName string, field Field) string {
 	pk := namedConstraint(pkConstraintName(junction),
 		fmt.Sprintf("PRIMARY KEY (%s, %s)", formatIdentifier(modelName), formatIdentifier(field.Type)))
 	fkModel := namedConstraint(fkConstraintName(junction, modelName),
-		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(modelName), modelTable, "id"))
+		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(modelName), modelTable, formatIdentifier("id")))
 	fkTarget := namedConstraint(fkConstraintName(junction, field.Type),
-		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(field.Type), refTable, "id"))
+		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(field.Type), refTable, formatIdentifier("id")))
 
 	return fmt.Sprintf(`CREATE TABLE %s (
   %s UUID NOT NULL,
