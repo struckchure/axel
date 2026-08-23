@@ -110,4 +110,21 @@ scalar type Code extends str {
 	}
 }
 
+func TestSchemaDiagnosticsIndexAndConstraintFieldValidation(t *testing.T) {
+	aslText := `
+type Coverage {
+  name: str;
+  constraint exclusive on (.name, .missing_vehicle);
+  index on (.routes);
+}
+`
+	diags := SchemaDiagnostics(aslText)
+	if len(diags) == 0 {
+		t.Fatal("expected schema diagnostics for unknown fields in constraint/index, got none")
+	}
+	if !strings.Contains(diags[0].Message, `unknown field`) {
+		t.Errorf("unexpected diagnostic message: %q", diags[0].Message)
+	}
+}
+
 

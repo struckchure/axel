@@ -684,6 +684,84 @@ scalar type Geometry extends sql "geometry";
 	}
 }
 
+func TestValidateIndexAndConstraintFieldReferences(t *testing.T) {
+	// 1. Unknown field in index
+	badIndex := `
+type Coverage {
+  name: str;
+  index on (.routes, .name);
+}
+`
+	sf, err := Parse([]byte(badIndex))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	_, err = (&Resolver{}).Resolve(sf)
+	if err == nil || !strings.Contains(err.Error(), `index on unknown field "routes"`) {
+		t.Errorf("expected error for unknown index field routes, got: %v", err)
+	}
+
+	// 2. Unknown field in constraint
+	badConstraint := `
+type Coverage {
+  name: str;
+  constraint exclusive on (.name, .missing_field);
+}
+`
+	sf, err = Parse([]byte(badConstraint))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	_, err = (&Resolver{}).Resolve(sf)
+	if err == nil || !strings.Contains(err.Error(), `constraint "exclusive" on unknown field "missing_field"`) {
+		t.Errorf("expected error for unknown constraint field, got: %v", err)
+	}
+
+	// 3. Multi-link field in constraint/index
+	badMultiLink := `
+type Address { street: str; }
+type Coverage {
+  name: str;
+  multi addresses: Address;
+  index on (.addresses);
+}
+`
+	sf, err = Parse([]byte(badMultiLink))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	_, err = (&Resolver{}).Resolve(sf)
+	if err == nil || !strings.Contains(err.Error(), `index cannot reference multi-link "addresses"`) {
+		t.Errorf("expected error for multi-link in index, got: %v", err)
+	}
+
+	// 4. Valid index and constraint on properties and single links
+	goodSchema := `
+abstract type Base {
+  required id: uuid { constraint pk; };
+}
+type Provider extends Base { name: str; }
+type Coverage extends Base {
+  required name: str;
+  required provider: Provider;
+  constraint exclusive on (.name, .provider);
+  index on (.name);
+}
+`
+	sf, err = Parse([]byte(goodSchema))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	ir, err := (&Resolver{}).Resolve(sf)
+	if err != nil {
+		t.Fatalf("unexpected resolve error for valid schema: %v", err)
+	}
+	cov := ir.ObjectTypes["Coverage"]
+	if len(cov.Indexes) != 1 || len(cov.Constraints) != 1 {
+		t.Errorf("expected 1 index and 1 type-level constraint, got %d indexes and %d constraints", len(cov.Indexes), len(cov.Constraints))
+	}
+}
+
 
 
 

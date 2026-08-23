@@ -479,6 +479,44 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 				}
 				rt.Policies = append(rt.Policies, pol)
 			}
+
+			// Validate index and constraint field references.
+			for _, m := range t.Members {
+				if m.Index != nil {
+					for _, f := range m.Index.Fields {
+						if _, ok := rt.Properties[f]; ok {
+							continue
+						}
+						if link, ok := rt.Links[f]; ok {
+							if link.IsMulti {
+								return fmt.Errorf("type %q: index cannot reference multi-link %q (stored in junction table)", t.Name, f)
+							}
+							continue
+						}
+						if _, ok := rt.Computed[f]; ok {
+							continue
+						}
+						return fmt.Errorf("type %q: index on unknown field %q", t.Name, f)
+					}
+				}
+				if m.Constraint != nil {
+					for _, f := range m.Constraint.Fields {
+						if _, ok := rt.Properties[f]; ok {
+							continue
+						}
+						if link, ok := rt.Links[f]; ok {
+							if link.IsMulti {
+								return fmt.Errorf("type %q: constraint %q cannot reference multi-link %q (stored in junction table)", t.Name, m.Constraint.Expression, f)
+							}
+							continue
+						}
+						if _, ok := rt.Computed[f]; ok {
+							continue
+						}
+						return fmt.Errorf("type %q: constraint %q on unknown field %q", t.Name, m.Constraint.Expression, f)
+					}
+				}
+			}
 			return nil
 		}
 		for _, name := range objOrder {
