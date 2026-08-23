@@ -46,14 +46,17 @@ Offset      = "offset" Expr
 
 Expr        = AndExpr ("or" AndExpr)*        # `and` binds tighter than `or`
 AndExpr     = Cmp ("and" Cmp)*
-Cmp         = Primary (BinOp Primary)?
+Cmp         = AddExpr (BinOp AddExpr | "is" "not"? "null")?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
+AddExpr     = MulExpr (("+" | "-") MulExpr)*
+MulExpr     = Factor (("*" | "/") Factor)*
+Factor      = ("+" | "-")? Primary
 Primary     = Operand ("<" Ident ">")?       # trailing cast on any operand
 Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?   # sub-select
             | "(" "insert" TypeName "{" … ")"                      # sub-insert → id
             | "(" Expr ")" | FuncCall | PathExpr
             | QualifiedIdent                                       # User.id — outer reference
-            | "$" Ident | "null" | "true" | "false"
+            | "$" Ident | "global" Ident | "null" | "true" | "false"
             | String | Int | Float | Ident
 PathExpr       = ("." Ident)+
 QualifiedIdent = Ident "." Ident
@@ -110,6 +113,13 @@ Optional parameters (`$name?`) and `var` blocks declare a parameter's type up fr
 
 ```aql
 multi select User { email, upper_email := upper(.email) };
+
+# Arithmetic in computed shape fields
+multi select OrderItem {
+  id,
+  subtotal := .unit_price * .quantity,
+  total := (.unit_price * .quantity) - .discount
+};
 
 select count(User filter .active = true);         # aggregate select: aggregates only, one row
 

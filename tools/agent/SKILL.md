@@ -146,8 +146,9 @@ multi select Post {
   tags: { name }
 } filter .author.role = Role.Admin order by .created_at desc limit 5;
 
-# Computed field in a shape
+# Computed field in a shape (functions, arithmetic, coalesce)
 multi select User { email, upper_email := upper(.email) };
+multi select OrderItem { id, subtotal := .unit_price * .quantity, total := (.unit_price * .quantity) - .discount };
 
 # Aggregate select — its own form; it may not be mixed with row fields
 select count(User filter .active = true);

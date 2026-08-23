@@ -2552,9 +2552,17 @@ type User {
   name: str;
   computed display_name := .name ?? .email;
 }
+
+type OrderItem {
+  required quantity: int32;
+  required unit_price: decimal;
+  discount: decimal;
+  computed total := (.quantity * .unit_price) - .discount;
+  computed tax := .unit_price * 0.2;
+}
 ```
 
-Use `??` for a null-coalescing fallback. Computed fields can be referenced in AQL shapes.
+Computed fields support arithmetic operators (`+`, `-`, `*`, `/`), unary signs (`+`, `-`), function calls, and `??` (null coalescing). They can be selected in AQL shapes and queried just like ordinary fields.
 
 ---
 
@@ -3675,12 +3683,17 @@ A `multi select` compiles to a correlated `json_agg` subquery (empty array — n
    FROM (SELECT o.id AS id, o.name AS name FROM "organization" o WHERE o.owner = u.id LIMIT 1) o_primary_org_sub) AS primary_org
 ```
 
-Computed shape fields with no sub-select compile as scalar expressions:
+Computed shape fields with no sub-select compile as scalar expressions (including arithmetic and null coalescing):
 
 ```aql
-select User {
+select OrderItem {
   id,
-  label := .name ?? .email
+  unit_price,
+  quantity,
+  discount,
+  subtotal := .unit_price * .quantity,
+  total := (.unit_price * .quantity) - .discount,
+  label := .name ?? .sku
 }
 ```
 
@@ -4640,6 +4653,10 @@ Source: https://struckchure.github.io/axel/aql/expressions/operators
 
 | AQL operator | SQL equivalent |
 | ------------ | -------------- |
+| `+`          | `+` (addition or unary plus) |
+| `-`          | `-` (subtraction or unary minus) |
+| `*`          | `*` (multiplication) |
+| `/`          | `/` (division) |
 | `=`          | `=`            |
 | `!=`         | `!=`           |
 | `<`          | `<`            |
@@ -4654,6 +4671,38 @@ Source: https://struckchure.github.io/axel/aql/expressions/operators
 | `ilike`      | `ILIKE`        |
 | `is null`      | `IS NULL`      |
 | `is not null`  | `IS NOT NULL`  |
+
+## Arithmetic
+
+AQL supports binary arithmetic operators (`+`, `-`, `*`, `/`) and unary signs (`+`, `-`). Expressions follow standard mathematical operator precedence:
+
+1. **Unary** `+`, `-` (e.g. `- .discount`)
+2. **Multiplicative** `*`, `/`
+3. **Additive** `+`, `-`
+4. **Comparisons & Null tests** `=`, `!=`, `<`, `<=`, `>`, `>=`, `is [not] null`, `??`
+5. **Logical** `and`, then `or`
+
+```aql
+# Computed shape fields
+select Order {
+  id,
+  subtotal,
+  tax := .subtotal * 0.2,
+  total := (.subtotal * 1.2) - .discount
+};
+
+# Filtering with arithmetic
+multi select Product { id, title }
+  filter .quantity * .unit_price >= $min_total - $rebate;
+
+# Updating with arithmetic
+update Account filter .id = $id<uuid>
+  set { balance := .balance - $amount<int64> };
+
+# Ordering by calculated expressions
+multi select Product { id, name }
+  order by .unit_price * .stock_count desc;
+```
 
 ## Null tests
 
@@ -4874,8 +4923,12 @@ Offset      = "offset" Expr
 
 Expr        = AndExpr ("or" AndExpr)*       # `and` binds tighter than `or`
 AndExpr     = Cmp ("and" Cmp)*
-Cmp         = Primary (BinOp Primary)?
+Cmp         = AddExpr (BinOp AddExpr | "is" "not"? "null")?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
+
+AddExpr     = MulExpr (("+" | "-") MulExpr)*
+MulExpr     = Factor (("*" | "/") Factor)*
+Factor      = ("+" | "-")? Primary
 
 Primary     = Operand ("<" Ident ">")?         # optional trailing cast on any operand
 Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?  # sub-select (multi → array, else single); optional field projection
@@ -4885,6 +4938,7 @@ Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?  # sub-select (m
             | PathExpr
             | QualifiedIdent               # TypeName.field — outer-query reference
             | "$" Ident                    # named parameter
+            | "global" Ident               # global variable reference
             | "null" | "true" | "false"
             | String | Int | Float | Ident
 

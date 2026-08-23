@@ -47,8 +47,12 @@ Offset      = "offset" Expr
 
 Expr        = AndExpr ("or" AndExpr)*       # `and` binds tighter than `or`
 AndExpr     = Cmp ("and" Cmp)*
-Cmp         = Primary (BinOp Primary)?
+Cmp         = AddExpr (BinOp AddExpr | "is" "not"? "null")?
 BinOp       = "=" | "!=" | "<" | "<=" | ">" | ">=" | "??" | "in" | "like" | "ilike"
+
+AddExpr     = MulExpr (("+" | "-") MulExpr)*
+MulExpr     = Factor (("*" | "/") Factor)*
+Factor      = ("+" | "-")? Primary
 
 Primary     = Operand ("<" Ident ">")?         # optional trailing cast on any operand
 Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?  # sub-select (multi → array, else single); optional field projection
@@ -58,6 +62,7 @@ Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?  # sub-select (m
             | PathExpr
             | QualifiedIdent               # TypeName.field — outer-query reference
             | "$" Ident                    # named parameter
+            | "global" Ident               # global variable reference
             | "null" | "true" | "false"
             | String | Int | Float | Ident
 

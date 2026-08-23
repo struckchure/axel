@@ -263,3 +263,96 @@ func aslMustParse(t *testing.T, src string) *asl.SourceFile {
 	return sf
 }
 
+func TestCompileArithmeticExpressions(t *testing.T) {
+	schemaSrc := `
+type Account {
+  required id: uuid { constraint pk; };
+  balance: int64;
+}
+type Product {
+  required id: uuid { constraint pk; };
+  price: float64;
+  quantity: int32;
+  discount: float64;
+  computed gross_total := .price * .quantity;
+  computed net_total := (.price * .quantity) - .discount;
+}
+`
+	ir, err := (&asl.Resolver{}).Resolve(aslMustParse(t, schemaSrc))
+	if err != nil {
+		t.Fatalf("resolve schema: %v", err)
+	}
+
+	// 1. Arithmetic in computed shape fields
+	stmt1, err := aql.ParseString(`
+multi select Product {
+  id,
+  total := .price * .quantity + 10.5,
+  negated := - .discount
+};`)
+	if err != nil {
+		t.Fatalf("parse stmt1: %v", err)
+	}
+	compiled1, err := Compile(stmt1, ir)
+	if err != nil {
+		t.Fatalf("compile stmt1: %v", err)
+	}
+	if !strings.Contains(compiled1.SQL, `(p.price * p.quantity + 10.5) AS total`) {
+		t.Errorf("expected price * quantity + 10.5 in SQL, got:\n%s", compiled1.SQL)
+	}
+	if !strings.Contains(compiled1.SQL, `(-p.discount) AS negated`) {
+		t.Errorf("expected -p.discount in SQL, got:\n%s", compiled1.SQL)
+	}
+
+	// 2. Arithmetic in Filter / Order By
+	stmt2, err := aql.ParseString(`
+multi select Product { id }
+filter .price * .quantity >= 100.0 - $rebate
+order by .price * .quantity desc;`)
+	if err != nil {
+		t.Fatalf("parse stmt2: %v", err)
+	}
+	compiled2, err := Compile(stmt2, ir)
+	if err != nil {
+		t.Fatalf("compile stmt2: %v", err)
+	}
+	if !strings.Contains(compiled2.SQL, `WHERE p.price * p.quantity >= 100.0 - $1`) {
+		t.Errorf("expected WHERE with arithmetic, got:\n%s", compiled2.SQL)
+	}
+	if !strings.Contains(compiled2.SQL, `ORDER BY p.price * p.quantity DESC`) {
+		t.Errorf("expected ORDER BY with arithmetic, got:\n%s", compiled2.SQL)
+	}
+
+	// 3. Arithmetic in Update assignment
+	stmt3, err := aql.ParseString(`
+update Account filter .id = $id<uuid>
+set { balance := .balance - $amount<int64> };`)
+	if err != nil {
+		t.Fatalf("parse stmt3: %v", err)
+	}
+	compiled3, err := Compile(stmt3, ir)
+	if err != nil {
+		t.Fatalf("compile stmt3: %v", err)
+	}
+	if !strings.Contains(compiled3.SQL, `balance = a.balance - $1::BIGINT`) {
+		t.Errorf("expected UPDATE assignment with arithmetic, got:\n%s", compiled3.SQL)
+	}
+
+	// 4. ASL computed properties expanded in AQL shape
+	stmt4, err := aql.ParseString(`
+multi select Product { id, gross_total, net_total };`)
+	if err != nil {
+		t.Fatalf("parse stmt4: %v", err)
+	}
+	compiled4, err := Compile(stmt4, ir)
+	if err != nil {
+		t.Fatalf("compile stmt4: %v", err)
+	}
+	if !strings.Contains(compiled4.SQL, `(p.price * p.quantity) AS gross_total`) {
+		t.Errorf("expected gross_total expansion, got:\n%s", compiled4.SQL)
+	}
+	if !strings.Contains(compiled4.SQL, `((p.price * p.quantity) - p.discount) AS net_total`) {
+		t.Errorf("expected net_total expansion, got:\n%s", compiled4.SQL)
+	}
+}
+

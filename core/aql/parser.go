@@ -23,6 +23,7 @@ var aqlLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Star", Pattern: `\*`},
 	{Name: "Plus", Pattern: `\+`},
 	{Name: "Minus", Pattern: `-`},
+	{Name: "Slash", Pattern: `/`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
 	{Name: "String", Pattern: `'[^']*'|"[^"]*"`},
 	{Name: "Float", Pattern: `[0-9]+\.[0-9]+`},

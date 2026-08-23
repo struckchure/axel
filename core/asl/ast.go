@@ -269,10 +269,11 @@ type OnClause struct {
 // ComputedDecl defines a computed (derived) property.
 //
 //	computed display_name := .name ?? .email;
+//	computed total := (.quantity * .unit_price) - .discount;
 type ComputedDecl struct {
 	Pos   lexer.Position
 	Name  string   `parser:"'computed' @Ident ':='"`
-	Parts []string `parser:"@( Ident | '.' | '??' | String | Int )+ ';'"`
+	Parts []string `parser:"@( Ident | '.' | '??' | String | Int | Float | '*' | '+' | '-' | '/' | '(' | ')' | ',' | '<' | '>' )+ ';'"`
 }
 
 // ConstraintDecl declares an constraint on one or more properties. An optional

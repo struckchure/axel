@@ -342,17 +342,57 @@ type AndExpr struct {
 }
 
 // Cmp is a single comparison, a postfix null-test (`.x is null` /
-// `.x is not null`), or a bare operand when nothing follows Left. The null-test
+// `.x is not null`), or a bare arithmetic expression when nothing follows Left. The null-test
 // and the binary comparison are mutually-exclusive tails: `Is` marks the former
 // (with `IsNot` for the negated form), `Op`/`Right` the latter.
 type Cmp struct {
 	Pos    lexer.Position
-	Left   *Primary `parser:"@@"`
+	Left   *AddExpr `parser:"@@"`
 	Is     bool     `parser:"( @'is'"`
 	IsNot  bool     `parser:"@'not'? 'null'"`
 	Op     string   `parser:"| @( '!=' | '<=' | '>=' | '=' | '<' | '>' | '??' | 'in' | 'like' | 'ilike' )"`
-	Right  *Primary `parser:"@@ )?"`
+	Right  *AddExpr `parser:"@@ )?"`
 	EndPos lexer.Position
+}
+
+// AddExpr is one or more terms joined by '+' or '-'.
+type AddExpr struct {
+	Pos    lexer.Position
+	Left   *MulExpr `parser:"@@"`
+	Rest   []*AddOp `parser:"( @@ )*"`
+	EndPos lexer.Position
+}
+
+// AddOp is an addition or subtraction operator with its right operand.
+type AddOp struct {
+	Pos    lexer.Position
+	Op     string   `parser:"@( '+' | '-' )"`
+	Right  *MulExpr `parser:"@@"`
+	EndPos lexer.Position
+}
+
+// MulExpr is one or more factors joined by '*' or '/'.
+type MulExpr struct {
+	Pos    lexer.Position
+	Left   *Factor  `parser:"@@"`
+	Rest   []*MulOp `parser:"( @@ )*"`
+	EndPos lexer.Position
+}
+
+// MulOp is a multiplication or division operator with its right operand.
+type MulOp struct {
+	Pos    lexer.Position
+	Op     string  `parser:"@( '*' | '/' )"`
+	Right  *Factor `parser:"@@"`
+	EndPos lexer.Position
+}
+
+// Factor is a single primary operand, optionally preceded by a unary '+' or '-'.
+type Factor struct {
+	Pos     lexer.Position
+	Unary   *string  `parser:"@( '+' | '-' )?"`
+	Primary *Primary `parser:"@@"`
+	EndPos  lexer.Position
 }
 
 // SingleCmp returns the lone comparison when the expression does not chain
@@ -371,7 +411,31 @@ func (e *Expr) SoloPrimary() *Primary {
 	if c == nil || c.Op != "" || c.Is {
 		return nil
 	}
-	return c.Left
+	return c.Left.SoloPrimary()
+}
+
+// SoloPrimary returns the lone primary operand when this AddExpr is a single factor without operators.
+func (a *AddExpr) SoloPrimary() *Primary {
+	if a == nil || len(a.Rest) != 0 || a.Left == nil {
+		return nil
+	}
+	return a.Left.SoloPrimary()
+}
+
+// SoloPrimary returns the lone primary operand when this MulExpr is a single factor without operators.
+func (m *MulExpr) SoloPrimary() *Primary {
+	if m == nil || len(m.Rest) != 0 || m.Left == nil {
+		return nil
+	}
+	return m.Left.SoloPrimary()
+}
+
+// SoloPrimary returns the primary operand when this Factor has no unary sign.
+func (f *Factor) SoloPrimary() *Primary {
+	if f == nil || (f.Unary != nil && *f.Unary != "") {
+		return nil
+	}
+	return f.Primary
 }
 
 // Primary is a single expression operand, with an optional trailing `<Type>`

@@ -393,7 +393,7 @@ func printCmp(b *strings.Builder, c *Cmp) {
 	if c == nil {
 		return
 	}
-	printPrimary(b, c.Left)
+	printAddExpr(b, c.Left)
 	if c.Is {
 		if c.IsNot {
 			b.WriteString(" is not null")
@@ -404,8 +404,40 @@ func printCmp(b *strings.Builder, c *Cmp) {
 	}
 	if c.Op != "" {
 		fmt.Fprintf(b, " %s ", c.Op)
-		printPrimary(b, c.Right)
+		printAddExpr(b, c.Right)
 	}
+}
+
+func printAddExpr(b *strings.Builder, a *AddExpr) {
+	if a == nil {
+		return
+	}
+	printMulExpr(b, a.Left)
+	for _, op := range a.Rest {
+		fmt.Fprintf(b, " %s ", op.Op)
+		printMulExpr(b, op.Right)
+	}
+}
+
+func printMulExpr(b *strings.Builder, m *MulExpr) {
+	if m == nil {
+		return
+	}
+	printFactor(b, m.Left)
+	for _, op := range m.Rest {
+		fmt.Fprintf(b, " %s ", op.Op)
+		printFactor(b, op.Right)
+	}
+}
+
+func printFactor(b *strings.Builder, f *Factor) {
+	if f == nil {
+		return
+	}
+	if f.Unary != nil {
+		b.WriteString(*f.Unary)
+	}
+	printPrimary(b, f.Primary)
 }
 
 func printPrimary(b *strings.Builder, p *Primary) {

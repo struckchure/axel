@@ -75,6 +75,7 @@
 ; Literals
 (string) @string
 (integer) @number
+(float) @number
 
 ; Built-in scalar types
 ((type_identifier) @type.builtin
@@ -96,6 +97,16 @@
   ":="
   "??"
   "@"
+  "="
+  "!="
+  "<"
+  ">"
+  "<="
+  ">="
+  "+"
+  "-"
+  "*"
+  "/"
 ] @operator
 
 ; Punctuation

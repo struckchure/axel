@@ -102,10 +102,11 @@ traversal.
 
 ```asl
 computed display_name := .name ?? .email;
+computed total := (.quantity * .unit_price) - .discount;
+computed tax := .unit_price * 0.2;
 ```
 
-Not stored. The expression is expanded into the SQL at query-compile time, so it can be selected in
-an AQL shape but not indexed.
+Not stored. Supports arithmetic operators (`+`, `-`, `*`, `/`), unary signs (`+`, `-`), function calls, and `??` (null coalescing). The expression is expanded into the SQL at query-compile time, so it can be selected in an AQL shape but not indexed.
 
 ### Rewrites
 

@@ -798,13 +798,32 @@ func dottedFields(fields []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// joinTokens glues a token list (Ident / '.' / '??' / String / Int) back into
-// text, suppressing spaces around '.' so `.name ?? .email` renders correctly.
+func isOp(s string) bool {
+	switch s {
+	case "+", "-", "*", "/", "??", "=", "!=", "<", ">", "<=", ">=", "and", "or", "in", "like", "ilike":
+		return true
+	default:
+		return false
+	}
+}
+
+// joinTokens glues a token list (Ident / '.' / '??' / String / Int / operators) back into
+// text, suppressing spaces around '.' and parens so expressions render cleanly.
 func joinTokens(toks []string) string {
 	var b strings.Builder
 	for i, t := range toks {
-		if i > 0 && t != "." && toks[i-1] != "." {
-			b.WriteByte(' ')
+		if i > 0 {
+			prev := toks[i-1]
+			noSpace := (t == "." && !isOp(prev)) ||
+				prev == "." ||
+				t == ")" ||
+				t == "," ||
+				t == ">" ||
+				prev == "(" ||
+				prev == "<"
+			if !noSpace {
+				b.WriteByte(' ')
+			}
 		}
 		b.WriteString(t)
 	}

@@ -210,3 +210,44 @@ function kv_gc() -> int64 {
         (string)
         (inline_aql
           (aql_source))))))
+
+==================
+computed field with arithmetic and float
+==================
+
+type Item {
+  price: decimal;
+  quantity: int32;
+  computed total := (.quantity * .price) - 10.5;
+  computed tax := .price * 0.2;
+}
+
+---
+
+(source_file
+  (type_definition
+    name: (type_identifier
+      (identifier))
+    (field_declaration
+      name: (field_identifier
+        (identifier))
+      (type_annotation
+        type: (type_identifier
+          (identifier))))
+    (field_declaration
+      name: (field_identifier
+        (identifier))
+      (type_annotation
+        type: (type_identifier
+          (identifier))))
+    (computed_field
+      name: (field_identifier
+        (identifier))
+      (identifier)
+      (identifier)
+      (float))
+    (computed_field
+      name: (field_identifier
+        (identifier))
+      (identifier)
+      (float))))

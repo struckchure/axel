@@ -762,6 +762,44 @@ type Coverage extends Base {
 	}
 }
 
+func TestComputedArithmeticField(t *testing.T) {
+	schema := `
+type OrderItem {
+  required quantity: int32;
+  required unit_price: decimal;
+  discount: decimal;
+  computed total := (.quantity * .unit_price) - .discount;
+  computed tax := .unit_price * 0.2;
+}
+`
+	sf, err := Parse([]byte(schema))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	ir, err := (&Resolver{}).Resolve(sf)
+	if err != nil {
+		t.Fatalf("resolve error: %v", err)
+	}
+	item := ir.ObjectTypes["OrderItem"]
+	if item == nil {
+		t.Fatalf("missing OrderItem type")
+	}
+	if comp := item.Computed["total"]; comp == nil || comp.Expr != "(.quantity * .unit_price) - .discount" && comp.Expr != "(.quantity*.unit_price)-.discount" {
+		t.Errorf("unexpected computed total expr: %+v", comp)
+	}
+	if comp := item.Computed["tax"]; comp == nil || comp.Expr != ".unit_price * 0.2" && comp.Expr != ".unit_price*0.2" {
+		t.Errorf("unexpected computed tax expr: %+v", comp)
+	}
+
+	formatted, err := Format([]byte(schema))
+	if err != nil {
+		t.Fatalf("format error: %v", err)
+	}
+	if !strings.Contains(formatted, "computed total := (.quantity * .unit_price) - .discount;") {
+		t.Errorf("unexpected formatted ASL: %s", formatted)
+	}
+}
+
 
 
 

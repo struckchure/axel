@@ -13,6 +13,14 @@ type User {
   name: str;
   computed display_name := .name ?? .email;
 }
+
+type OrderItem {
+  required quantity: int32;
+  required unit_price: decimal;
+  discount: decimal;
+  computed total := (.quantity * .unit_price) - .discount;
+  computed tax := .unit_price * 0.2;
+}
 ```
 
-Use `??` for a null-coalescing fallback. Computed fields can be referenced in AQL shapes.
+Computed fields support arithmetic operators (`+`, `-`, `*`, `/`), unary signs (`+`, `-`), function calls, and `??` (null coalescing). They can be selected in AQL shapes and queried just like ordinary fields.

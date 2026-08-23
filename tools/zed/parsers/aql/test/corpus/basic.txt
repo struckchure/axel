@@ -572,3 +572,44 @@ update Org filter .id = $id set { members := { "+": (select User filter .id = $u
                         (identifier)))
                     (parameter
                       name: (identifier))))))))))))
+
+==================
+arithmetic in computed fields and filter
+==================
+
+select OrderItem { id, total := (.price * .quantity) - .discount } filter .price * .quantity > 100.5;
+
+---
+
+(source_file
+  (select_statement
+    type: (type_identifier
+      (identifier))
+    (shape
+      (shape_field
+        name: (field_identifier
+          (identifier)))
+      (shape_field
+        name: (field_identifier
+          (identifier))
+        value: (expression
+          (parenthesized_expression
+            (expression
+              (path
+                step: (field_identifier
+                  (identifier)))
+              (path
+                step: (field_identifier
+                  (identifier)))))
+          (path
+            step: (field_identifier
+              (identifier))))))
+    (filter
+      (expression
+        (path
+          step: (field_identifier
+            (identifier)))
+        (path
+          step: (field_identifier
+            (identifier)))
+        (float)))))

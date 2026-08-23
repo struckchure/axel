@@ -1293,7 +1293,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "_operand"
+          "name": "_add_expression"
         },
         {
           "type": "CHOICE",
@@ -1310,7 +1310,7 @@
                     },
                     {
                       "type": "SYMBOL",
-                      "name": "_operand"
+                      "name": "_add_expression"
                     }
                   ]
                 },
@@ -1369,6 +1369,104 @@
         {
           "type": "STRING",
           "value": "ilike"
+        }
+      ]
+    },
+    "_add_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_mul_expression"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "+"
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "-"
+                  }
+                ]
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_mul_expression"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "_mul_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_factor"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "*"
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "/"
+                  }
+                ]
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_factor"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "_factor": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "+"
+                },
+                {
+                  "type": "STRING",
+                  "value": "-"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_operand"
         }
       ]
     },

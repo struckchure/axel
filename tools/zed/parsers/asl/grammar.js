@@ -174,15 +174,35 @@ module.exports = grammar({
     on_clause: ($) => seq("on", field("field", $.identifier), optional(";")),
 
     // computed display_name := .name ?? .email;
+    // computed total := (.quantity * .unit_price) - .discount;
     computed_field: ($) =>
       seq(
         "computed",
         field("name", $.field_identifier),
         ":=",
-        repeat1(
-          choice($.field_identifier, ".", "??", $.string, $.integer),
-        ),
+        repeat1($._computed_token),
         ";",
+      ),
+
+    _computed_token: ($) =>
+      choice(
+        $.identifier,
+        $.string,
+        $.float,
+        $.integer,
+        ".",
+        "??",
+        "+",
+        "-",
+        "*",
+        "/",
+        "(",
+        ")",
+        ",",
+        "<",
+        ">",
+        "=",
+        "!=",
       ),
 
     // constraint exclusive on (.email, .tenant_id);
@@ -211,6 +231,7 @@ module.exports = grammar({
         $.dollar_string,
         $.identifier,
         $.string,
+        $.float,
         $.integer,
         ".",
         ",",
@@ -221,6 +242,9 @@ module.exports = grammar({
         ":",
         "$",
         "*",
+        "+",
+        "-",
+        "/",
         "=",
         "!=",
         "<",
@@ -360,6 +384,7 @@ module.exports = grammar({
         $.dollar_string,
         $.identifier,
         $.string,
+        $.float,
         $.integer,
         ".",
         ",",
@@ -371,10 +396,15 @@ module.exports = grammar({
         ";",
         "$",
         "*",
+        "+",
+        "-",
+        "/",
         "=",
         "!=",
         "<",
         ">",
+        "<=",
+        ">=",
         "@",
         "?",
         "|",
@@ -391,6 +421,8 @@ module.exports = grammar({
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
     string: ($) => /'[^']*'/,
+
+    float: ($) => /[0-9]+\.[0-9]+/,
 
     integer: ($) => /[0-9]+/,
 

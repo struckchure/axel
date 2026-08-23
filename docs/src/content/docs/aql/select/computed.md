@@ -27,12 +27,17 @@ A `multi select` compiles to a correlated `json_agg` subquery (empty array — n
    FROM (SELECT o.id AS id, o.name AS name FROM "organization" o WHERE o.owner = u.id LIMIT 1) o_primary_org_sub) AS primary_org
 ```
 
-Computed shape fields with no sub-select compile as scalar expressions:
+Computed shape fields with no sub-select compile as scalar expressions (including arithmetic and null coalescing):
 
 ```aql
-select User {
+select OrderItem {
   id,
-  label := .name ?? .email
+  unit_price,
+  quantity,
+  discount,
+  subtotal := .unit_price * .quantity,
+  total := (.unit_price * .quantity) - .discount,
+  label := .name ?? .sku
 }
 ```
 

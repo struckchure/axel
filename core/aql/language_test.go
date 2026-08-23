@@ -85,6 +85,19 @@ multi select Post { id, title, author: { id, email }, total := count(.id) filter
 				}
 			},
 		},
+		{
+			name:  "select with arithmetic in shape and filter",
+			query: `select Order { id, subtotal, total := .subtotal * 1.2 + 5, discount := - .discount } filter .quantity * .unit_price >= 100 - $rebate;`,
+			check: func(t *testing.T, stmt *Statement) {
+				if stmt.Select == nil || stmt.Select.Body.Shape == nil || len(stmt.Select.Body.Shape.Fields) != 4 {
+					t.Fatalf("select = %+v", stmt.Select)
+				}
+				totalField := stmt.Select.Body.Shape.Fields[2]
+				if totalField.Name != "total" || totalField.Computed == nil {
+					t.Fatalf("total field = %+v", totalField)
+				}
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -111,6 +124,11 @@ func TestParseExpressionsAndRejectsMalformedInput(t *testing.T) {
 		`.expires_at is null or (.active = true and .score >= 1.5)`,
 		`global tenant_id = $tenant<uuid>`,
 		`(select User { id } filter .email ilike $email?).id<uuid>`,
+		`.price * .quantity + $tax`,
+		`(.price + $fee) * (1.0 - .discount / 100.0)`,
+		`- .offset + 10`,
+		`.a / .b - .c * .d`,
+		`- ($a + $b)`,
 	} {
 		if _, err := ParseExpr(expr); err != nil {
 			t.Errorf("ParseExpr(%q): %v", expr, err)
@@ -130,5 +148,33 @@ func TestParseExpressionsAndRejectsMalformedInput(t *testing.T) {
 
 	if _, err := ParseExpr(`.id = `); err == nil || !strings.Contains(err.Error(), "unexpected") {
 		t.Errorf("malformed expression error = %v", err)
+	}
+}
+
+func TestArithmeticPrecedence(t *testing.T) {
+	expr, err := ParseExpr(`.a + .b * .c`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// .a + (.b * .c): AddExpr has 2 terms (Left: .a, Rest[0]: + (.b * .c))
+	cmp := expr.SingleCmp()
+	if cmp == nil || cmp.Left == nil || len(cmp.Left.Rest) != 1 {
+		t.Fatalf("expected AddExpr with 1 op in Rest, got %+v", cmp)
+	}
+	if cmp.Left.Rest[0].Op != "+" {
+		t.Errorf("expected '+' op, got %s", cmp.Left.Rest[0].Op)
+	}
+	mul := cmp.Left.Rest[0].Right
+	if mul == nil || len(mul.Rest) != 1 || mul.Rest[0].Op != "*" {
+		t.Errorf("expected MulExpr with '*' op, got %+v", mul)
+	}
+
+	// Formatted roundtrip
+	formatted, err := Format([]byte(`select Item { val := .a + .b * .c / .d - .e };`))
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if !strings.Contains(formatted, ".a + .b * .c / .d - .e") {
+		t.Errorf("unexpected formatted output: %s", formatted)
 	}
 }

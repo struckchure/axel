@@ -16,6 +16,10 @@
           "named": true
         },
         {
+          "type": "float",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
@@ -55,7 +59,11 @@
       "required": false,
       "types": [
         {
-          "type": "field_identifier",
+          "type": "float",
+          "named": true
+        },
+        {
+          "type": "identifier",
           "named": true
         },
         {
@@ -308,6 +316,10 @@
         },
         {
           "type": "dollar_string",
+          "named": true
+        },
+        {
+          "type": "float",
           "named": true
         },
         {
@@ -1097,6 +1109,10 @@
   {
     "type": "filter",
     "named": false
+  },
+  {
+    "type": "float",
+    "named": true
   },
   {
     "type": "for",

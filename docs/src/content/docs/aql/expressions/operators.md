@@ -7,6 +7,10 @@ description: "Comparison and logical operators, and combining conditions"
 
 | AQL operator | SQL equivalent |
 | ------------ | -------------- |
+| `+`          | `+` (addition or unary plus) |
+| `-`          | `-` (subtraction or unary minus) |
+| `*`          | `*` (multiplication) |
+| `/`          | `/` (division) |
 | `=`          | `=`            |
 | `!=`         | `!=`           |
 | `<`          | `<`            |
@@ -21,6 +25,39 @@ description: "Comparison and logical operators, and combining conditions"
 | `ilike`      | `ILIKE`        |
 | `is null`      | `IS NULL`      |
 | `is not null`  | `IS NOT NULL`  |
+
+## Arithmetic
+
+AQL supports binary arithmetic operators (`+`, `-`, `*`, `/`) and unary signs (`+`, `-`). Expressions follow standard mathematical operator precedence:
+
+1. **Unary** `+`, `-` (e.g. `- .discount`)
+2. **Multiplicative** `*`, `/`
+3. **Additive** `+`, `-`
+4. **Comparisons & Null tests** `=`, `!=`, `<`, `<=`, `>`, `>=`, `is [not] null`, `??`
+5. **Logical** `and`, then `or`
+
+```aql
+# Computed shape fields
+select Order {
+  id,
+  subtotal,
+  tax := .subtotal * 0.2,
+  total := (.subtotal * 1.2) - .discount
+};
+
+# Filtering with arithmetic
+multi select Product { id, title }
+  filter .quantity * .unit_price >= $min_total - $rebate;
+
+# Updating with arithmetic
+update Account filter .id = $id<uuid>
+  set { balance := .balance - $amount<int64> };
+
+# Ordering by calculated expressions
+multi select Product { id, name }
+  order by .unit_price * .stock_count desc;
+```
+
 
 ## Null tests
 

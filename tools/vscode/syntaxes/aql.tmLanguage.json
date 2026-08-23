@@ -145,7 +145,7 @@
       "name": "constant.numeric.aql"
     },
     "operators": {
-      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\?|\\+|\\-",
+      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\?|\\+|\\-|\\*|\\/",
       "name": "keyword.operator.aql"
     },
     "punctuation": {

@@ -76,7 +76,7 @@ export const aql: LanguageRegistration = {
       name: "keyword.operator.splat.aql",
     },
     operator: {
-      match: ":=|\\?\\?|!=|<=|>=|=|<|>",
+      match: ":=|\\?\\?|!=|<=|>=|=|<|>|\\+|\\-|\\*|\\/",
       name: "keyword.operator.aql",
     },
   },
@@ -141,7 +141,7 @@ export const asl: LanguageRegistration = {
       name: "entity.name.type.asl",
     },
     operator: {
-      match: ":=|\\?\\?|@",
+      match: ":=|\\?\\?|!=|<=|>=|=|<|>|\\+|\\-|\\*|\\/|@",
       name: "keyword.operator.asl",
     },
     "policy-predicate": {

@@ -1620,33 +1620,42 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		return "", nil
 	}
 
+	leftP := cmp.Left.SoloPrimary()
+	var rightP *aql.Primary
+	if cmp.Right != nil {
+		rightP = cmp.Right.SoloPrimary()
+	}
+
 	// Membership: `<value_or_set> in .<path>` where the path ends in a multi-link is a
 	// set test, lowered to `EXISTS (SELECT 1 FROM junction … WHERE … IN (<left>))` rather than a
 	// scalar comparison. Intercept before compilePrimary tries (and fails) to
 	// lower the multi-link path as a scalar, or before compilePrimary rejects a multi with-binding on the left.
-	if cmp.Op == "in" && cmp.Right != nil && cmp.Right.Path != nil {
+	if cmp.Op == "in" && rightP != nil && rightP.Path != nil {
 		var left string
-		if b, field, ok := c.withOperand(cmp.Left); ok && b.multi {
-			var err error
-			left, err = c.withSetRefCast(b, field, cmp.Left.Cast)
-			if err != nil {
-				return "", err
+		if leftP != nil {
+			if b, field, ok := c.withOperand(leftP); ok && b.multi {
+				var err error
+				left, err = c.withSetRefCast(b, field, leftP.Cast)
+				if err != nil {
+					return "", err
+				}
 			}
-		} else {
+		}
+		if left == "" {
 			var err error
-			left, err = c.compilePrimary(cmp.Left, alias, rt)
+			left, err = c.compileAddExpr(cmp.Left, alias, rt)
 			if err != nil {
 				return "", err
 			}
 		}
-		if membership, ok, err := c.compileMembership(left, cmp.Right.Path, alias, rt); err != nil {
+		if membership, ok, err := c.compileMembership(left, rightP.Path, alias, rt); err != nil {
 			return "", err
 		} else if ok {
 			return membership, nil
 		}
 	}
 
-	left, err := c.compilePrimary(cmp.Left, alias, rt)
+	left, err := c.compileAddExpr(cmp.Left, alias, rt)
 	if err != nil {
 		return "", err
 	}
@@ -1654,8 +1663,8 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	// Postfix null-test: `.x is null` / `.x is not null`.
 	if cmp.Is {
 		cast := ""
-		if cmp.Left != nil && cmp.Left.Param != nil && !strings.Contains(left, "::") {
-			cast = c.paramCastSuffix(cmp.Left, nil, rt)
+		if leftP != nil && leftP.Param != nil && !strings.Contains(left, "::") {
+			cast = c.paramCastSuffix(leftP, nil, rt)
 		}
 		if cmp.IsNot {
 			return left + cast + " IS NOT NULL", nil
@@ -1673,9 +1682,9 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	// rejects it as a non-scalar. A trailing cast (<str>, <uuid>, …) is applied
 	// inside the subquery projection so Postgres sees the cast at the column
 	// level: `IN (SELECT (_with_api_key.id)::TEXT FROM _with_api_key)`.
-	if cmp.Op == "in" && cmp.Right != nil {
-		if b, field, ok := c.withOperand(cmp.Right); ok && b.multi {
-			set, err := c.withSetRefCast(b, field, cmp.Right.Cast)
+	if cmp.Op == "in" && rightP != nil {
+		if b, field, ok := c.withOperand(rightP); ok && b.multi {
+			set, err := c.withSetRefCast(b, field, rightP.Cast)
 			if err != nil {
 				return "", err
 			}
@@ -1683,18 +1692,18 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		}
 	}
 
-	right, err := c.compilePrimary(cmp.Right, alias, rt)
+	right, err := c.compileAddExpr(cmp.Right, alias, rt)
 	if err != nil {
 		return "", err
 	}
 
 	// Infer param types from the opposite side of a comparison.
 	if rt != nil {
-		c.inferFilterParamType(cmp.Left, cmp.Right, rt)
-		c.inferFilterParamType(cmp.Right, cmp.Left, rt)
+		c.inferFilterParamType(leftP, rightP, rt)
+		c.inferFilterParamType(rightP, leftP, rt)
 	}
-	c.inferWithParamType(cmp.Left, cmp.Right)
-	c.inferWithParamType(cmp.Right, cmp.Left)
+	c.inferWithParamType(leftP, rightP)
+	c.inferWithParamType(rightP, leftP)
 
 	// Null-coalesce ($x ?? .field) is a function, not an infix operator: emit
 	// COALESCE(left, right). A param operand is cast to the SQL type of the
@@ -1702,11 +1711,11 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	if cmp.Op == "??" {
 		lc := left
 		if !strings.Contains(left, "::") {
-			lc += c.paramCastSuffix(cmp.Left, cmp.Right, rt)
+			lc += c.paramCastSuffix(leftP, rightP, rt)
 		}
 		rc := right
 		if !strings.Contains(right, "::") {
-			rc += c.paramCastSuffix(cmp.Right, cmp.Left, rt)
+			rc += c.paramCastSuffix(rightP, leftP, rt)
 		}
 		return fmt.Sprintf("COALESCE(%s, %s)", lc, rc), nil
 	}
@@ -1719,18 +1728,12 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	// all rows — `($N IS NULL OR result)`; in an OR it must instead drop out of
 	// the disjunction — `($N IS NOT NULL AND result)` — otherwise one omitted
 	// param makes the whole OR true and silently voids the other arms.
-	//
-	// The standalone `$N IS [NOT] NULL` occurrence carries no type, so cast it to
-	// the SQL type of the column it's compared against — otherwise Postgres can't
-	// determine the parameter type when the value is null (42P08). Casting to the
-	// column type keeps the cast consistent with the comparison (avoiding e.g. a
-	// str-vs-uuid conflict).
-	for _, operand := range []*aql.Primary{cmp.Left, cmp.Right} {
+	for _, operand := range []*aql.Primary{leftP, rightP} {
 		if operand != nil && operand.Param != nil && operand.Param.Optional {
 			ph := c.params.add(operand.Param.Name, "")
-			other := cmp.Right
-			if operand == cmp.Right {
-				other = cmp.Left
+			other := rightP
+			if operand == rightP {
+				other = leftP
 			}
 			cast := c.paramCastSuffix(operand, other, rt)
 			if orContext {
@@ -1742,6 +1745,69 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	}
 
 	return result, nil
+}
+
+func (c *compiler) compileAddExpr(add *aql.AddExpr, alias string, rt *asl.ResolvedType) (string, error) {
+	if add == nil {
+		return "", nil
+	}
+	left, err := c.compileMulExpr(add.Left, alias, rt)
+	if err != nil {
+		return "", err
+	}
+	if len(add.Rest) == 0 {
+		return left, nil
+	}
+	res := left
+	for _, op := range add.Rest {
+		right, err := c.compileMulExpr(op.Right, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		res = fmt.Sprintf("%s %s %s", res, op.Op, right)
+	}
+	return res, nil
+}
+
+func (c *compiler) compileMulExpr(mul *aql.MulExpr, alias string, rt *asl.ResolvedType) (string, error) {
+	if mul == nil {
+		return "", nil
+	}
+	left, err := c.compileFactor(mul.Left, alias, rt)
+	if err != nil {
+		return "", err
+	}
+	if len(mul.Rest) == 0 {
+		return left, nil
+	}
+	res := left
+	for _, op := range mul.Rest {
+		right, err := c.compileFactor(op.Right, alias, rt)
+		if err != nil {
+			return "", err
+		}
+		res = fmt.Sprintf("%s %s %s", res, op.Op, right)
+	}
+	return res, nil
+}
+
+func (c *compiler) compileFactor(f *aql.Factor, alias string, rt *asl.ResolvedType) (string, error) {
+	if f == nil {
+		return "", fmt.Errorf("nil factor expression")
+	}
+	sql, err := c.compilePrimary(f.Primary, alias, rt)
+	if err != nil {
+		return "", err
+	}
+	if f.Unary != nil && *f.Unary != "" {
+		if *f.Unary == "-" {
+			return "-" + sql, nil
+		}
+		if *f.Unary == "+" {
+			return "+" + sql, nil
+		}
+	}
+	return sql, nil
 }
 
 func (c *compiler) compilePrimary(p *aql.Primary, alias string, rt *asl.ResolvedType) (string, error) {
@@ -1961,6 +2027,14 @@ func (c *compiler) compileTriggerField(row, field string, subfields []string) (s
 func (c *compiler) compilePath(path *aql.PathExpr, alias string, rt *asl.ResolvedType) (string, error) {
 	if len(path.Steps) == 0 {
 		return "", fmt.Errorf("empty path expression")
+	}
+
+	if rt == nil {
+		p := strings.Join(path.Steps, ".")
+		if alias != "" {
+			return alias + "." + p, nil
+		}
+		return p, nil
 	}
 
 	// Single step: .fieldName → alias.column_name
@@ -2516,6 +2590,12 @@ func paramAQLType(params *paramCollector, name string) string {
 // expandComputedExpr replaces `.field` references with `alias.field` in a
 // raw computed expression string (stored as joined token parts).
 func expandComputedExpr(expr, alias string) string {
+	if parsed, err := aql.ParseExpr(expr); err == nil {
+		c := &compiler{aliasCounts: make(map[string]int)}
+		if sql, err := c.compileExpr(parsed, alias, nil); err == nil {
+			return sql
+		}
+	}
 	// The expression is stored as token parts joined together, e.g. ".name??.email"
 	// Replace leading dots with alias prefix.
 	parts := strings.Fields(expr)

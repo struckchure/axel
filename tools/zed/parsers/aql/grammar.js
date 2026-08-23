@@ -262,15 +262,24 @@ module.exports = grammar({
     _and_expression: ($) =>
       seq($._comparison, repeat(seq("and", $._comparison))),
 
-    // primary ( op primary )?  |  primary is [not] null
+    // add_expr ( op add_expr )?  |  add_expr is [not] null
     _comparison: ($) =>
       seq(
-        $._operand,
-        optional(choice(seq($._binary_operator, $._operand), $.null_test)),
+        $._add_expression,
+        optional(choice(seq($._binary_operator, $._add_expression), $.null_test)),
       ),
 
     _binary_operator: ($) =>
       choice("!=", "<=", ">=", "=", "<", ">", "??", "in", "like", "ilike"),
+
+    _add_expression: ($) =>
+      seq($._mul_expression, repeat(seq(choice("+", "-"), $._mul_expression))),
+
+    _mul_expression: ($) =>
+      seq($._factor, repeat(seq(choice("*", "/"), $._factor))),
+
+    _factor: ($) =>
+      seq(optional(choice("+", "-")), $._operand),
 
     // postfix `is null` / `is not null`
     null_test: ($) => seq("is", optional("not"), "null"),

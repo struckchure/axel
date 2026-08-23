@@ -214,11 +214,11 @@
       }
     },
     "numbers": {
-      "match": "\\b\\d+\\b",
+      "match": "\\b\\d+(\\.\\d+)?\\b",
       "name": "constant.numeric.asl"
     },
     "operators": {
-      "match": ":=|\\?\\?|@",
+      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\+|\\-|\\*|\\/|@",
       "name": "keyword.operator.asl"
     },
     "punctuation": {

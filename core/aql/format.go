@@ -495,10 +495,11 @@ func groupOperand(c *Cmp) *Expr {
 	if c.Is || c.Op != "" || c.Left == nil {
 		return nil
 	}
-	if c.Left.SubExpr == nil || c.Left.Cast != "" {
+	p := c.Left.SoloPrimary()
+	if p == nil || p.SubExpr == nil || p.Cast != "" {
 		return nil
 	}
-	return c.Left.SubExpr
+	return p.SubExpr
 }
 
 func (f *aqlFmt) shape(s *Shape) {
