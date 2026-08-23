@@ -27,6 +27,7 @@
   "conflict"
   "on"
   "else"
+  "global"
 ] @keyword
 
 ; Operator keywords

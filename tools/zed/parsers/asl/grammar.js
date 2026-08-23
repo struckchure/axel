@@ -41,14 +41,44 @@ module.exports = grammar({
         ";",
       ),
 
-    // scalar type EmailStr extending str;
+    // scalar type EmailStr extends str;
+    // scalar type Coordinate extends json { lat: str; lng: str; }
+    // scalar type Point extends sql "geography(Point, 4326)" as { latitude: float32; longitude: float32; };
+    // scalar type Embedding extends sql "vector(1536)" as multi float32;
+    // scalar type Citext extends sql "citext" as str;
+    // scalar type Geometry extends sql "geometry";
     scalar_type: ($) =>
       seq(
         "scalar",
         "type",
         field("name", $.type_identifier),
-        "extending",
-        field("base", $.type_identifier),
+        choice("extends", "extending"),
+        choice(
+          seq("sql", field("sql_type", $.string)),
+          field("base", $.type_identifier),
+        ),
+        optional(
+          seq(
+            "as",
+            optional("multi"),
+            choice(
+              field("as_type", $.type_identifier),
+              seq("{", repeat($._scalar_field), "}"),
+            ),
+          ),
+        ),
+        optional(seq("{", repeat(choice($._field_body_item, $._scalar_field)), "}")),
+        optional(";"),
+      ),
+
+    _scalar_field: ($) =>
+      seq(
+        optional("required"),
+        optional("multi"),
+        field("name", $.field_identifier),
+        ":",
+        field("type", $.type_identifier),
+        optional(seq(":=", field("computed", $.return_expression))),
         ";",
       ),
 

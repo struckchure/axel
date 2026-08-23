@@ -673,9 +673,9 @@
     "type": "scalar_type",
     "named": true,
     "fields": {
-      "base": {
+      "as_type": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "type_identifier",
@@ -683,9 +683,53 @@
           }
         ]
       },
-      "name": {
+      "base": {
         "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
+      "computed": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "return_expression",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": true,
         "required": true,
+        "types": [
+          {
+            "type": "field_identifier",
+            "named": true
+          },
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
+      "sql_type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": true,
+        "required": false,
         "types": [
           {
             "type": "type_identifier",
@@ -693,6 +737,28 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "default",
+          "named": true
+        },
+        {
+          "type": "field_constraint",
+          "named": true
+        },
+        {
+          "type": "on_clause",
+          "named": true
+        },
+        {
+          "type": "rewrite",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1050,6 +1116,10 @@
     "named": true
   },
   {
+    "type": "as",
+    "named": false
+  },
+  {
     "type": "before",
     "named": false
   },
@@ -1188,6 +1258,10 @@
   },
   {
     "type": "single",
+    "named": false
+  },
+  {
+    "type": "sql",
     "named": false
   },
   {
