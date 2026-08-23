@@ -322,12 +322,21 @@ multi select Transaction { id }
 filter .status = $status
 limit $limit;
 `
+	want := `var (
+  $status<TransactionStatus>?;
+  $limit<int32>?;
+)
+
+multi select Transaction { id }
+filter .status = $status
+limit $limit;
+`
 	out, err := aql.Format([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != src {
-		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, src)
+	if out != want {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, want)
 	}
 	out2, err := aql.Format([]byte(out))
 	if err != nil {

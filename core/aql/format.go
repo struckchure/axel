@@ -131,6 +131,9 @@ func (f *aqlFmt) statement(stmt *Statement) {
 	for _, v := range stmt.Vars {
 		f.varBlock(v)
 	}
+	if len(stmt.Vars) > 0 {
+		f.out.WriteByte('\n')
+	}
 	f.withBlock(stmt.With)
 	switch {
 	case stmt.Select != nil:
