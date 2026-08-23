@@ -37,6 +37,14 @@ func SchemaHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 // document, resolved against the workspace schema: a directive summary, type summary, or a
 // `field: type` line for a field of the query's type.
 func QueryHover(text string, offset int, schema *asl.SchemaIR) *Hover {
+	// 1. Variable / Parameter hover ($param reference)
+	if pName, pStart, pEnd, isParam := paramNameAt(text, offset); isParam {
+		pRng := Range{Start: OffsetToPosition(text, pStart), End: OffsetToPosition(text, pEnd)}
+		if h := paramHover(text, pName, pRng, schema); h != nil {
+			return h
+		}
+	}
+
 	word, start, end := wordAt(text, offset)
 	if word == "" {
 		return nil
@@ -56,6 +64,13 @@ func QueryHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 		return &Hover{Contents: "**Relation Load Strategy: `join`**\n\nCompiles relation links and subqueries using `LEFT JOIN LATERAL` in the SQL FROM clause.", Range: rng}
 	case "query":
 		return &Hover{Contents: "**Relation Load Strategy: `query`** (default)\n\nCompiles relation links and subqueries using correlated scalar subqueries (`json_agg` / `row_to_json`) in the SELECT column list.", Range: rng}
+	}
+
+	// 2. With-binding or var param by name (when hovering on identifier in var or with block)
+	if stmt, err := aql.ParseString(text); err == nil && stmt != nil {
+		if h := varOrWithHover(stmt, word, rng, schema); h != nil {
+			return h
+		}
 	}
 
 	if schema == nil {
@@ -108,6 +123,69 @@ func QueryHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 						}
 					}
 				}
+			}
+		}
+	}
+	return nil
+}
+
+func paramHover(text, paramName string, rng Range, schema *asl.SchemaIR) *Hover {
+	stmt, _ := aql.ParseString(text)
+	if stmt != nil {
+		for _, v := range stmt.Vars {
+			for _, p := range v.Params {
+				if p.Name == paramName {
+					return formatParamHover(p, rng, schema)
+				}
+			}
+		}
+	}
+	return &Hover{
+		Contents: "```aql\nvar $" + paramName + "\n```\nQuery parameter",
+		Range:    rng,
+	}
+}
+
+func formatParamHover(p *aql.Param, rng Range, schema *asl.SchemaIR) *Hover {
+	typeAnnot := ""
+	if p.Type != "" {
+		typeAnnot = "<" + p.Type + ">"
+	}
+	opt := ""
+	if p.Optional {
+		opt = "?"
+	}
+	content := "```aql\nvar $" + p.Name + typeAnnot + opt + "\n```\nQuery parameter"
+	if schema != nil && p.Type != "" {
+		if s, ok := schema.ScalarTypes[p.Type]; ok {
+			content += "\n\n" + scalarHover(s)
+		} else if e, ok := schema.EnumTypes[p.Type]; ok {
+			content += "\n\n```asl\nenum " + e.Name + " { " + join(e.Values) + " }\n```"
+		} else if rt, ok := schema.ObjectTypes[p.Type]; ok {
+			content += "\n\n" + typeHover(rt)
+		}
+	}
+	return &Hover{
+		Contents: content,
+		Range:    rng,
+	}
+}
+
+func varOrWithHover(stmt *aql.Statement, word string, rng Range, schema *asl.SchemaIR) *Hover {
+	if stmt.With != nil {
+		for _, b := range stmt.With.Bindings {
+			if b.Name == word {
+				return &Hover{
+					Contents: "```aql\nwith " + b.Name + " := ...\n```\nSubquery CTE binding",
+					Range:    rng,
+				}
+			}
+		}
+	}
+	for _, v := range stmt.Vars {
+		for _, p := range v.Params {
+			if p.Name == word {
+				return formatParamHover(p, rng, schema)
 			}
 		}
 	}

@@ -402,6 +402,9 @@ func (s *lspServer) definition(ctx *glsp.Context, params *protocol.DefinitionPar
 	} else {
 		schema, _ := s.workspaceSchema(uri)
 		loc = corelsp.QueryDefinitionIn(text, offset, schema, s.schemaFileSet(""))
+		if loc != nil && loc.URI == "" {
+			loc.URI = string(uri) // same-document reference (e.g. var block, with binding)
+		}
 	}
 	if loc == nil {
 		return nil, nil

@@ -166,6 +166,52 @@ func TestAdvancedDefinitionAcrossFiles(t *testing.T) {
 	}
 }
 
+func TestQueryDefinitionVariablesAndWithBindings(t *testing.T) {
+	schema := resolveAll(t, userFile)
+	q := `var (
+  $email<str>;
+  $limit<int32>?;
+)
+
+with (
+  admins := (select User filter .role = Role.Admin);
+)
+
+multi select User { id, email }
+filter .email = $email and .id in admins.id
+limit $limit;`
+
+	// 1. $email reference in filter -> jumps to var ($email<str>;)
+	locEmail := QueryDefinitionIn(q, offsetIn(t, q, "$email and"), schema, []SchemaFile{userFile})
+	if locEmail == nil {
+		t.Fatal("expected definition for $email, got nil")
+	}
+	if locEmail.URI != "" {
+		t.Errorf("expected empty URI (current doc), got %q", locEmail.URI)
+	}
+	if got := lineOf(q, locEmail.Range.Start.Line); !strings.Contains(got, "$email<str>;") {
+		t.Errorf("landed on line %q, want $email<str>; declaration", got)
+	}
+
+	// 2. $limit reference in limit clause -> jumps to var ($limit<int32>?;)
+	locLimit := QueryDefinitionIn(q, offsetIn(t, q, "$limit;"), schema, []SchemaFile{userFile})
+	if locLimit == nil {
+		t.Fatal("expected definition for $limit, got nil")
+	}
+	if got := lineOf(q, locLimit.Range.Start.Line); !strings.Contains(got, "$limit<int32>?;") {
+		t.Errorf("landed on line %q, want $limit declaration", got)
+	}
+
+	// 3. admins reference in admins.id -> jumps to with (admins := ...)
+	locAdmins := QueryDefinitionIn(q, offsetIn(t, q, "admins.id"), schema, []SchemaFile{userFile})
+	if locAdmins == nil {
+		t.Fatal("expected definition for admins, got nil")
+	}
+	if got := lineOf(q, locAdmins.Range.Start.Line); !strings.Contains(got, "admins :=") {
+		t.Errorf("landed on line %q, want with admins := line", got)
+	}
+}
+
 func lineOf(text string, line int) string {
 	lines := strings.Split(text, "\n")
 	if line < 0 || line >= len(lines) {

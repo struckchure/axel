@@ -103,4 +103,65 @@ type Venue {
 	}
 }
 
+func TestQueryHoverVariablesAndWithBindings(t *testing.T) {
+	schemaText := `
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
+};
+
+enum Status { Active, Inactive }
+
+type Venue {
+  required id: uuid;
+  status: Status;
+  location: Point;
+}
+`
+	schema := schemaFor(t, schemaText)
+
+	qText := `var (
+  $lat<float32>;
+  $status<Status>?;
+  $target<Point>;
+)
+
+with (
+  nearby := (select Venue filter .status = Status.Active);
+)
+
+multi select Venue { id }
+filter ST_DWithin(.location, $target, 1000.0) and .status = $status;`
+
+	// 1. Hover on $lat reference
+	hLat := QueryHover(qText, strings.Index(qText, "$lat"), schema)
+	if hLat == nil || !strings.Contains(hLat.Contents, "var $lat<float32>") {
+		t.Fatalf("expected hover for $lat, got: %v", hLat)
+	}
+
+	// 2. Hover on $status reference in filter
+	hStatus := QueryHover(qText, strings.LastIndex(qText, "$status"), schema)
+	if hStatus == nil || !strings.Contains(hStatus.Contents, "var $status<Status>?") {
+		t.Fatalf("expected hover for $status, got: %v", hStatus)
+	}
+	if !strings.Contains(hStatus.Contents, "enum Status { Active, Inactive }") {
+		t.Errorf("expected enum definition in $status hover:\n%s", hStatus.Contents)
+	}
+
+	// 3. Hover on $target with custom Point scalar
+	hTarget := QueryHover(qText, strings.Index(qText, "$target,"), schema)
+	if hTarget == nil || !strings.Contains(hTarget.Contents, "var $target<Point>") {
+		t.Fatalf("expected hover for $target, got: %v", hTarget)
+	}
+	if !strings.Contains(hTarget.Contents, "scalar type Point extends sql") {
+		t.Errorf("expected Point scalar definition in $target hover:\n%s", hTarget.Contents)
+	}
+
+	// 4. Hover on with-binding nearby
+	hNearby := QueryHover(qText, strings.Index(qText, "nearby :="), schema)
+	if hNearby == nil || !strings.Contains(hNearby.Contents, "with nearby :=") {
+		t.Fatalf("expected hover for nearby, got: %v", hNearby)
+	}
+}
+
 

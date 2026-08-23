@@ -88,3 +88,20 @@ func commentStart(text string, i int) int {
 	}
 	return lineStart + hash
 }
+
+// paramNameAt inspects whether offset is on a parameter reference (e.g. `$lat`),
+// returning the parameter name, byte range including `$`, and true if so.
+func paramNameAt(text string, offset int) (string, int, int, bool) {
+	if offset < len(text) && text[offset] == '$' {
+		word, _, e := wordAt(text, offset+1)
+		if word != "" {
+			return word, offset, e, true
+		}
+	}
+	word, start, end := wordAt(text, offset)
+	if word != "" && start > 0 && text[start-1] == '$' {
+		return word, start - 1, end, true
+	}
+	return "", 0, 0, false
+}
+

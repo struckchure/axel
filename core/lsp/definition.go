@@ -75,10 +75,43 @@ func QueryDefinitionIn(text string, offset int, schema *asl.SchemaIR, files []Sc
 	if schema == nil || len(files) == 0 {
 		return nil
 	}
+
+	// 1. Variable / Parameter reference ($param)
+	if pName, _, _, isParam := paramNameAt(text, offset); isParam {
+		if stmt, err := aql.ParseString(text); err == nil && stmt != nil {
+			for _, v := range stmt.Vars {
+				for _, p := range v.Params {
+					if p.Name == pName {
+						return &Location{URI: "", Range: nameSelection(text, p.Pos, "$"+p.Name)}
+					}
+				}
+			}
+		}
+	}
+
 	word, start, _ := wordAt(text, offset)
 	if word == "" {
 		return nil
 	}
+
+	// 2. With-binding or var param by name (when clicking on binding name or param identifier)
+	if stmt, err := aql.ParseString(text); err == nil && stmt != nil {
+		if stmt.With != nil {
+			for _, b := range stmt.With.Bindings {
+				if b.Name == word {
+					return &Location{URI: "", Range: nameSelection(text, b.Pos, b.Name)}
+				}
+			}
+		}
+		for _, v := range stmt.Vars {
+			for _, p := range v.Params {
+				if p.Name == word {
+					return &Location{URI: "", Range: nameSelection(text, p.Pos, "$"+p.Name)}
+				}
+			}
+		}
+	}
+
 	// Qualified enum member (EnumName.Value): resolve to the value token inside
 	// the enum declaration.
 	if qualifier, ok := qualifierBefore(text, start); ok {
