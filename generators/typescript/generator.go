@@ -1261,6 +1261,13 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	// Queries class — holds all typed AQL convenience methods.
 	buf.WriteString("export class Queries {\n")
 	fmt.Fprintf(&buf, "  constructor(private db: %s) {}\n\n", g.client.dbType())
+	fmt.Fprintf(&buf, "  withDb(db: %s): Queries;\n", g.client.dbType())
+	fmt.Fprintf(&buf, "  withDb<T>(db: %s, fn: (q: Queries) => Promise<T>): Promise<T>;\n", g.client.dbType())
+	fmt.Fprintf(&buf, "  withDb<T>(db: %s, fn?: (q: Queries) => Promise<T>): Queries | Promise<T> {\n", g.client.dbType())
+	buf.WriteString("    const q = new Queries(db);\n")
+	buf.WriteString("    if (fn) return fn(q);\n")
+	buf.WriteString("    return q;\n")
+	buf.WriteString("  }\n\n")
 
 	for _, q := range g.queries {
 		fn := q.Name
@@ -1321,6 +1328,13 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("  public query: Queries;\n\n")
 	fmt.Fprintf(&buf, "  constructor(private db: %s) {\n", g.client.dbType())
 	buf.WriteString("    this.query = new Queries(db);\n")
+	buf.WriteString("  }\n\n")
+	fmt.Fprintf(&buf, "  withDb(db: %s): Queries;\n", g.client.dbType())
+	fmt.Fprintf(&buf, "  withDb<T>(db: %s, fn: (q: Queries) => Promise<T>): Promise<T>;\n", g.client.dbType())
+	fmt.Fprintf(&buf, "  withDb<T>(db: %s, fn?: (q: Queries) => Promise<T>): Queries | Promise<T> {\n", g.client.dbType())
+	buf.WriteString("    const q = new Queries(db);\n")
+	buf.WriteString("    if (fn) return fn(q);\n")
+	buf.WriteString("    return q;\n")
 	buf.WriteString("  }\n\n")
 
 	buf.WriteString("  select<K extends keyof AxelSchema, S extends Shape<AxelSchema[K]>>(\n")

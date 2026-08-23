@@ -13,19 +13,20 @@ export interface Post {
   content: string;
   createdAt: Date;
   id: string;
+  slug?: string | null;
   title: string;
   updatedAt: Date;
   authorId: string;
 }
 
 export interface User {
-  active: boolean | null;
+  active?: boolean | null;
   age: number;
   createdAt: Date;
   email: string;
   health: number;
   id: string;
-  name: string | null;
+  name?: string | null;
   updatedAt: Date;
 }
 

@@ -306,6 +306,22 @@ import { createDoc } from "./gen/create_doc.ts";
 const doc = await createDoc(db, params, { currentUser: userId });
 ```
 
+### Transactions & Custom Connections — `withDb()`
+
+To run generated query methods inside an existing transaction or custom connection, use `withDb(db)` on `Runner` or `Queries`. You can obtain a `Queries` instance directly or pass an async callback:
+
+```ts
+// Direct call:
+const q = runner.withDb(tx);
+const doc = await q.createDoc(params);
+
+// Callback style:
+await runner.withDb(tx, async (q) => {
+  const user = await q.createUser(userParams);
+  return q.createDoc({ ...docParams, authorId: user.id });
+});
+```
+
 ---
 
 ## Go generator (`-g go`)
@@ -427,6 +443,33 @@ using the `Runner`:
 
 ```go
 doc, err := gen.CreateDoc(ctx, db, params, gen.WithCurrentUser(userID))
+```
+
+### Transactions & Custom Connections — `WithDB()` and `NewQueries()`
+
+To execute generated query methods inside an existing `pgx.Tx` or custom connection, use `WithDB()` on `Runner` or `Queries`, or construct a `Queries` directly with `NewQueries()`:
+
+```go
+tx, err := db.Begin(ctx)
+if err != nil {
+    return err
+}
+defer tx.Rollback(ctx)
+
+// Via Runner or Queries.WithDB:
+q := runner.WithDB(tx)
+// or: q := gen.NewQueries(tx)
+
+user, err := q.CreateUser(ctx, userParams)
+if err != nil {
+    return err
+}
+doc, err := q.CreateDoc(ctx, docParams)
+if err != nil {
+    return err
+}
+
+return tx.Commit(ctx)
 ```
 
 ---

@@ -197,6 +197,24 @@ delete Post filter .created_at < $cutoff;
 Full grammar — `with` blocks, sub-selects, casts, `group by`/`having`, conflict targets:
 **`references/aql.md`**.
 
+## Client and codegen essentials
+
+Axel emits typed clients for Go (`-g go`) and TypeScript (`-g ts`):
+
+```bash
+axel codegen -g go -o ./gen --option package=gen
+axel codegen -g ts -o ./gen
+```
+
+- **Query execution**: Compiled `.aql` files generate typed methods (`runner.Query.GetUser(ctx, params)` in Go, `runner.query.getUser(params)` in TypeScript).
+- **Transactions & Custom Connections**: Pass transactions directly using `runner.WithDB(tx)` / `gen.NewQueries(tx)` in Go, or `runner.withDb(tx)` in TypeScript.
+- **Dynamic execution**: Run uncompiled AQL strings at runtime with `runner.Run(...)` (Go) or `runner.run(...)` (TypeScript).
+- **Fluent query builders (TypeScript)**: Build runtime shapes and queries with `runner.select()`, `runner.insert()`, `runner.update()`.
+- **Session globals**: Scoped via `runner.With<Global>(...)` (Go) / `runner.with<Global>(...)` (TypeScript), or functional options on standalone functions.
+
+Full codegen guide — generated files, options, transaction patterns, and plugin protocol:
+**`references/codegen.md`**.
+
 ## Verify, don't assume
 
 The compiler is the source of truth and it is fast. Prefer running it over reasoning about it:
@@ -235,4 +253,5 @@ field on a shape, a filter on a column that is not there.
 - `references/asl.md` — the full schema language: every declaration, field body item, constraint,
   trigger, policy, function directive, and the SQL each lowers to.
 - `references/aql.md` — the full query grammar, with the compiled SQL shape for each construct.
+- `references/codegen.md` — client code generation for Go and TypeScript, transactions, and custom plugins.
 - `references/cli.md` — every command and flag, the config file, and codegen.

@@ -104,9 +104,77 @@ class FilterChain<T, S extends Shape<T>> {
   one(): Promise<ShapeResult<T, S> | null> { return this.builder.one(); }
 }
 
-type Insertable<T> = Partial<Omit<T, "id" | "createdAt" | "updatedAt">>;
+type Insertable<T> = Omit<T, "id" | "createdAt" | "updatedAt">;
+type Updatable<T> = Partial<Insertable<T>>;
+
+class UpdateBuilder<T> {
+  _filterSpecs: FilterSpec[] = [];
+  constructor(
+    readonly db: DB,
+    readonly _schema: Record<string, unknown>,
+    readonly _typeName: string,
+    readonly _values: Updatable<T>,
+  ) {}
+
+  _addFilter(field: string, op: string, value: unknown, connector: "and" | "or"): void {
+    const isRef = typeof value === "string" && value.startsWith("`") && value.endsWith("`");
+    this._filterSpecs.push({ field, op, value: isRef ? (value as string).slice(1, -1) : value, isRef, connector });
+  }
+
+  where(field: keyof T & string, op: "=" | "!=" | "<" | ">" | "<=" | ">=", value: unknown): UpdateFilterChain<T> {
+    this._addFilter(field, op, value, "and");
+    return new UpdateFilterChain(this);
+  }
+
+  /** Internal: the SET values, reused as an ON CONFLICT DO UPDATE arm. */
+  _setValues(): Record<string, unknown> { return this._values as Record<string, unknown>; }
+
+  async all(): Promise<T[]> {
+    const { sql, params } = _buildUpdateSQL(this._schema, this._typeName, this._values as Record<string, unknown>, this._filterSpecs);
+    return this.db.unsafe<T>(sql, params);
+  }
+
+  async one(): Promise<T | null> {
+    const rows = await this.all();
+    return rows[0] ?? null;
+  }
+}
+
+class UpdateFilterChain<T> {
+  constructor(private builder: UpdateBuilder<T>) {}
+
+  and(field: keyof T & string, op: "=" | "!=" | "<" | ">" | "<=" | ">=", value: unknown): this {
+    this.builder._addFilter(field, op, value, "and");
+    return this;
+  }
+
+  or(field: keyof T & string, op: "=" | "!=" | "<" | ">" | "<=" | ">=", value: unknown): this {
+    this.builder._addFilter(field, op, value, "or");
+    return this;
+  }
+
+  _setValues(): Record<string, unknown> { return this.builder._setValues(); }
+
+  all(): Promise<T[]> { return this.builder.all(); }
+  one(): Promise<T | null> { return this.builder.one(); }
+}
+
+type ConflictColumn = { readonly __col: string };
+type ConflictColumns<T> = { readonly [K in keyof Insertable<T>]-?: ConflictColumn };
+type ConflictElse<T> = UpdateBuilder<T> | UpdateFilterChain<T>;
+interface ConflictSpec<T> {
+  on: ConflictColumn | ConflictColumn[];
+  else?: ConflictElse<T> | null;
+}
+interface _ConflictSpec { on: string[]; update?: Record<string, unknown>; }
+const _conflictColumns = new Proxy(
+  {},
+  { get: (_t, prop) => ({ __col: String(prop) }) },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) as any;
 
 class InsertBuilder<T> {
+  private conflict?: _ConflictSpec;
   constructor(
     private db: DB,
     private schema: Record<string, unknown>,
@@ -114,14 +182,33 @@ class InsertBuilder<T> {
     private values: Insertable<T>,
   ) {}
 
-  async one(): Promise<T> {
-    const { sql, params } = _buildInsertSQL(this.schema, this.typeName, this.values as Record<string, unknown>);
-    const rows = await this.db.unsafe<T>(sql, params);
-    return rows[0]!;
+  // unlessConflict makes the insert an upsert. With no argument (or an
+  // `else: null`) it does nothing on conflict; pass `else: db.update(...)`
+  // to update the conflicting row with that builder's SET values instead.
+  unlessConflict(fn?: (t: ConflictColumns<T>) => ConflictSpec<T>): this {
+    if (!fn) {
+      this.conflict = { on: [] };
+      return this;
+    }
+    const spec = fn(_conflictColumns as ConflictColumns<T>);
+    const on = (Array.isArray(spec.on) ? spec.on : [spec.on]).map((c) => c.__col);
+    this.conflict = { on, update: spec.else ? spec.else._setValues() : undefined };
+    return this;
+  }
+
+  async all(): Promise<T[]> {
+    const { sql, params } = _buildInsertSQL(this.schema, this.typeName, this.values as Record<string, unknown>, this.conflict);
+    return this.db.unsafe<T>(sql, params);
+  }
+
+  // Returns null when nothing was inserted (e.g. unlessConflict DO NOTHING).
+  async one(): Promise<T | null> {
+    const rows = await this.all();
+    return rows[0] ?? null;
   }
 }
 
-const _schema: Record<string, unknown> = JSON.parse(`{"scalars":null,"enums":null,"types":[{"name":"Base","table":"","is_abstract":true,"properties":[{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}]},{"name":"Comment","table":"comment","is_abstract":false,"properties":[{"name":"content","column":"content","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}],"links":[{"name":"author","target_type":"User","join_column":"author","is_required":true,"is_multi":false},{"name":"post","target_type":"Post","join_column":"post","is_required":true,"is_multi":false}]},{"name":"Post","table":"post","is_abstract":false,"properties":[{"name":"content","column":"content","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"title","column":"title","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}],"links":[{"name":"author","target_type":"User","join_column":"author","is_required":true,"is_multi":false},{"name":"likes","target_type":"User","junction_table":"post_likes","is_required":false,"is_multi":true}]},{"name":"User","table":"user","is_abstract":false,"properties":[{"name":"active","column":"active","aql_type":"bool","sql_type":"BOOLEAN","is_required":false,"is_multi":false,"default":"true"},{"name":"age","column":"age","aql_type":"int32","sql_type":"INTEGER","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"email","column":"email","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false,"constraints":[{"name":"exclusive"},{"name":"min_length","args":["10"]},{"name":"max_length","args":["100"]}]},{"name":"health","column":"health","aql_type":"int32","sql_type":"INTEGER","is_required":true,"is_multi":false},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"name","column":"name","aql_type":"str","sql_type":"TEXT","is_required":false,"is_multi":false,"default":"'n/a'"},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}]}]}`);
+const _schema: Record<string, unknown> = JSON.parse(`{"scalars":null,"enums":null,"types":[{"name":"Base","table":"","is_abstract":true,"properties":[{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}]},{"name":"Comment","table":"comment","is_abstract":false,"properties":[{"name":"content","column":"content","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}],"links":[{"name":"author","target_type":"User","join_column":"author","is_required":true,"is_multi":false},{"name":"post","target_type":"Post","join_column":"post","is_required":true,"is_multi":false}]},{"name":"Post","table":"post","is_abstract":false,"properties":[{"name":"content","column":"content","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"slug","column":"slug","aql_type":"str","sql_type":"TEXT","is_required":false,"is_multi":false,"constraints":[{"name":"exclusive"}]},{"name":"title","column":"title","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}],"links":[{"name":"author","target_type":"User","join_column":"author","is_required":true,"is_multi":false},{"name":"likes","target_type":"User","junction_table":"post_likes","is_required":false,"is_multi":true}]},{"name":"User","table":"user","is_abstract":false,"properties":[{"name":"active","column":"active","aql_type":"bool","sql_type":"BOOLEAN","is_required":false,"is_multi":false,"default":"true"},{"name":"age","column":"age","aql_type":"int32","sql_type":"INTEGER","is_required":true,"is_multi":false},{"name":"created_at","column":"created_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"},{"name":"email","column":"email","aql_type":"str","sql_type":"TEXT","is_required":true,"is_multi":false,"constraints":[{"name":"exclusive"},{"name":"min_length","args":["10"]},{"name":"max_length","args":["100"]}]},{"name":"health","column":"health","aql_type":"int32","sql_type":"INTEGER","is_required":true,"is_multi":false},{"name":"id","column":"id","aql_type":"uuid","sql_type":"UUID","is_required":true,"is_multi":false,"default":"gen_random_uuid()","constraints":[{"name":"exclusive"},{"name":"pk"}]},{"name":"name","column":"name","aql_type":"str","sql_type":"TEXT","is_required":false,"is_multi":false,"default":"'n/a'"},{"name":"updated_at","column":"updated_at","aql_type":"datetime","sql_type":"TIMESTAMPTZ","is_required":true,"is_multi":false,"default":"now()"}]}]}`);
 
 function _toSnakeCase(s: string): string {
   return s.replace(/([A-Z])/g, (c) => `_${c.toLowerCase()}`);
@@ -145,7 +232,7 @@ function _buildSelectSQL(
   const type = types.find((t) => t.name === typeName);
   if (!type) throw new Error(`axel: unknown type "${typeName}"`);
 
-  const alias = typeName[0].toLowerCase();
+  const alias = typeName[0]!.toLowerCase();
   const cols: string[] = [];
   for (const [key, val] of Object.entries(shape)) {
     if (!val) continue;
@@ -184,9 +271,9 @@ function _buildSelectSQL(
 
   let sql = `SELECT ${cols.join(", ")} FROM "${type.table}" ${alias}`;
   if (filters.length > 0) {
-    let where = filters[0].expr;
+    let where = filters[0]!.expr;
     for (let i = 1; i < filters.length; i++) {
-      where += ` ${filters[i].connector.toUpperCase()} ${filters[i].expr}`;
+      where += ` ${filters[i]!.connector.toUpperCase()} ${filters[i]!.expr}`;
     }
     sql += ` WHERE ${where}`;
   }
@@ -201,7 +288,7 @@ function _buildSubSelectSQL(
   _outerAlias: string,
 ): string {
   const innerSQL = _buildSelectSQL(schema, spec.typeName, spec.shape, spec.filterSpecs, 0);
-  const subAlias = `${spec.typeName[0].toLowerCase()}_${fieldName}_sub`;
+  const subAlias = `${spec.typeName[0]!.toLowerCase()}_${fieldName}_sub`;
   return `(SELECT json_agg(row_to_json(${subAlias})) FROM (${innerSQL}) ${subAlias}) AS "${fieldName}"`;
 }
 
@@ -218,7 +305,7 @@ function _resolveOuterRef(schema: Record<string, unknown>, ref: string): string 
   }>;
   const type = types.find((t) => t.name === typeName);
   if (!type) return ref;
-  const alias = typeName[0].toLowerCase();
+  const alias = typeName[0]!.toLowerCase();
   const col = _toSnakeCase(fieldName);
   const prop = type.properties?.find((p) => p.name === col || p.column === col);
   if (prop) return `${alias}."${prop.column}"`;
@@ -231,6 +318,7 @@ function _buildInsertSQL(
   schema: Record<string, unknown>,
   typeName: string,
   values: Record<string, unknown>,
+  conflict?: _ConflictSpec,
 ): { sql: string; params: unknown[] } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const types = (schema as any).types as Array<{
@@ -240,6 +328,12 @@ function _buildInsertSQL(
   }>;
   const type = types.find((t) => t.name === typeName);
   if (!type) throw new Error(`axel: unknown type "${typeName}"`);
+
+  const resolveColumn = (field: string): string => {
+    const col = _toSnakeCase(field);
+    const prop = type.properties?.find((p) => p.name === col || p.column === col);
+    return prop ? prop.column : col;
+  };
 
   const cols: string[] = [];
   const params: unknown[] = [];
@@ -253,11 +347,83 @@ function _buildInsertSQL(
   }
 
   const placeholders = params.map((_, i) => `$${i + 1}`);
-  const sql =
-    "BEGIN;\n" +
-    `INSERT INTO "${type.table}" (${cols.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *;` +
-    "\nCOMMIT;";
+  let insert = `INSERT INTO "${type.table}" (${cols.join(", ")}) VALUES (${placeholders.join(", ")})`;
+
+  if (conflict) {
+    const targetCols = conflict.on.map((f) => `"${resolveColumn(f)}"`);
+    const target = targetCols.length > 0 ? ` (${targetCols.join(", ")})` : "";
+    const update = conflict.update ?? {};
+    const setCols = Object.keys(update);
+    if (setCols.length > 0) {
+      const sets: string[] = [];
+      for (const [key, val] of Object.entries(update)) {
+        const prop = type.properties?.find((p) => p.name === _toSnakeCase(key) || p.column === _toSnakeCase(key));
+        if (!prop) continue;
+        params.push(val);
+        sets.push(`"${prop.column}" = $${params.length}`);
+      }
+      insert += ` ON CONFLICT${target} DO UPDATE SET ${sets.join(", ")}`;
+    } else {
+      insert += ` ON CONFLICT${target} DO NOTHING`;
+    }
+  }
+
+  const sql = insert + " RETURNING *";
   return { sql, params };
+}
+
+function _buildUpdateSQL(
+  schema: Record<string, unknown>,
+  typeName: string,
+  values: Record<string, unknown>,
+  filterSpecs: FilterSpec[],
+): { sql: string; params: unknown[] } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const types = (schema as any).types as Array<{
+    name: string;
+    table: string;
+    properties: Array<{ name: string; column: string }>;
+  }>;
+  const type = types.find((t) => t.name === typeName);
+  if (!type) throw new Error(`axel: unknown type "${typeName}"`);
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  for (const [key, val] of Object.entries(values)) {
+    const col = _toSnakeCase(key);
+    const prop = type.properties?.find((p) => p.name === col || p.column === col);
+    if (prop) {
+      params.push(val);
+      sets.push(`"${prop.column}" = $${params.length}`);
+    }
+  }
+  if (sets.length === 0) throw new Error(`axel: update on "${typeName}" has no assignable columns`);
+
+  let sql = `UPDATE "${type.table}" SET ${sets.join(", ")}`;
+  if (filterSpecs.length > 0) {
+    const conds: Array<{ expr: string; connector: "and" | "or" }> = [];
+    for (const spec of filterSpecs) {
+      const col = _toSnakeCase(spec.field);
+      const prop = type.properties?.find((p) => p.name === col || p.column === col);
+      const column = prop ? prop.column : col;
+      let expr: string;
+      if (spec.isRef) {
+        expr = `"${column}" ${spec.op} ${_resolveOuterRef(schema, spec.value as string)}`;
+      } else {
+        params.push(spec.value);
+        expr = `"${column}" ${spec.op} $${params.length}`;
+      }
+      conds.push({ expr, connector: spec.connector });
+    }
+    let where = conds[0]!.expr;
+    for (let i = 1; i < conds.length; i++) {
+      where += ` ${conds[i]!.connector.toUpperCase()} ${conds[i]!.expr}`;
+    }
+    sql += ` WHERE ${where}`;
+  }
+
+  const out = sql + " RETURNING *";
+  return { sql: out, params };
 }
 
 // ─── AQL runtime ────────────────────────────────────────────────────────────
@@ -267,7 +433,12 @@ interface _AQLField {
   subInsert?: _AQLInsert;
   value?: { kind: "param" | "lit"; v: string };
 }
-interface _AQLFilter { field: string; op: string; value: string; isParam: boolean; isRef: boolean; }
+interface _AQLCond { field: string; op: string; value: string; isParam: boolean; isRef: boolean; optional: boolean; }
+// A filter is a tree, not a list: `and` binds tighter than `or`, and a
+// parenthesized group — (a or b) and (c or d) — nests to any depth.
+type _AQLFilter =
+  | { kind: "cond"; cond: _AQLCond }
+  | { kind: "and" | "or"; parts: _AQLFilter[] };
 interface _AQLSelect { typeName: string; fields: _AQLField[]; filter?: _AQLFilter; }
 interface _AQLInsert { typeName: string; fields: _AQLField[]; }
 type _AQLStmt =
@@ -275,50 +446,60 @@ type _AQLStmt =
   | { kind: "insert"; ins: _AQLInsert }
   | { kind: "delete"; del: { typeName: string; filter?: _AQLFilter } };
 
-function _lexAQL(src: string): Array<{ k: string; v: string }> {
-  const KWS = new Set(["select", "insert", "update", "delete", "filter", "set"]);
-  const toks: Array<{ k: string; v: string }> = [];
+function _lexAQL(src: string): Array<{ k: string; v: string; opt?: boolean }> {
+  const KWS = new Set(["select", "insert", "update", "delete", "filter", "set", "and", "or"]);
+  const toks: Array<{ k: string; v: string; opt?: boolean }> = [];
   let i = 0;
   while (i < src.length) {
-    if (src[i] === "#") { while (i < src.length && src[i] !== "\n") i++; continue; }
-    if (/\s/.test(src[i])) { i++; continue; }
-    if (src[i] === ":" && src[i + 1] === "=") { toks.push({ k: "asgn", v: ":=" }); i += 2; continue; }
-    if (src[i] === ".") { toks.push({ k: "dot", v: "." }); i++; continue; }
-    if (src[i] === "$") {
+    if (src[i]! === "#") { while (i < src.length && src[i]! !== "\n") i++; continue; }
+    if (/\s/.test(src[i]!)) { i++; continue; }
+    if (src[i]! === ":" && src.charAt(i + 1) === "=") { toks.push({ k: "asgn", v: ":=" }); i += 2; continue; }
+    if (src[i]! === ".") { toks.push({ k: "dot", v: "." }); i++; continue; }
+    if (src[i]! === "$") {
       let j = i + 1;
-      while (j < src.length && /\w/.test(src[j])) j++;
-      toks.push({ k: "param", v: src.slice(i + 1, j) });
+      while (j < src.length && /\w/.test(src[j]!)) j++;
+      const name = src.slice(i + 1, j);
+      // Optional <type> annotation ($id<uuid>): the type is resolved from the
+      // schema at compile time, so it is consumed and ignored here.
+      if (src[j] === "<") {
+        let k = j + 1;
+        while (k < src.length && /\w/.test(src[k]!)) k++;
+        if (src[k] === ">") j = k + 1;
+      }
+      let opt = false;
+      if (src[j] === "?") { opt = true; j++; }
+      toks.push({ k: "param", v: name, opt });
       i = j; continue;
     }
-    if (/[a-zA-Z_]/.test(src[i])) {
+    if (/[a-zA-Z_]/.test(src[i]!)) {
       let j = i;
-      while (j < src.length && /\w/.test(src[j])) j++;
+      while (j < src.length && /\w/.test(src[j]!)) j++;
       const w = src.slice(i, j);
       toks.push({ k: KWS.has(w) ? "kw" : "id", v: w });
       i = j; continue;
     }
-    if (/\d/.test(src[i])) {
+    if (/\d/.test(src[i]!)) {
       let j = i;
-      while (j < src.length && /[\d.]/.test(src[j])) j++;
+      while (j < src.length && /[\d.]/.test(src[j]!)) j++;
       toks.push({ k: "num", v: src.slice(i, j) });
       i = j; continue;
     }
-    if (src[i] === "'" || src[i] === '"') {
-      const q = src[i]; let j = i + 1; let s = "";
-      while (j < src.length && src[j] !== q) {
-        if (src[j] === "\\") j++;
-        s += src[j++];
+    if (src[i]! === "'" || src[i]! === '"') {
+      const q = src[i]!; let j = i + 1; let s = "";
+      while (j < src.length && src[j]! !== q) {
+        if (src[j]! === "\\") j++;
+        s += src[j++]!;
       }
       toks.push({ k: "str", v: s });
       i = j + 1; continue;
     }
-    if ("!=<>".includes(src[i])) {
+    if ("!=<>".includes(src[i]!)) {
       let j = i;
-      while (j < src.length && "!=<>".includes(src[j])) j++;
+      while (j < src.length && "!=<>".includes(src[j]!)) j++;
       toks.push({ k: "op", v: src.slice(i, j) });
       i = j; continue;
     }
-    toks.push({ k: "p", v: src[i] });
+    toks.push({ k: "p", v: src[i]! });
     i++;
   }
   toks.push({ k: "eof", v: "" });
@@ -328,8 +509,8 @@ function _lexAQL(src: string): Array<{ k: string; v: string }> {
 function _parseAQL(src: string): _AQLStmt {
   const toks = _lexAQL(src);
   let pos = 0;
-  const peek = () => toks[pos];
-  const eat = () => toks[pos++];
+  const peek = () => toks[pos]!;
+  const eat = () => toks[pos++]!;
   const expect = (k: string, v?: string) => {
     const t = eat();
     if (t.k !== k || (v !== undefined && t.v !== v))
@@ -341,22 +522,48 @@ function _parseAQL(src: string): _AQLStmt {
     return false;
   };
 
-  const parseFilter = (): _AQLFilter | undefined => {
-    if (peek().k !== "kw" || peek().v !== "filter") return undefined;
-    eat();
+  const parseCond = (): _AQLFilter => {
     expect("dot");
     let field = expect("id").v;
     while (peek().k === "dot") { eat(); field += "." + expect("id").v; }
     const op = expect("op").v;
     const vt = peek();
-    let value = ""; let isParam = false; let isRef = false;
-    if (vt.k === "param") { eat(); value = vt.v; isParam = true; }
+    let value = ""; let isParam = false; let isRef = false; let optional = false;
+    if (vt.k === "param") { eat(); value = vt.v; isParam = true; optional = vt.opt === true; }
     else if (vt.k === "id") {
       eat();
       if (peek().k === "dot") { eat(); value = vt.v + "." + expect("id").v; isRef = true; }
       else value = vt.v;
     } else { eat(); value = vt.v; }
-    return { field, op, value, isParam, isRef };
+    return { kind: "cond", cond: { field, op, value, isParam, isRef, optional } };
+  };
+
+  // operand → '(' or-expr ')' | cond ;  and-expr → operand ('and' operand)* ;
+  // or-expr → and-expr ('or' and-expr)*
+  const parseOrExpr = (): _AQLFilter => {
+    const parseOperand = (): _AQLFilter => {
+      if (peek().k === "p" && peek().v === "(") {
+        eat();
+        const inner = parseOrExpr();
+        expect("p", ")");
+        return inner;
+      }
+      return parseCond();
+    };
+    const parseAndExpr = (): _AQLFilter => {
+      const parts = [parseOperand()];
+      while (peek().k === "kw" && peek().v === "and") { eat(); parts.push(parseOperand()); }
+      return parts.length === 1 ? parts[0]! : { kind: "and", parts };
+    };
+    const parts = [parseAndExpr()];
+    while (peek().k === "kw" && peek().v === "or") { eat(); parts.push(parseAndExpr()); }
+    return parts.length === 1 ? parts[0]! : { kind: "or", parts };
+  };
+
+  const parseFilter = (): _AQLFilter | undefined => {
+    if (peek().k !== "kw" || peek().v !== "filter") return undefined;
+    eat();
+    return parseOrExpr();
   };
 
   // forward declarations for mutual recursion
@@ -424,9 +631,56 @@ function _parseAQL(src: string): _AQLStmt {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type _SchemaTypes = Array<{
   name: string; table: string;
-  properties?: Array<{ name: string; column: string }>;
+  properties?: Array<{ name: string; column: string; sql_type?: string }>;
   links?: Array<{ name: string; join_column: string }>;
 }>;
+type _SchemaType = _SchemaTypes[number];
+
+function _filterColumn(type: _SchemaType, alias: string, field: string): string {
+  const parts = field.split(".");
+  if (parts.length >= 2) {
+    const lnk = type.links?.find((l) => l.name === _toSnakeCase(parts[0]!));
+    if (lnk) return `${alias}."${lnk.join_column}"`;
+    return `${alias}."${_toSnakeCase(field)}"`;
+  }
+  const snake = _toSnakeCase(field);
+  const prop = type.properties?.find((p) => p.name === snake || p.column === snake);
+  if (prop) return `${alias}."${prop.column}"`;
+  const link = type.links?.find((l) =>
+    l.name === snake || l.join_column === snake || l.name + "_id" === snake
+  );
+  if (link) return `${alias}."${link.join_column}"`;
+  return `${alias}."${snake}"`;
+}
+
+// An optional param's standalone `IS NULL` check carries no type, so it is cast
+// to the compared column's SQL type — otherwise Postgres cannot determine the
+// param type when the value is null (42P08).
+function _filterColCast(type: _SchemaType, field: string): string {
+  const snake = _toSnakeCase(field.split(".")[0]!);
+  const prop = type.properties?.find((p) => p.name === snake || p.column === snake);
+  if (prop?.sql_type) return `::${prop.sql_type}`;
+  const link = type.links?.find((l) =>
+    l.name === snake || l.join_column === snake || l.name + "_id" === snake
+  );
+  return link ? "::UUID" : "";
+}
+
+// Renders a filter tree, joining with AND/OR. A compound child is parenthesized,
+// so a user-written group — (a or b) and c — survives into the SQL.
+function _emitFilterSQL(node: _AQLFilter, renderCond: (c: _AQLCond) => string): string {
+  if (node.kind === "cond") return renderCond(node.cond);
+  const sep = node.kind === "and" ? " AND " : " OR ";
+  return node.parts
+    .map((p) => (p.kind === "cond" ? renderCond(p.cond) : `(${_emitFilterSQL(p, renderCond)})`))
+    .join(sep);
+}
+
+// Conditions in the order _emitFilterSQL renders them, so collected param values
+// line up with the $N placeholders it assigns.
+function _filterConds(node: _AQLFilter): _AQLCond[] {
+  return node.kind === "cond" ? [node.cond] : node.parts.flatMap(_filterConds);
+}
 
 function _compileSelectAST(
   types: _SchemaTypes,
@@ -435,12 +689,12 @@ function _compileSelectAST(
 ): string {
   const type = types.find((t) => t.name === sel.typeName);
   if (!type) throw new Error(`axel: unknown type "${sel.typeName}"`);
-  const alias = sel.typeName[0].toLowerCase();
+  const alias = sel.typeName[0]!.toLowerCase();
   const cols: string[] = [];
   for (const f of sel.fields) {
     if (f.subSelect) {
       const innerSQL = _compileSelectAST(types, f.subSelect, paramIdx);
-      const subAlias = `${f.subSelect.typeName[0].toLowerCase()}_${f.name}_sub`;
+      const subAlias = `${f.subSelect.typeName[0]!.toLowerCase()}_${f.name}_sub`;
       cols.push(`(SELECT json_agg(row_to_json(${subAlias})) FROM (${innerSQL}) ${subAlias}) AS "${f.name}"`);
       continue;
     }
@@ -453,41 +707,40 @@ function _compileSelectAST(
   }
   if (cols.length === 0) cols.push(`${alias}.*`);
 
-  const filterExprs: string[] = [];
-  if (sel.filter) {
-    const f = sel.filter;
-    const parts = f.field.split(".");
-    let fcol: string;
-    if (parts.length >= 2) {
-      const linkName = _toSnakeCase(parts[0]);
-      const lnk = type.links?.find((l) => l.name === linkName);
-      fcol = lnk ? `${alias}."${lnk.join_column}"` : `${alias}."${_toSnakeCase(f.field)}"`;
-    } else {
-      const snakeF = _toSnakeCase(f.field);
-      const prop2 = type.properties?.find((p) => p.name === snakeF || p.column === snakeF);
-      const lnk2 = !prop2 && type.links?.find((l) => l.name === snakeF || l.join_column === snakeF || l.name + "_id" === snakeF);
-      fcol = prop2 ? `${alias}."${prop2.column}"` : lnk2 ? `${alias}."${lnk2.join_column}"` : `${alias}."${snakeF}"`;
-    }
-    if (f.isRef) {
-      const refParts = f.value.split(".");
-      let refCol = f.value;
-      if (refParts.length === 2) {
-        const refTypeName = refParts[0];
-        const refField = _toSnakeCase(refParts[1]);
-        const refAlias = refTypeName[0].toLowerCase();
-        const refType = types.find((t) => t.name === refTypeName);
-        const refProp = refType?.properties?.find((p) => p.name === refField || p.column === refField);
-        refCol = refProp ? `${refAlias}."${refProp.column}"` : `${refAlias}."${refField}"`;
-      }
-      filterExprs.push(`${fcol} ${f.op} ${refCol}`);
-    } else {
-      filterExprs.push(`${fcol} ${f.op} $${paramIdx.v++}`);
-    }
-  }
+  const where = sel.filter
+    ? _emitFilterSQL(sel.filter, (f) => _renderCondSQL(types, type, alias, f, paramIdx))
+    : "";
 
   let sql = `SELECT ${cols.join(", ")} FROM "${type.table}" ${alias}`;
-  if (filterExprs.length > 0) sql += ` WHERE ${filterExprs.join(" AND ")}`;
+  if (where) sql += ` WHERE ${where}`;
   return sql;
+}
+
+function _renderCondSQL(
+  types: _SchemaTypes,
+  type: _SchemaType,
+  alias: string,
+  f: _AQLCond,
+  paramIdx: { v: number },
+): string {
+  const fcol = _filterColumn(type, alias, f.field);
+  if (f.isRef) {
+    const refParts = f.value.split(".");
+    let refCol = f.value;
+    if (refParts.length === 2) {
+      const refTypeName = refParts[0]!;
+      const refField = _toSnakeCase(refParts[1]!);
+      const refAlias = refTypeName[0]!.toLowerCase();
+      const refType = types.find((t) => t.name === refTypeName);
+      const refProp = refType?.properties?.find((p) => p.name === refField || p.column === refField);
+      refCol = refProp ? `${refAlias}."${refProp.column}"` : `${refAlias}."${refField}"`;
+    }
+    return `${fcol} ${f.op} ${refCol}`;
+  }
+  const ph = `$${paramIdx.v++}`;
+  const expr = `${fcol} ${f.op} ${ph}`;
+  if (!f.optional) return expr;
+  return `(${ph}${_filterColCast(type, f.field)} IS NULL OR ${expr})`;
 }
 
 function _compileAQL(
@@ -504,8 +757,11 @@ function _compileAQL(
   if (stmt.kind === "select") {
     const collectParams = (sel: _AQLSelect): void => {
       for (const f of sel.fields) { if (f.subSelect) collectParams(f.subSelect); }
-      if (sel.filter && !sel.filter.isRef)
-        params.push(sel.filter.isParam ? namedParams[sel.filter.value] : sel.filter.value);
+      if (!sel.filter) return;
+      for (const cond of _filterConds(sel.filter)) {
+        if (cond.isRef) continue;
+        params.push(cond.isParam ? namedParams[cond.value] : cond.value);
+      }
     };
     collectParams(stmt.sel);
     const sql = _compileSelectAST(types, stmt.sel, paramIdx);
@@ -533,22 +789,17 @@ function _compileAQL(
   if (stmt.kind === "delete") {
     const type = types.find((t) => t.name === stmt.del.typeName);
     if (!type) throw new Error(`axel: unknown type "${stmt.del.typeName}"`);
-    const alias = stmt.del.typeName[0].toLowerCase();
-    const filterExprs: string[] = [];
+    const alias = stmt.del.typeName[0]!.toLowerCase();
+    let where = "";
     if (stmt.del.filter) {
-      const f = stmt.del.filter;
-      const snakeF = _toSnakeCase(f.field);
-      const prop = type.properties?.find((p) => p.name === snakeF || p.column === snakeF);
-      const col = prop ? `${alias}."${prop.column}"` : `${alias}."${snakeF}"`;
-      if (!f.isRef) {
-        params.push(f.isParam ? namedParams[f.value] : f.value);
-        filterExprs.push(`${col} ${f.op} $${paramIdx.v++}`);
-      } else {
-        filterExprs.push(`${col} ${f.op} ${f.value}`);
+      for (const cond of _filterConds(stmt.del.filter)) {
+        if (cond.isRef) continue;
+        params.push(cond.isParam ? namedParams[cond.value] : cond.value);
       }
+      where = _emitFilterSQL(stmt.del.filter, (f) => _renderCondSQL(types, type, alias, f, paramIdx));
     }
     let sql = `DELETE FROM "${type.table}" ${alias}`;
-    if (filterExprs.length > 0) sql += ` WHERE ${filterExprs.join(" AND ")}`;
+    if (where) sql += ` WHERE ${where}`;
     return { sql, params };
   }
 
@@ -557,6 +808,14 @@ function _compileAQL(
 
 export class Queries {
   constructor(private db: DB) {}
+
+  withDb(db: DB): Queries;
+  withDb<T>(db: DB, fn: (q: Queries) => Promise<T>): Promise<T>;
+  withDb<T>(db: DB, fn?: (q: Queries) => Promise<T>): Queries | Promise<T> {
+    const q = new Queries(db);
+    if (fn) return fn(q);
+    return q;
+  }
 
   createPost(params: CreatePostParams): Promise<CreatePostRow | null> {
     return createPost(this.db, params);
@@ -583,6 +842,14 @@ export class Runner {
     this.query = new Queries(db);
   }
 
+  withDb(db: DB): Queries;
+  withDb<T>(db: DB, fn: (q: Queries) => Promise<T>): Promise<T>;
+  withDb<T>(db: DB, fn?: (q: Queries) => Promise<T>): Queries | Promise<T> {
+    const q = new Queries(db);
+    if (fn) return fn(q);
+    return q;
+  }
+
   select<K extends keyof AxelSchema, S extends Shape<AxelSchema[K]>>(
     type: K,
     shape: S,
@@ -595,6 +862,13 @@ export class Runner {
     values: Insertable<AxelSchema[K]>,
   ): InsertBuilder<AxelSchema[K]> {
     return new InsertBuilder(this.db, _schema, type as string, values);
+  }
+
+  update<K extends keyof AxelSchema>(
+    type: K,
+    values: Updatable<AxelSchema[K]>,
+  ): UpdateBuilder<AxelSchema[K]> {
+    return new UpdateBuilder(this.db, _schema, type as string, values);
   }
 
   async run<T = Record<string, unknown>>(

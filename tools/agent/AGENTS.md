@@ -10,6 +10,7 @@ Before touching any `.asl` or `.aql` file, read:
   that actually happen. Read this first; it is short.
 - [`references/asl.md`](./references/asl.md) — full schema language
 - [`references/aql.md`](./references/aql.md) — full query grammar
+- [`references/codegen.md`](./references/codegen.md) — client code generation for Go and TypeScript, transactions, and plugins
 - [`references/cli.md`](./references/cli.md) — every command, `axel.yaml`, codegen
 
 The four commands worth running instead of guessing, none of which need a database except the last:

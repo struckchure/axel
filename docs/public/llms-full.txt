@@ -1516,6 +1516,22 @@ when you're not going through the `Runner`:
 const doc = await createDoc(db, params, { currentUser: userId });
 ```
 
+### Transactions & Custom Connections — `withDb()`
+
+To run generated query methods inside an existing transaction or custom connection, use `withDb(db)` on `Runner` or `Queries`. You can obtain a `Queries` instance directly or pass an async callback:
+
+```ts
+// Direct call:
+const q = runner.withDb(tx);
+const doc = await q.createDoc(params);
+
+// Callback style:
+await runner.withDb(tx, async (q) => {
+  const user = await q.createUser(userParams);
+  return q.createDoc({ ...docParams, authorId: user.id });
+});
+```
+
 ---
 
 ## Go generator (`-g go`)
@@ -1637,6 +1653,33 @@ using the `Runner`:
 
 ```go
 doc, err := gen.CreateDoc(ctx, db, params, gen.WithCurrentUser(userID))
+```
+
+### Transactions & Custom Connections — `WithDB()` and `NewQueries()`
+
+To execute generated query methods inside an existing `pgx.Tx` or custom connection, use `WithDB()` on `Runner` or `Queries`, or construct a `Queries` directly with `NewQueries()`:
+
+```go
+tx, err := db.Begin(ctx)
+if err != nil {
+    return err
+}
+defer tx.Rollback(ctx)
+
+// Via Runner or Queries.WithDB:
+q := runner.WithDB(tx)
+// or: q := gen.NewQueries(tx)
+
+user, err := q.CreateUser(ctx, userParams)
+if err != nil {
+    return err
+}
+doc, err := q.CreateDoc(ctx, docParams)
+if err != nil {
+    return err
+}
+
+return tx.Commit(ctx)
 ```
 
 ---
@@ -5897,11 +5940,25 @@ Params and rows are generated interfaces (`GetUserParams`, `ListPostRow`), with
 `datetime` mapped to `Date`, nullable columns to `T | null`, and camelCase field
 names (`createdAt`).
 
-Using node-postgres instead:
-
 ```ts
 
 const runner = new Runner(new Pool({ connectionString: process.env.DATABASE_URL }));
+```
+
+### Transactions
+
+To run queries inside a transaction, use `runner.withDb(tx)`:
+
+```ts
+// Direct call on transaction handle:
+const q = runner.withDb(tx);
+const user = await q.getUser({ id });
+
+// Or scoped callback style:
+await runner.withDb(tx, async (q) => {
+  const user = await q.createUser(userParams);
+  return q.createPost({ ...postParams, authorId: user.id });
+});
 ```
 
 ## 7. Ad-hoc queries with the builder
@@ -6123,6 +6180,28 @@ rows, err := runner.Run(ctx,
     `select Post { id } filter .author.id = $author`,
     map[string]any{"author": author},
 )
+```
+
+### Transactions
+
+To run queries inside a transaction, use `runner.WithDB(tx)` or `gen.NewQueries(tx)`:
+
+```go
+tx, err := db.Begin(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+defer tx.Rollback(ctx)
+
+q := runner.WithDB(tx)
+// or: q := gen.NewQueries(tx)
+
+user, err := q.GetUser(ctx, gen.GetUserParams{ID: id})
+if err != nil {
+    return err
+}
+
+return tx.Commit(ctx)
 ```
 
 :::tip[Regenerate (`axel codegen -g go -o ./gen`) whenever you change a query or the]

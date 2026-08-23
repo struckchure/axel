@@ -11,16 +11,16 @@ export interface CreatePostRow {
   content: string;
   createdAt: Date;
   id: string;
+  slug: string | null;
   title: string;
   updatedAt: Date;
+  author: string;
 }
 
 export async function createPost(db: DB, params: CreatePostParams): Promise<CreatePostRow | null> {
-  const query = `BEGIN;
-INSERT INTO "post" ("title", "content", "author")
+  const query = `INSERT INTO "post" ("title", "content", "author")
 VALUES ($1, $2, (SELECT u.id FROM "user" u WHERE u.email = 'user@mail.com' LIMIT 1))
-RETURNING *;
-COMMIT;`;
+RETURNING "content", "created_at", "id", "slug", "title", "updated_at", "author";`;
   const rows = await db.unsafe<CreatePostRow>(query, [params.title, params.content]);
   return rows[0] ?? null;
 }

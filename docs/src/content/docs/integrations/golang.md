@@ -151,6 +151,28 @@ rows, err := runner.Run(ctx,
 )
 ```
 
+### Transactions
+
+To run queries inside a transaction, use `runner.WithDB(tx)` or `gen.NewQueries(tx)`:
+
+```go
+tx, err := db.Begin(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+defer tx.Rollback(ctx)
+
+q := runner.WithDB(tx)
+// or: q := gen.NewQueries(tx)
+
+user, err := q.GetUser(ctx, gen.GetUserParams{ID: id})
+if err != nil {
+    return err
+}
+
+return tx.Commit(ctx)
+```
+
 :::tip[Regenerate (`axel codegen -g go -o ./gen`) whenever you change a query or the]
 schema, so the types stay in sync. At runtime the client only needs a Postgres
 connection string, so point it at your provider's pooled endpoint and keep

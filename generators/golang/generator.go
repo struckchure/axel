@@ -355,6 +355,14 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 	fmt.Fprintf(&body, "type Queries struct {\n")
 	fmt.Fprintf(&body, "\tdb DBTX\n")
 	fmt.Fprintf(&body, "}\n\n")
+	fmt.Fprintf(&body, "// NewQueries creates a new Queries instance bound to the given DBTX (e.g. a transaction or pool).\n")
+	fmt.Fprintf(&body, "func NewQueries(db DBTX) *Queries {\n")
+	fmt.Fprintf(&body, "\treturn &Queries{db: db}\n")
+	fmt.Fprintf(&body, "}\n\n")
+	fmt.Fprintf(&body, "// WithDB returns a new Queries instance bound to the given DBTX (e.g. a transaction).\n")
+	fmt.Fprintf(&body, "func (q *Queries) WithDB(db DBTX) *Queries {\n")
+	fmt.Fprintf(&body, "\treturn &Queries{db: db}\n")
+	fmt.Fprintf(&body, "}\n\n")
 
 	for _, q := range g.queries {
 		funcName := toGoExportedName(q.Name)
@@ -408,6 +416,11 @@ func (g *GoGenerator) emitRunner(ctx *codegen.Context) error {
 	fmt.Fprintf(&body, "\t\tinner: runner.New(db, codegen.ToSchemaIR(sd)),\n")
 	fmt.Fprintf(&body, "\t\tQuery: &Queries{db: db},\n")
 	fmt.Fprintf(&body, "\t}\n")
+	fmt.Fprintf(&body, "}\n\n")
+
+	// WithDB returns a Queries instance bound to the given DBTX (e.g. a transaction).
+	fmt.Fprintf(&body, "func (r *Runner) WithDB(db DBTX) *Queries {\n")
+	fmt.Fprintf(&body, "\treturn &Queries{db: db}\n")
 	fmt.Fprintf(&body, "}\n\n")
 
 	// Run — inline AQL execution

@@ -36,6 +36,7 @@ type Doc { required title: str; }`)
 		"export interface GlobalOptions {",         // options object
 		"currentUser?: string;",
 		"export async function _withGlobals<T>", // free-function wrapper
+		"withDb(db: DB): Queries;",              // withDb support on Runner & Queries
 	} {
 		if !strings.Contains(tsRunner, want) {
 			t.Errorf("ts runner.ts missing %q:\n%s", want, tsRunner)
@@ -60,6 +61,9 @@ type Doc { required title: str; }`)
 		"type Option func(*globalOpts)",             // functional options
 		"func WithCurrentUser(value string) Option", // option constructor
 		"func beginWithGlobals(",
+		"func (r *Runner) WithDB(db DBTX) *Queries",
+		"func (q *Queries) WithDB(db DBTX) *Queries",
+		"func NewQueries(db DBTX) *Queries",
 	} {
 		if !strings.Contains(goRunner, want) {
 			t.Errorf("go runner.go missing %q:\n%s", want, goRunner)

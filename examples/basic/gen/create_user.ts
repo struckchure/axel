@@ -18,11 +18,9 @@ export interface CreateUserRow {
 }
 
 export async function createUser(db: DB, params: CreateUserParams): Promise<CreateUserRow | null> {
-  const query = `BEGIN;
-INSERT INTO "user" ("email", "age", "health")
+  const query = `INSERT INTO "user" ("email", "age", "health")
 VALUES ($1, 100, 100)
-RETURNING *;
-COMMIT;`;
+RETURNING "active", "age", "created_at", "email", "health", "id", "name", "updated_at";`;
   const rows = await db.unsafe<CreateUserRow>(query, [params.email]);
   return rows[0] ?? null;
 }

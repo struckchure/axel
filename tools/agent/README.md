@@ -9,6 +9,7 @@ about working on the Axel compiler itself.
 | `SKILL.md` | The guide: the mental model, the edit→validate→diff→up loop, and the mistakes that actually happen |
 | `references/asl.md` | Full schema language: declarations, fields, links, triggers, policies, functions |
 | `references/aql.md` | Full query grammar, with the SQL each construct compiles to |
+| `references/codegen.md` | Client code generation for Go and TypeScript, transactions, and custom plugins |
 | `references/cli.md` | Every command and flag, `axel.yaml`, codegen, migration layout |
 | `AGENTS.md` | A short pointer to the above, for the `AGENTS.md` convention |
 

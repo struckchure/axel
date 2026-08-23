@@ -118,13 +118,27 @@ Params and rows are generated interfaces (`GetUserParams`, `ListPostRow`), with
 `datetime` mapped to `Date`, nullable columns to `T | null`, and camelCase field
 names (`createdAt`).
 
-Using node-postgres instead:
-
 ```ts
 import { Pool } from "pg"; // bun add pg @types/pg
 import { Runner } from "./gen/runner";
 
 const runner = new Runner(new Pool({ connectionString: process.env.DATABASE_URL }));
+```
+
+### Transactions
+
+To run queries inside a transaction, use `runner.withDb(tx)`:
+
+```ts
+// Direct call on transaction handle:
+const q = runner.withDb(tx);
+const user = await q.getUser({ id });
+
+// Or scoped callback style:
+await runner.withDb(tx, async (q) => {
+  const user = await q.createUser(userParams);
+  return q.createPost({ ...postParams, authorId: user.id });
+});
 ```
 
 ## 7. Ad-hoc queries with the builder

@@ -5,7 +5,7 @@ import type { DB } from "./runner.ts";
 export interface ListUsersWithPostRow {
   id: string;
   email: string;
-  posts: ListUsersWithPostRowPosts[];
+  posts: ListUsersWithPostRowPosts | null;
 }
 
 export interface ListUsersWithPostRowPosts {
@@ -17,7 +17,7 @@ export async function listUsersWithPost(db: DB): Promise<ListUsersWithPostRow[]>
   const query = `SELECT
   u.id AS id,
   u.email AS email,
-  (SELECT json_agg(row_to_json(p_posts_sub)) FROM (SELECT p.id AS id, p.title AS title FROM "post" p WHERE p.author = u.id) p_posts_sub) AS posts
+  (SELECT row_to_json(p_posts_sub) FROM (SELECT p.id AS id, p.title AS title FROM "post" p WHERE p.author = u.id LIMIT 1) p_posts_sub) AS posts
 FROM "user" u;`;
   return db.unsafe<ListUsersWithPostRow>(query);
 }
