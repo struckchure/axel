@@ -40,6 +40,7 @@ type OnTarget struct {
 type Field struct {
 	Name        string
 	Type        string
+	SQLType     string
 	IsRequired  bool
 	IsMulti     bool
 	IsLink      bool
@@ -74,6 +75,7 @@ func SchemaIRToModels(ir *asl.SchemaIR) ([]Model, error) {
 			f := Field{
 				Name:       prop.Name,
 				Type:       sqlTypeToASLType(prop.SQLType),
+				SQLType:    prop.SQLType,
 				IsRequired: prop.IsRequired,
 				IsMulti:    prop.IsMulti,
 				IsLink:     false,

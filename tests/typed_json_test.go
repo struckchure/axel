@@ -279,4 +279,37 @@ type Coverage {
 	}
 }
 
+func TestCustomSQLExtensionScalarDDL(t *testing.T) {
+	schema := `
+use extension 'postgis';
+use extension 'vector';
+
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32 := ST_Y(__self__::geometry);
+  longitude: float32 := ST_X(__self__::geometry);
+};
+
+scalar type Embedding extends sql "vector(1536)" as multi float32;
+
+type Venue {
+  required id: uuid { constraint pk; };
+  location: Point;
+  multi waypoints: Point;
+  feature_vec: Embedding;
+}
+`
+	up := genUp(t, schema)
+
+	// Verify exact custom SQL column types in CREATE TABLE DDL
+	for _, want := range []string{
+		`"location" geography(Point, 4326)`,
+		`"waypoints" geography(Point, 4326)[]`,
+		`"feature_vec" vector(1536)`,
+	} {
+		if !strings.Contains(up, want) {
+			t.Errorf("expected column definition %q in generated DDL:\n%s", want, up)
+		}
+	}
+}
+
 

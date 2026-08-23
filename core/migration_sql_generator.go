@@ -371,9 +371,12 @@ func topologicalSort(models []Model) []Model {
 // generateAddColumn generates ALTER TABLE ADD COLUMN statement
 func generateAddColumn(tableName string, field Field) string {
 	colName := lo.SnakeCase(field.Name)
-	sqlType := mapType(field.Type)
+	sqlType := field.SQLType
+	if sqlType == "" {
+		sqlType = mapType(field.Type)
+	}
 	if field.IsMulti {
-		if field.Type != "json" && field.Type != "jsonb" {
+		if field.Type != "json" && field.Type != "jsonb" && !strings.HasSuffix(sqlType, "[]") {
 			sqlType += "[]"
 		}
 	}
@@ -435,12 +438,18 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 	var downParts []string
 
 	// Type change
-	if oldField.Type != newField.Type {
-		oldType := mapType(oldField.Type)
-		newType := mapType(newField.Type)
+	oldSQLType := oldField.SQLType
+	if oldSQLType == "" {
+		oldSQLType = mapType(oldField.Type)
+	}
+	newSQLType := newField.SQLType
+	if newSQLType == "" {
+		newSQLType = mapType(newField.Type)
+	}
 
-		upParts = append(upParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s;", tableName, colName, newType))
-		downParts = append(downParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s;", tableName, colName, oldType))
+	if oldSQLType != newSQLType {
+		upParts = append(upParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s;", tableName, colName, newSQLType))
+		downParts = append(downParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s;", tableName, colName, oldSQLType))
 	}
 
 	// Required constraint change

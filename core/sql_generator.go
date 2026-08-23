@@ -107,9 +107,12 @@ func generateColumn(field Field, modelName string) (string, string) {
 	}
 
 	// Regular scalar column
-	sqlType := mapType(field.Type)
+	sqlType := field.SQLType
+	if sqlType == "" {
+		sqlType = mapType(field.Type)
+	}
 	if field.IsMulti {
-		if field.Type != "json" && field.Type != "jsonb" {
+		if field.Type != "json" && field.Type != "jsonb" && !strings.HasSuffix(sqlType, "[]") {
 			sqlType += "[]"
 		}
 	}
