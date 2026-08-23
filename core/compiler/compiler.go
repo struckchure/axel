@@ -2321,15 +2321,22 @@ func (c *compiler) resolveParamType(name, annot string) (string, string, error) 
 		return "str", e.Name, nil
 	}
 	if s, ok := c.schema.ScalarTypes[annot]; ok {
+		if s.IsCustomSQL {
+			return annot, "", nil
+		}
 		return s.Base, "", nil
 	}
 	if _, ok := c.schema.ObjectTypes[annot]; ok {
 		return "", "", fmt.Errorf("$%s: %q is an object type (table), not usable as a parameter type", name, annot)
 	}
+	switch strings.ToLower(annot) {
+	case "geography", "geometry", "citext", "vector", "ltree", "hstore", "bytea":
+		return annot, "", nil
+	}
 	return "", "", fmt.Errorf("$%s: unknown parameter type %q", name, annot)
 }
 
-// annotSQLType resolves an inline type annotation (<str>, <MyEnum>, <MyAlias>)
+// annotSQLType resolves an inline type annotation (<str>, <MyEnum>, <MyAlias>, <Point>, <geography>)
 // to a SQL type for an explicit cast, using the same classification as
 // resolveParamType: builtin scalar, scalar alias, or enum (stored as TEXT).
 // Object types are rejected.
@@ -2341,12 +2348,19 @@ func (c *compiler) annotSQLType(annot string) (string, error) {
 		return "TEXT", nil
 	}
 	if s, ok := c.schema.ScalarTypes[annot]; ok {
+		if s.SQLType != "" {
+			return s.SQLType, nil
+		}
 		if sqlType, ok := asl.BuiltinSQLType(s.Base); ok {
 			return sqlType, nil
 		}
 	}
 	if _, ok := c.schema.ObjectTypes[annot]; ok {
 		return "", fmt.Errorf("cannot cast to %q: it is an object type (table)", annot)
+	}
+	switch strings.ToLower(annot) {
+	case "geography", "geometry", "citext", "vector", "ltree", "hstore", "bytea", "text", "integer", "bigint", "real", "double precision", "numeric", "boolean", "uuid", "timestamptz", "date", "time":
+		return annot, nil
 	}
 	return "", fmt.Errorf("unknown cast type %q", annot)
 }

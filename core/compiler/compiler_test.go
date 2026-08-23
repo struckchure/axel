@@ -181,5 +181,18 @@ type Place {
 	if !strings.Contains(compiledSub.SQL, `(SELECT COUNT(*) FROM (`) {
 		t.Errorf("expected subquery count compilation, got:\n%s", compiledSub.SQL)
 	}
+
+	// 4. Query with explicit <geography> and <Point> casts
+	stmtCast, err := aql.ParseString(`multi select Place { id } filter ST_DWithin(.loc, ST_MakePoint($lng<float32>, $lat<float32>)<geography>, 1000.0);`)
+	if err != nil {
+		t.Fatalf("parse cast query: %v", err)
+	}
+	compiledCast, err := Compile(stmtCast, ir)
+	if err != nil {
+		t.Fatalf("compile cast query: %v", err)
+	}
+	if !strings.Contains(compiledCast.SQL, `(ST_MakePoint($1::REAL, $2::REAL))::geography`) {
+		t.Errorf("expected geography cast, got:\n%s", compiledCast.SQL)
+	}
 }
 

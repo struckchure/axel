@@ -746,9 +746,16 @@ func castResultType(ir *asl.SchemaIR, annot string) (sqlType, aqlType, enumType 
 		return "TEXT", "str", e.Name, true
 	}
 	if s, found := ir.ScalarTypes[annot]; found {
+		if s.SQLType != "" {
+			return s.SQLType, s.Name, "", true
+		}
 		if st, found := asl.BuiltinSQLType(s.Base); found {
 			return st, s.Base, "", true
 		}
+	}
+	switch strings.ToLower(annot) {
+	case "geography", "geometry", "citext", "vector", "ltree", "hstore", "bytea", "text", "integer", "bigint", "real", "double precision", "numeric", "boolean", "uuid", "timestamptz", "date", "time":
+		return annot, annot, "", true
 	}
 	return "", "", "", false
 }
