@@ -194,5 +194,72 @@ type Place {
 	if !strings.Contains(compiledCast.SQL, `(ST_MakePoint($1::REAL, $2::REAL))::geography`) {
 		t.Errorf("expected geography cast, got:\n%s", compiledCast.SQL)
 	}
+
+	// 5. Multi-link membership with multi-row subquery and with-binding
+	schemaMultiLinkSrc := `
+use extension 'postgis';
+scalar type Point extends sql "geography(Point, 4326)";
+type Address {
+  required id: uuid { constraint pk; };
+  point: Point;
+}
+type Coverage {
+  required id: uuid { constraint pk; };
+  multi addresses: Address;
+}
+`
+	multiLinkIR, err := (&asl.Resolver{}).Resolve(aslMustParse(t, schemaMultiLinkSrc))
+	if err != nil {
+		t.Fatalf("resolve multi-link schema: %v", err)
+	}
+
+	// 5a. Subquery in multi-link
+	stmtSubMem, err := aql.ParseString(`
+multi select Coverage { id }
+filter (
+  multi select Address
+  filter ST_DWithin(.point, ST_MakePoint($lng<float32>, $lat<float32>)<geography>, 5000.0)
+) in .addresses;
+`)
+	if err != nil {
+		t.Fatalf("parse subquery membership: %v", err)
+	}
+	compiledSubMem, err := Compile(stmtSubMem, multiLinkIR)
+	if err != nil {
+		t.Fatalf("compile subquery membership: %v", err)
+	}
+	if !strings.Contains(compiledSubMem.SQL, `EXISTS (SELECT 1 FROM "coverage_addresses" jt WHERE jt.coverage = c.id AND jt.address IN (SELECT a.id FROM "address" a WHERE ST_DWithin(a.point, (ST_MakePoint($1::REAL, $2::REAL))::geography, 5000.0)))`) {
+		t.Errorf("expected correlated EXISTS with IN subquery, got:\n%s", compiledSubMem.SQL)
+	}
+
+	// 5b. With-binding in multi-link
+	stmtWithMem, err := aql.ParseString(`
+with (
+  nearby := (
+    multi select Address
+    filter ST_DWithin(.point, ST_MakePoint($lng<float32>, $lat<float32>)<geography>, 5000.0)
+  );
+)
+multi select Coverage { id }
+filter nearby in .addresses;
+`)
+	if err != nil {
+		t.Fatalf("parse with-binding membership: %v", err)
+	}
+	compiledWithMem, err := Compile(stmtWithMem, multiLinkIR)
+	if err != nil {
+		t.Fatalf("compile with-binding membership: %v", err)
+	}
+	if !strings.Contains(compiledWithMem.SQL, `EXISTS (SELECT 1 FROM "coverage_addresses" jt WHERE jt.coverage = c.id AND jt.address IN (SELECT _with_nearby.id FROM _with_nearby))`) {
+		t.Errorf("expected correlated EXISTS with with-binding CTE, got:\n%s", compiledWithMem.SQL)
+	}
+}
+
+func aslMustParse(t *testing.T, src string) *asl.SourceFile {
+	sf, err := asl.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("parse asl: %v", err)
+	}
+	return sf
 }
 

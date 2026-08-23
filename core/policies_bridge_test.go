@@ -189,12 +189,12 @@ type Organization {
 		t.Fatalf("member_can_read policy not found; got %d policies", len(pols))
 	}
 
-	// `global current_user in .members` lowers to an IN-subquery over the junction
+	// `global current_user in .members` lowers to an EXISTS-subquery over the junction
 	// (organization_members), correlated to the organization row by table name.
 	for _, want := range []string{
-		`current_setting('app.current_user', true)::UUID IN (`,
-		`FROM "organization_members" jt JOIN "user" u`,
+		`EXISTS (SELECT 1 FROM "organization_members" jt`,
 		`WHERE jt.organization = "organization".id`,
+		`AND jt.user IN (current_setting('app.current_user', true)::UUID)`,
 	} {
 		if !strings.Contains(using, want) {
 			t.Errorf("member_can_read USING missing %q:\n%s", want, using)

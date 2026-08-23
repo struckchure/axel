@@ -1620,6 +1620,32 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		return "", nil
 	}
 
+	// Membership: `<value_or_set> in .<path>` where the path ends in a multi-link is a
+	// set test, lowered to `EXISTS (SELECT 1 FROM junction … WHERE … IN (<left>))` rather than a
+	// scalar comparison. Intercept before compilePrimary tries (and fails) to
+	// lower the multi-link path as a scalar, or before compilePrimary rejects a multi with-binding on the left.
+	if cmp.Op == "in" && cmp.Right != nil && cmp.Right.Path != nil {
+		var left string
+		if b, field, ok := c.withOperand(cmp.Left); ok && b.multi {
+			var err error
+			left, err = c.withSetRefCast(b, field, cmp.Left.Cast)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			var err error
+			left, err = c.compilePrimary(cmp.Left, alias, rt)
+			if err != nil {
+				return "", err
+			}
+		}
+		if membership, ok, err := c.compileMembership(left, cmp.Right.Path, alias, rt); err != nil {
+			return "", err
+		} else if ok {
+			return membership, nil
+		}
+	}
+
 	left, err := c.compilePrimary(cmp.Left, alias, rt)
 	if err != nil {
 		return "", err
@@ -1639,19 +1665,6 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 
 	if cmp.Op == "" {
 		return left, nil
-	}
-
-	// Membership: `<value> in .<path>` where the path ends in a multi-link is a
-	// set test, lowered to `<value> IN (SELECT … FROM junction …)` rather than a
-	// scalar comparison. Intercept before compilePrimary tries (and fails) to
-	// lower the multi-link path as a scalar. A non-multi RHS falls through to the
-	// ordinary infix `in`.
-	if cmp.Op == "in" && cmp.Right != nil && cmp.Right.Path != nil {
-		if membership, ok, err := c.compileMembership(left, cmp.Right.Path, alias, rt); err != nil {
-			return "", err
-		} else if ok {
-			return membership, nil
-		}
 	}
 
 	// Membership over a `multi` with-binding: `.sender_id in api_keys.id` or
@@ -2138,30 +2151,33 @@ func (c *compiler) compileMembership(left string, path *aql.PathExpr, alias stri
 	tAlias := c.newAlias(link.TargetType)
 
 	var inner string
+	inClause := left
+	if !strings.HasPrefix(strings.TrimSpace(left), "(") {
+		inClause = fmt.Sprintf("(%s)", left)
+	}
+
 	if link.JunctionTable != "" {
 		// Junction table with one FK column per side, named after the referenced
 		// table (see generateJunctionTable / compileLinkField): ownerType.Table on
 		// the owner side, targetType.Table on the target side.
 		jAlias := "jt"
 		inner = fmt.Sprintf(
-			"SELECT %s.%s FROM %q %s JOIN %q %s ON %s.%s = %s.%s WHERE %s.%s = %s",
-			tAlias, joinField,
+			"EXISTS (SELECT 1 FROM %q %s WHERE %s.%s = %s AND %s.%s IN %s)",
 			link.JunctionTable, jAlias,
-			targetType.Table, tAlias,
-			tAlias, joinField, jAlias, targetType.Table,
 			jAlias, ownerType.Table, ownerRef,
+			jAlias, targetType.Table, inClause,
 		)
 	} else {
 		// Direct FK on the target side (rare for multi).
 		inner = fmt.Sprintf(
-			"SELECT %s.%s FROM %q %s WHERE %s.%s = %s",
-			tAlias, joinField,
+			"EXISTS (SELECT 1 FROM %q %s WHERE %s.%s = %s AND %s.%s IN %s)",
 			targetType.Table, tAlias,
 			tAlias, link.JoinColumn, ownerRef,
+			tAlias, joinField, inClause,
 		)
 	}
 
-	return fmt.Sprintf("%s IN (%s)", left, inner), true, nil
+	return inner, true, nil
 }
 
 func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.ResolvedType) (string, error) {
