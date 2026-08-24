@@ -184,7 +184,7 @@ var multi $conditions: str? := {'Hot', 'Cold', 'Fragile', 'Frozen'}
 for $condition in $conditions {
   insert PackageCondition {
     name := $condition,
-    added_by := (select User filter .email = 'ameenmohammed2311@gmail.com')
+    added_by := (select User filter .email = 'alice@example.com')
   } unless conflict;
 }
 ```

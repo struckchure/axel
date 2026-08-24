@@ -4318,7 +4318,7 @@ var multi $conditions: str? := {'Hot', 'Cold', 'Fragile', 'Frozen'}
 for $condition in $conditions {
   insert PackageCondition {
     name := $condition,
-    added_by := (select User filter .email = 'ameenmohammed2311@gmail.com')
+    added_by := (select User filter .email = 'alice@example.com')
   } unless conflict;
 }
 ```
@@ -4331,7 +4331,7 @@ WITH __for_iter AS (
 INSERT INTO "package_condition" ("name", "added_by")
 SELECT
   __for_iter."condition",
-  (SELECT u.id FROM "user" u WHERE u.email = 'ameenmohammed2311@gmail.com' LIMIT 1)
+  (SELECT u.id FROM "user" u WHERE u.email = 'alice@example.com' LIMIT 1)
 FROM __for_iter
 ON CONFLICT DO NOTHING
 RETURNING "id", "name", "added_by";

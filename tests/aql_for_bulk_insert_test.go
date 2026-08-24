@@ -24,7 +24,7 @@ var multi $conditions: str? := {'Hot', 'Cold', 'Fragile'};
 for $condition in $conditions {
   insert PackageCondition {
     name := $condition,
-    added_by := (select User filter .email = 'ameenmohammed2311@gmail.com')
+    added_by := (select User filter .email = 'alice@example.com')
   } unless conflict;
 }
 `
@@ -42,7 +42,7 @@ for $condition in $conditions {
 	if !strings.Contains(c.SQL, `SELECT`) || !strings.Contains(c.SQL, `__for_iter."condition"`) {
 		t.Errorf("expected select __for_iter.\"condition\" in SQL:\n%s", c.SQL)
 	}
-	if !strings.Contains(c.SQL, `(SELECT u.id FROM "user" u WHERE u.email = 'ameenmohammed2311@gmail.com' LIMIT 1)`) {
+	if !strings.Contains(c.SQL, `(SELECT u.id FROM "user" u WHERE u.email = 'alice@example.com' LIMIT 1)`) {
 		t.Errorf("expected added_by subquery in SQL:\n%s", c.SQL)
 	}
 	if !strings.Contains(c.SQL, `FROM __for_iter`) {
