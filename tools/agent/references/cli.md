@@ -43,8 +43,22 @@ codegen:
 | `axel compile` | Compile AQL to parameterized SQL |
 | `axel codegen` | Generate a typed client from the schema + queries |
 | `axel fmt` | Canonical formatting for `.asl` and `.aql` |
+| `axel run` | Execute an AQL query directly against the database |
 | `axel studio` | Browser database viewer/editor with AQL and SQL consoles |
 | `axel lsp` | Language server over stdio (what the Zed/VS Code extensions run) |
+
+### run
+
+```sh
+# Execute inline query with positional parameters
+axel run -c "multi select User { id, name } limit \$limit;" limit=20
+
+# Execute from file with JSON parameters
+axel run -f queries/get_users.aql -p '{"limit": 20}'
+
+# With relaxed JSON / object parameters
+axel run queries/get_users.aql "params={skip: 1, limit: 20}"
+```
 
 ### compile
 

@@ -9,13 +9,17 @@ inline query passed with `--aql`.
 ## Grammar
 
 ```
-Statement   = VarBlock* WithBlock? (SelectStmt | InsertStmt | UpdateStmt | DeleteStmt)
+Statement   = VarBlock* WithBlock? (SelectStmt | InsertStmt | UpdateStmt | DeleteStmt | ForStmt)
 
-VarBlock    = "var" "(" (Param ";")* ")" | "var" Param ";"
-Param       = "$" Ident ("<" Ident ">")? "?"?
+VarBlock    = "var" "(" (VarParam ";"?)* ")" | "var" VarParam ";"?
+VarParam    = "multi"? "$" Ident (":" Ident | "<" Ident ">")? "?"? (":=" DefaultVal)?
+DefaultVal  = SetLiteral | Expr
+Param       = "$" Ident (":" Ident | "<" Ident ">")? "?"?
 
 WithBlock   = "with" "(" (WithBinding ";")* ")"
 WithBinding = Ident ":=" "(" "multi"? "select" SelectBody ")"
+
+ForStmt     = "for" ("$" Ident | Ident) "in" Expr "{" (InsertStmt | SelectStmt | UpdateStmt | DeleteStmt) "}" ";"?
 
 SelectStmt  = "multi"? "select" SelectBody ";"?
 SelectBody  = AggExpr
@@ -54,10 +58,11 @@ Factor      = ("+" | "-")? Primary
 Primary     = Operand ("<" Ident ">")?       # trailing cast on any operand
 Operand     = "(" "multi"? "select" SelectBody ")" ("." Ident)?   # sub-select
             | "(" "insert" TypeName "{" … ")"                      # sub-insert → id
-            | "(" Expr ")" | FuncCall | PathExpr
+            | "(" Expr ")" | FuncCall | PathExpr | SetLiteral
             | QualifiedIdent                                       # User.id — outer reference
             | "$" Ident | "global" Ident | "null" | "true" | "false"
             | String | Int | Float | Ident
+SetLiteral  = "{" (Expr ("," Expr)* ","?)? "}"
 PathExpr       = ("." Ident)+
 QualifiedIdent = Ident "." Ident
 ```
@@ -168,6 +173,24 @@ update Organization filter .id = $id set {
 
 delete Post filter .created_at < $cutoff;
 ```
+
+## Bulk insert (`for` loop) & variable defaults
+
+Iterate over multi-valued parameters or set literals to perform set-based bulk insertions:
+
+```aql
+var multi $conditions: str? := {'Hot', 'Cold', 'Fragile', 'Frozen'}
+
+for $condition in $conditions {
+  insert PackageCondition {
+    name := $condition,
+    added_by := (select User filter .email = 'ameenmohammed2311@gmail.com')
+  } unless conflict;
+}
+```
+
+- Declaring `multi $name: type? := default` passes an array parameter (`TEXT[]`) with a fallback default array.
+- Emits a CTE `WITH __for_iter AS (SELECT unnest(...) AS "iter")` and runs `INSERT ... SELECT ... FROM __for_iter`.
 
 Enum values are qualified (`Role.Member`). Insert and update return the row's columns.
 
