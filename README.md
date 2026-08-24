@@ -181,11 +181,14 @@ axel -c axel.yaml <command>
 | `axel init`     | Scaffold a new Axel project (config, schema, migrations) |
 | `axel validate` | Parse and validate a `.asl` schema file    |
 | `axel compile`  | Compile an AQL query to parameterized SQL  |
+| `axel run`      | Execute an AQL query against the database  |
+| `axel repl`     | Interactive query REPL session             |
 | `axel codegen`  | Generate type-safe Go or TypeScript code   |
 | `axel diff`     | Diff schema and write a new migration file |
 | `axel up`       | Apply all pending migrations               |
 | `axel down <n>` | Roll back the last N migrations            |
 | `axel status`   | Show migration state                       |
+| `axel studio`   | Browser database viewer and query editor   |
 
 ```sh
 # Initialize project
@@ -193,6 +196,12 @@ axel init
 
 # Validate schema
 axel -d . validate
+
+# Interactive REPL
+axel repl
+
+# Run query against database
+axel run -c 'select User { id, email }'
 
 # Compile a query (use single quotes to prevent shell $expansion)
 axel -d . compile --aql 'select User { id, email } filter .id = $id;'

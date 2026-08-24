@@ -273,6 +273,54 @@ axel run queries/get_users.aql "params={skip: 1, limit: 20}"
 
 ---
 
+### `axel repl`
+
+Starts an interactive REPL session for writing, compiling, and testing AQL queries against a database.
+
+```sh
+# Start REPL in the current project
+axel repl
+
+# Specify schema and database URL
+axel repl --schema-path schema.asl --url postgres://localhost:5432/mydb
+
+# Start in table output format
+axel repl --format table
+```
+
+#### REPL Features
+
+- **Multi-line Query Input**: Automatically buffers multi-line queries until braces `{ ... }` or parentheses close, or when ending with `;`.
+- **Dual Mode**: Executes queries against PostgreSQL when connected; compiles and previews SQL when no database connection is active.
+- **Tab Completion**: Context-aware completion for AQL keywords, schema model names, field names, and meta-commands.
+- **Output Formats**: Switch between `pretty` (indented JSON), `table` (ASCII table), and `compact` JSON with `.format <fmt>`.
+- **Persistent History**: Command history is saved across sessions to `~/.axel_history`.
+
+#### Meta-Commands
+
+| Command | Alias | Description |
+|---|---|---|
+| `.help` | `\?`, `\h` | Show help and command cheatsheet |
+| `.models` | `\dt` | List all models in the loaded schema |
+| `.schema [model]` | `\d` | View schema overview or examine a specific model/enum/scalar |
+| `.compile <query>` | `\c` | Compile an AQL query to SQL without executing against the database |
+| `.format [fmt]` | | Get or set output format (`pretty`, `table`, `compact`) |
+| `.param` | `\p` | List active query parameters |
+| `.param <k> <v>` | | Set a session parameter (e.g. `.param limit 10`) |
+| `.param json <obj>` | | Set parameters from JSON (e.g. `.param json {"skip": 5}`) |
+| `.param clear` | | Clear all active session parameters |
+| `.reload [path]` | `\r` | Reload schema from disk or load an alternative `.asl` file |
+| `.clear` | `\l` | Clear the terminal screen |
+| `.history` | | View recent command history |
+| `.exit`, `.quit` | `\q` | Exit the REPL (or press `Ctrl+D`) |
+
+| Flag            | Short | Default           | Description                                                         |
+|-----------------|-------|-------------------|---------------------------------------------------------------------|
+| `--format`      |       | `pretty`          | Initial output format (`pretty`, `table`, `compact`)                |
+| `--schema-path` |       | `axel/schema.asl` | Schema file, directory, or glob to load                             |
+
+---
+
 ### `axel fmt`
 
 Formats `.asl` schema and `.aql` query files in canonical style, preserving comments. Paths may be files or directories (searched recursively); with no paths, the current directory is formatted.

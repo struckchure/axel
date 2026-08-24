@@ -44,8 +44,21 @@ codegen:
 | `axel codegen` | Generate a typed client from the schema + queries |
 | `axel fmt` | Canonical formatting for `.asl` and `.aql` |
 | `axel run` | Execute an AQL query directly against the database |
+| `axel repl` | Interactive query REPL session with completion, history & schema inspection |
 | `axel studio` | Browser database viewer/editor with AQL and SQL consoles |
 | `axel lsp` | Language server over stdio (what the Zed/VS Code extensions run) |
+
+### repl
+
+```sh
+# Start interactive REPL
+axel repl
+
+# With explicit schema and DB URL
+axel repl --schema-path schema.asl --url postgres://localhost:5432/mydb
+```
+
+Meta-commands: `.help`, `.models` (`\dt`), `.schema [model]` (`\d`), `.compile <query>` (`\c`), `.format [pretty|table|compact]`, `.param <k> <v>`, `.reload [path]` (`\r`), `.clear` (`\l`), `.exit` (`\q`).
 
 ### run
 

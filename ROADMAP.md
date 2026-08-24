@@ -72,6 +72,7 @@ Axel is a multi-language database tool designed to provide Prisma-like developer
 - [x] `axel studio` - Visual database explorer
 - [ ] `axel seed` - Run seed files
 - [x] `axel validate` - Validate schema
+- [x] `axel repl` - Interactive query REPL session
 
 ### Code Generation
 
