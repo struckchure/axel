@@ -144,6 +144,8 @@ func (f *aqlFmt) statement(stmt *Statement) {
 		f.updateStmt(stmt.Update)
 	case stmt.Delete != nil:
 		f.deleteStmt(stmt.Delete)
+	case stmt.For != nil:
+		f.forStmt(stmt.For)
 	}
 }
 
@@ -155,7 +157,7 @@ func (f *aqlFmt) varBlock(v *VarBlock) {
 	if len(v.Params) == 1 && v.Pos.Line == v.EndPos.Line {
 		f.leading(v.Pos.Offset)
 		f.w("var ")
-		printParam(&f.cur, v.Params[0])
+		printVarParam(&f.cur, v.Params[0])
 		f.w(";")
 		f.clauseBreak(v.EndPos.Offset)
 		return
@@ -170,7 +172,7 @@ func (f *aqlFmt) varBlock(v *VarBlock) {
 	f.indent++
 	for i, p := range v.Params {
 		f.leading(p.Pos.Offset)
-		printParam(&f.cur, p)
+		printVarParam(&f.cur, p)
 		f.w(";")
 		next := 1 << 30
 		if i+1 < len(v.Params) {
@@ -577,6 +579,36 @@ func (f *aqlFmt) deleteStmt(s *DeleteStmt) {
 	f.inlineFilter(s.Filter)
 	f.w(";")
 	f.clauseBreak(1 << 30)
+}
+
+func (f *aqlFmt) forStmt(s *ForStmt) {
+	if s == nil {
+		return
+	}
+	f.leading(s.Pos.Offset)
+	iter := s.Iterator
+	if !strings.HasPrefix(iter, "$") {
+		iter = "$" + iter
+	}
+	f.wf("for %s in ", iter)
+	printExpr(&f.cur, s.InExpr)
+	f.w(" {\n")
+	f.indent++
+	if s.Body != nil {
+		switch {
+		case s.Body.Insert != nil:
+			f.insertStmt(s.Body.Insert)
+		case s.Body.Select != nil:
+			f.selectStmt(s.Body.Select)
+		case s.Body.Update != nil:
+			f.updateStmt(s.Body.Update)
+		case s.Body.Delete != nil:
+			f.deleteStmt(s.Body.Delete)
+		}
+	}
+	f.indent--
+	f.w("\n}")
+	f.clauseBreak(s.EndPos.Offset)
 }
 
 // assignmentBlock renders `field := expr` entries, one per indented line, between

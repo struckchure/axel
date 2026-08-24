@@ -448,8 +448,8 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 	}
 
 	if oldSQLType != newSQLType {
-		upParts = append(upParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s;", tableName, colName, newSQLType))
-		downParts = append(downParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s;", tableName, colName, oldSQLType))
+		upParts = append(upParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s USING %s::%s;", tableName, colName, newSQLType, colName, newSQLType))
+		downParts = append(downParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s TYPE %s USING %s::%s;", tableName, colName, oldSQLType, colName, oldSQLType))
 	}
 
 	// Required constraint change

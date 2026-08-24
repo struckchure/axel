@@ -17,22 +17,49 @@ type Statement struct {
 	Select     *SelectStmt  `parser:"( @@"`
 	Insert     *InsertStmt  `parser:"| @@"`
 	Update     *UpdateStmt  `parser:"| @@"`
-	Delete     *DeleteStmt  `parser:"| @@ )"`
+	Delete     *DeleteStmt  `parser:"| @@"`
+	For        *ForStmt     `parser:"| @@ )"`
 	EndPos     lexer.Position
 }
 
 // VarBlock is a leading `var ( ... )` or `var $param...;` block that declares
-// named query parameters and their explicit types / optionality.
+// named query parameters and their explicit types / optionality / defaults.
 //
 //	var (
 //	  $currency<str>?;
 //	  $api_key_id<uuid>?;
+//	  multi $conditions: str? = {'Hot', 'Cold'};
 //	)
-//	var $limit<int32>?;
+//	var $limit<int32>? := 20;
 type VarBlock struct {
 	Pos    lexer.Position
-	Params []*Param `parser:"'var' ( '(' ( @@ ';'? )* ')' ';'? | @@ ';' )"`
+	Params []*VarParam `parser:"'var' ( '(' ( @@ ';'? )* ')' ';'? | @@ ';'? )"`
 	EndPos lexer.Position
+}
+
+// ForStmt is an iteration statement for bulk operations:
+//
+//	for $condition in $conditions {
+//	  insert PackageCondition {
+//	    name := $condition,
+//	    added_by := (select User filter .email = $email)
+//	  } unless conflict;
+//	}
+type ForStmt struct {
+	Pos      lexer.Position
+	Iterator string   `parser:"'for' ( '$' @Ident | @Ident ) 'in'"`
+	InExpr   *Expr    `parser:"@@"`
+	Body     *ForBody `parser:"'{' @@ '}'"`
+	End      string   `parser:"';'?"`
+	EndPos   lexer.Position
+}
+
+// ForBody wraps the statement executed inside a for loop.
+type ForBody struct {
+	Insert *InsertStmt `parser:"@@"`
+	Select *SelectStmt `parser:"| @@"`
+	Update *UpdateStmt `parser:"| @@"`
+	Delete *DeleteStmt `parser:"| @@"`
 }
 
 // WithBlock is a leading `with ( name := (select ...); ... )` clause that binds
@@ -459,6 +486,8 @@ type Primary struct {
 	SubInsert *InsertBody `parser:"| '(' @@ ')'"`
 	// Sub-expression or parenthesized expression: (expr)
 	SubExpr *Expr `parser:"| '(' @@ ')'"`
+	// Set literal: {'Hot', 'Cold', 'Fragile'}
+	Set *SetLiteral `parser:"| @@"`
 	// Function call: count(...)
 	FuncCall *FuncCall `parser:"| @@"`
 	// Path expression: .email or .author.name
@@ -490,19 +519,41 @@ type Primary struct {
 	EndPos lexer.Position
 }
 
-// Param is a query parameter: $email (required) or $email? (optional).
-// An optional param compiles to a filter condition that is skipped when the
-// value is null, and becomes a nullable type in generated code.
-//
-// An optional inline type annotation ($email<str>, $limit<int32>?) names the
-// param's type explicitly. The type may be any declared ASL value type — a
-// builtin scalar, a scalar alias, or an enum — but not an object type.
-type Param struct {
+// SetLiteral is a set or array literal, e.g. {'Hot', 'Cold', 'Fragile'}.
+type SetLiteral struct {
 	Pos      lexer.Position
-	Name     string `parser:"'$' @Ident"`
-	Type     string `parser:"( '<' @Ident '>' )?"`
-	Optional bool   `parser:"@'?'?"`
+	Elements []*Expr `parser:"'{' ( @@ ( ',' @@ )* ','? )? '}'"`
 	EndPos   lexer.Position
+}
+
+// DefaultVal is the default value expression for a variable parameter.
+type DefaultVal struct {
+	Set  *SetLiteral `parser:"@@"`
+	Expr *Expr       `parser:"| @@"`
+}
+
+// VarParam is a parameter declared in a `var` block:
+// $email, $email?, multi $conditions: str? := {'Hot', 'Cold'}, or $limit<int32>? := 20.
+type VarParam struct {
+	Pos       lexer.Position
+	Multi     bool        `parser:"@'multi'?"`
+	Name      string      `parser:"'$' @Ident"`
+	ColonType string      `parser:"( ':' @Ident )?"`
+	Type      string      `parser:"( '<' @Ident '>' )?"`
+	Optional  bool        `parser:"@'?'?"`
+	Default   *DefaultVal `parser:"( ':=' @@ )?"`
+	EndPos    lexer.Position
+}
+
+// Param is a query parameter reference in an expression: $email, $email?,
+// $email: str, or $email<str>?.
+type Param struct {
+	Pos       lexer.Position
+	Name      string `parser:"'$' @Ident"`
+	ColonType string `parser:"( ':' @Ident )?"`
+	Type      string `parser:"( '<' @Ident '>' )?"`
+	Optional  bool   `parser:"@'?'?"`
+	EndPos    lexer.Position
 }
 
 // FuncCall: funcName(expr, ...)

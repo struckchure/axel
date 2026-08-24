@@ -79,6 +79,12 @@ func QueryDefinitionIn(text string, offset int, schema *asl.SchemaIR, files []Sc
 	// 1. Variable / Parameter reference ($param)
 	if pName, _, _, isParam := paramNameAt(text, offset); isParam {
 		if stmt, err := aql.ParseString(text); err == nil && stmt != nil {
+			if stmt.For != nil {
+				iter := strings.TrimPrefix(stmt.For.Iterator, "$")
+				if iter == pName {
+					return &Location{URI: "", Range: nameSelection(text, stmt.For.Pos, stmt.For.Iterator)}
+				}
+			}
 			for _, v := range stmt.Vars {
 				for _, p := range v.Params {
 					if p.Name == pName {
@@ -94,8 +100,14 @@ func QueryDefinitionIn(text string, offset int, schema *asl.SchemaIR, files []Sc
 		return nil
 	}
 
-	// 2. With-binding or var param by name (when clicking on binding name or param identifier)
+	// 2. With-binding, for-loop iterator, or var param by name (when clicking on binding name or param identifier)
 	if stmt, err := aql.ParseString(text); err == nil && stmt != nil {
+		if stmt.For != nil {
+			iter := strings.TrimPrefix(stmt.For.Iterator, "$")
+			if iter == word {
+				return &Location{URI: "", Range: nameSelection(text, stmt.For.Pos, stmt.For.Iterator)}
+			}
+		}
 		if stmt.With != nil {
 			for _, b := range stmt.With.Bindings {
 				if b.Name == word {

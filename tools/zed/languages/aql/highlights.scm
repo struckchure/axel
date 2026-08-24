@@ -8,6 +8,7 @@
 
 ; Statement keywords
 [
+  "for"
   "var"
   "with"
   "multi"

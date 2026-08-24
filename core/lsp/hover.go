@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"strings"
+
 	"github.com/struckchure/axel/core/aql"
 	"github.com/struckchure/axel/core/asl"
 )
@@ -132,6 +134,15 @@ func QueryHover(text string, offset int, schema *asl.SchemaIR) *Hover {
 func paramHover(text, paramName string, rng Range, schema *asl.SchemaIR) *Hover {
 	stmt, _ := aql.ParseString(text)
 	if stmt != nil {
+		if stmt.For != nil {
+			iter := strings.TrimPrefix(stmt.For.Iterator, "$")
+			if iter == paramName {
+				return &Hover{
+					Contents: "```aql\nfor $" + iter + " in ...\n```\nLoop iterator variable",
+					Range:    rng,
+				}
+			}
+		}
 		for _, v := range stmt.Vars {
 			for _, p := range v.Params {
 				if p.Name == paramName {
@@ -146,22 +157,32 @@ func paramHover(text, paramName string, rng Range, schema *asl.SchemaIR) *Hover 
 	}
 }
 
-func formatParamHover(p *aql.Param, rng Range, schema *asl.SchemaIR) *Hover {
+func formatParamHover(p *aql.VarParam, rng Range, schema *asl.SchemaIR) *Hover {
+	multiPrefix := ""
+	if p.Multi {
+		multiPrefix = "multi "
+	}
 	typeAnnot := ""
-	if p.Type != "" {
+	typeKey := p.Type
+	if p.ColonType != "" {
+		typeAnnot = ": " + p.ColonType
+		if typeKey == "" {
+			typeKey = p.ColonType
+		}
+	} else if p.Type != "" {
 		typeAnnot = "<" + p.Type + ">"
 	}
 	opt := ""
 	if p.Optional {
 		opt = "?"
 	}
-	content := "```aql\nvar $" + p.Name + typeAnnot + opt + "\n```\nQuery parameter"
-	if schema != nil && p.Type != "" {
-		if s, ok := schema.ScalarTypes[p.Type]; ok {
+	content := "```aql\nvar " + multiPrefix + "$" + p.Name + typeAnnot + opt + "\n```\nQuery parameter"
+	if schema != nil && typeKey != "" {
+		if s, ok := schema.ScalarTypes[typeKey]; ok {
 			content += "\n\n" + scalarHover(s)
-		} else if e, ok := schema.EnumTypes[p.Type]; ok {
+		} else if e, ok := schema.EnumTypes[typeKey]; ok {
 			content += "\n\n```asl\nenum " + e.Name + " { " + join(e.Values) + " }\n```"
-		} else if rt, ok := schema.ObjectTypes[p.Type]; ok {
+		} else if rt, ok := schema.ObjectTypes[typeKey]; ok {
 			content += "\n\n" + typeHover(rt)
 		}
 	}
@@ -172,6 +193,15 @@ func formatParamHover(p *aql.Param, rng Range, schema *asl.SchemaIR) *Hover {
 }
 
 func varOrWithHover(stmt *aql.Statement, word string, rng Range, schema *asl.SchemaIR) *Hover {
+	if stmt.For != nil {
+		iter := strings.TrimPrefix(stmt.For.Iterator, "$")
+		if iter == word {
+			return &Hover{
+				Contents: "```aql\nfor $" + iter + " in ...\n```\nLoop iterator variable",
+				Range:    rng,
+			}
+		}
+	}
 	if stmt.With != nil {
 		for _, b := range stmt.With.Bindings {
 			if b.Name == word {

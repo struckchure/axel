@@ -386,6 +386,18 @@ func fieldsEqual(f1, f2 Field) bool {
 		return false
 	}
 
+	oldSQL := f1.SQLType
+	if oldSQL == "" {
+		oldSQL = mapType(f1.Type)
+	}
+	newSQL := f2.SQLType
+	if newSQL == "" {
+		newSQL = mapType(f2.Type)
+	}
+	if oldSQL != newSQL {
+		return false
+	}
+
 	if f1.IsRequired != f2.IsRequired {
 		return false
 	}

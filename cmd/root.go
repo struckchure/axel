@@ -191,7 +191,7 @@ func databaseURLFromEnv() string {
 
 func init() {
 	RootCmd.PersistentFlags().StringVarP(&projectDir, "dir", "d", ".", "Project directory (auto-discovers axel.yaml, schema.asl, default.asl, or schema/)")
-	RootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Config file path (overrides --dir)")
+	RootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Config file path (overrides --dir)")
 
 	RootCmd.PersistentFlags().StringVarP(&databaseURL, "url", "u", "", "Database URL")
 	RootCmd.PersistentFlags().StringVar(&migrationsDir, "migrations-dir", "", "Migrations directory")

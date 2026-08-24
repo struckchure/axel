@@ -13,7 +13,7 @@ module.exports = grammar({
   word: ($) => $.identifier,
 
   // See _operand: `<` starts either a cast or a less-than comparison.
-  conflicts: ($) => [[$._operand]],
+  conflicts: ($) => [[$._operand], [$.link_delta, $.set_literal]],
 
   extras: ($) => [/\s/, $.comment],
 
@@ -43,7 +43,25 @@ module.exports = grammar({
           $.insert_statement,
           $.update_statement,
           $.delete_statement,
+          $.for_statement,
         ),
+      ),
+
+    for_statement: ($) =>
+      seq(
+        "for",
+        field("iterator", choice($.parameter, $.identifier)),
+        "in",
+        field("collection", $.expression),
+        "{",
+        choice(
+          $.select_statement,
+          $.insert_statement,
+          $.update_statement,
+          $.delete_statement,
+        ),
+        "}",
+        optional(";"),
       ),
 
     var_block: ($) =>
@@ -52,12 +70,27 @@ module.exports = grammar({
         choice(
           seq(
             "(",
-            repeat(seq($.parameter, optional(";"))),
+            repeat(seq($.var_param, optional(";"))),
             ")",
             optional(";"),
           ),
-          seq($.parameter, ";"),
+          seq($.var_param, optional(";")),
         ),
+      ),
+
+    var_param: ($) =>
+      seq(
+        optional("multi"),
+        "$",
+        field("name", $.identifier),
+        optional(
+          choice(
+            seq("<", field("param_type", $.type_identifier), ">"),
+            seq(":", field("param_type", $.type_identifier)),
+          ),
+        ),
+        optional("?"),
+        optional(seq(":=", field("default", $.expression))),
       ),
 
     // with ( name := (select ...); name := (multi select ...); )
@@ -298,6 +331,7 @@ module.exports = grammar({
 
     _primary: ($) =>
       choice(
+        $.set_literal,
         $.subquery,
         $.insert_expression,
         $.parenthesized_expression,
@@ -312,6 +346,14 @@ module.exports = grammar({
         $.integer,
         $.qualified_identifier,
         $.identifier,
+      ),
+
+    // set literal: {'Hot', 'Cold', 'Fragile'}
+    set_literal: ($) =>
+      seq(
+        "{",
+        optional(seq($.expression, repeat(seq(",", $.expression)), optional(","))),
+        "}",
       ),
 
     // global reference: `global current_user`

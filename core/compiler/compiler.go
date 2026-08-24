@@ -119,13 +119,15 @@ func CompileWithOptions(stmt *aql.Statement, schema *asl.SchemaIR, opts CompileO
 		sql, err = c.compileUpdate(stmt.Update)
 	case stmt.Delete != nil:
 		sql, err = c.compileDelete(stmt.Delete)
+	case stmt.For != nil:
+		sql, err = c.compileFor(stmt.For)
 	default:
 		return nil, fmt.Errorf("empty statement")
 	}
 	if err != nil {
 		return nil, err
 	}
-	if stmt.Insert == nil {
+	if stmt.Insert == nil && stmt.For == nil {
 		sql = c.withPrefix() + sql
 	}
 
@@ -143,10 +145,7 @@ type compiler struct {
 	// out within this compile so every table instance gets a distinct alias: the
 	// first use of a letter keeps the bare form ("w"), later uses are suffixed
 	// ("w1", "w2", …). Correlated subqueries thread their owner's alias down as
-	// the `alias` parameter, so guaranteeing uniqueness here is enough to stop an
-	// inner table from shadowing an outer one — the classic FILTER-traversal
-	// collision where WorkflowTrigger and Workflow both derived alias "w". See
-	// newAlias and compilePath.
+	// their outer table prefix.
 	aliasCounts map[string]int
 	// trig is non-nil when compiling a trigger / function body, enabling the
 	// magic identifiers __new__ / __old__ / __subject__ / event.
@@ -168,6 +167,9 @@ type compiler struct {
 	// is allowed and correlates back to the base row by table name (see outerRef).
 	// See CompilePolicyPredicate.
 	policyMode bool
+	// forIterator and forIteratorRef track the loop iterator when compiling a for-loop body.
+	forIterator    string
+	forIteratorRef string
 }
 
 // CompilePolicyPredicate lowers an AQL boolean expression to a Postgres RLS policy
@@ -949,6 +951,87 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 	var sb strings.Builder
 	sb.WriteString(c.withPrefix(ctes...))
 	fmt.Fprintf(&sb, "SELECT %s FROM _target;", returningColumns(rt))
+	return sb.String(), nil
+}
+
+// compileFor compiles an iteration statement (for $iter in $collection { insert ... })
+// into a PostgreSQL bulk operation with a CTE unnesting the collection.
+func (c *compiler) compileFor(stmt *aql.ForStmt) (string, error) {
+	if stmt.Body == nil || stmt.Body.Insert == nil {
+		return "", fmt.Errorf("for statements currently support bulk insert bodies: for $x in $collection { insert ...; }")
+	}
+
+	iterName := strings.TrimPrefix(stmt.Iterator, "$")
+	c.forIterator = iterName
+	c.forIteratorRef = fmt.Sprintf("__for_iter.%q", iterName)
+
+	// Compile InExpr (e.g. $conditions or {'Hot', 'Cold'})
+	inSQL, err := c.compileExpr(stmt.InExpr, "", nil)
+	if err != nil {
+		return "", fmt.Errorf("for in expression: %w", err)
+	}
+
+	// Build CTE for unnesting the collection
+	iterCTE := fmt.Sprintf("__for_iter AS (\n  SELECT unnest(%s) AS %q\n)", inSQL, iterName)
+
+	// Compile the insert statement inside the body
+	ins := stmt.Body.Insert
+	rt, err := c.resolveType(ins.TypeName)
+	if err != nil {
+		return "", err
+	}
+
+	var cols []string
+	var vals []string
+	for _, a := range ins.Assignments {
+		if a.LinkDelta != nil {
+			return "", fmt.Errorf("cannot use delta assignment in bulk insert")
+		}
+
+		if link, ok := rt.Links[a.Field]; ok {
+			if link.IsMulti {
+				return "", fmt.Errorf("cannot assign multi-link %q in bulk insert", a.Field)
+			}
+			col, val, cteFrag, err := c.compileLinkAssignment(a, link, rt)
+			if err != nil {
+				return "", err
+			}
+			if cteFrag != "" {
+				c.withCTEs = append(c.withCTEs, cteFrag)
+			}
+			cols = append(cols, col)
+			vals = append(vals, val)
+			continue
+		}
+
+		prop, ok := rt.Properties[a.Field]
+		if !ok {
+			return "", fmt.Errorf("type %q has no field %q", ins.TypeName, a.Field)
+		}
+		val, err := c.compileExpr(a.Value, "", rt)
+		if err != nil {
+			return "", err
+		}
+		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
+		cols = append(cols, fmt.Sprintf("%q", prop.Column))
+		vals = append(vals, val)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(c.withPrefix(iterCTE))
+	fmt.Fprintf(&sb, "INSERT INTO \"%s\" (%s)\nSELECT\n  %s\nFROM __for_iter",
+		rt.Table,
+		strings.Join(cols, ", "),
+		strings.Join(vals, ",\n  "),
+	)
+	if ins.Conflict != nil {
+		onConflict, err := c.compileOnConflict(rt, ins.Conflict)
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(onConflict)
+	}
+	fmt.Fprintf(&sb, "\nRETURNING %s;", returningColumns(rt))
 	return sb.String(), nil
 }
 
@@ -1859,7 +1942,21 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 	case p.Path != nil:
 		return c.compilePath(p.Path, alias, rt)
 
+	case p.Set != nil:
+		var elems []string
+		for _, elem := range p.Set.Elements {
+			elemSQL, err := c.compileExpr(elem, alias, rt)
+			if err != nil {
+				return "", err
+			}
+			elems = append(elems, elemSQL)
+		}
+		return fmt.Sprintf("ARRAY[%s]", strings.Join(elems, ", ")), nil
+
 	case p.Param != nil:
+		if c.forIterator != "" && p.Param.Name == c.forIterator {
+			return c.forIteratorRef, nil
+		}
 		if c.policyMode {
 			return "", fmt.Errorf("policy predicates can't use bind parameters ($%s); reference a `global` instead", p.Param.Name)
 		}
@@ -1870,7 +1967,11 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 			}
 			return "", fmt.Errorf("unknown parameter $%s in trigger/function body", p.Param.Name)
 		}
-		aqlType, enumType, err := c.resolveParamType(p.Param.Name, p.Param.Type)
+		typeAnnot := p.Param.Type
+		if typeAnnot == "" && p.Param.ColonType != "" {
+			typeAnnot = p.Param.ColonType
+		}
+		aqlType, enumType, err := c.resolveParamType(p.Param.Name, typeAnnot)
 		if err != nil {
 			return "", err
 		}
@@ -1887,10 +1988,23 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		if aqlType == "" && c.params.isExplicit(p.Param.Name) {
 			aqlType = paramAQLType(c.params, p.Param.Name)
 		}
-		if aqlType != "" && (p.Param.Type != "" || c.params.isExplicit(p.Param.Name)) {
-			if sqlType, ok := asl.BuiltinSQLType(aqlType); ok {
-				return fmt.Sprintf("%s::%s", ph, sqlType), nil
+		sqlType := ""
+		if aqlType != "" {
+			if bt, ok := asl.BuiltinSQLType(aqlType); ok {
+				sqlType = bt
+				if c.params.isMulti(p.Param.Name) {
+					sqlType += "[]"
+				}
 			}
+		}
+		if defSQL := c.params.getDefault(p.Param.Name); defSQL != "" {
+			if sqlType != "" {
+				return fmt.Sprintf("COALESCE(%s::%s, %s)", ph, sqlType, defSQL), nil
+			}
+			return fmt.Sprintf("COALESCE(%s, %s)", ph, defSQL), nil
+		}
+		if sqlType != "" && (typeAnnot != "" || c.params.isExplicit(p.Param.Name) || c.params.isMulti(p.Param.Name)) {
+			return fmt.Sprintf("%s::%s", ph, sqlType), nil
 		}
 		return ph, nil
 
@@ -1946,6 +2060,9 @@ func (c *compiler) compilePrimaryValue(p *aql.Primary, alias string, rt *asl.Res
 		return "", fmt.Errorf("type %q has no field %q", qi.TypeName, qi.Field)
 
 	case p.Ident != nil:
+		if c.forIterator != "" && *p.Ident == c.forIterator {
+			return c.forIteratorRef, nil
+		}
 		// A bare binding reference means its row's id, so `business is not null`
 		// reads as "the binding matched a row".
 		if b, ok := c.lookupWith(*p.Ident); ok {
@@ -2376,12 +2493,16 @@ func (c *compiler) compileVars(vars []*aql.VarBlock) error {
 			if p == nil {
 				continue
 			}
-			baseType, enumType, err := c.resolveParamType(p.Name, p.Type)
+			typeAnnot := p.Type
+			if typeAnnot == "" && p.ColonType != "" {
+				typeAnnot = p.ColonType
+			}
+			baseType, enumType, err := c.resolveParamType(p.Name, typeAnnot)
 			if err != nil {
 				return err
 			}
 			c.params.add(p.Name, baseType)
-			if p.Type != "" {
+			if typeAnnot != "" {
 				c.params.setExplicitType(p.Name, baseType)
 			}
 			if enumType != "" {
@@ -2389,6 +2510,35 @@ func (c *compiler) compileVars(vars []*aql.VarBlock) error {
 			}
 			if p.Optional {
 				c.params.markOptional(p.Name)
+			}
+			if p.Multi {
+				c.params.markMulti(p.Name)
+			}
+			if p.Default != nil {
+				if p.Default.Set != nil {
+					var elems []string
+					for _, elem := range p.Default.Set.Elements {
+						elemSQL, err := c.compileExpr(elem, "", nil)
+						if err != nil {
+							return fmt.Errorf("param $%s default: %w", p.Name, err)
+						}
+						elems = append(elems, elemSQL)
+					}
+					elemSQLType := "TEXT"
+					if baseType != "" {
+						if bt, ok := asl.BuiltinSQLType(baseType); ok {
+							elemSQLType = bt
+						}
+					}
+					arraySQL := fmt.Sprintf("ARRAY[%s]::%s[]", strings.Join(elems, ", "), elemSQLType)
+					c.params.setDefault(p.Name, arraySQL)
+				} else if p.Default.Expr != nil {
+					defSQL, err := c.compileExpr(p.Default.Expr, "", nil)
+					if err != nil {
+						return fmt.Errorf("param $%s default: %w", p.Name, err)
+					}
+					c.params.setDefault(p.Name, defSQL)
+				}
 			}
 		}
 	}

@@ -54,6 +54,36 @@ func (p *paramCollector) markOptional(name string) {
 	}
 }
 
+// markMulti flags an already-registered param as multi (array).
+func (p *paramCollector) markMulti(name string) {
+	if pos, ok := p.index[name]; ok {
+		p.params[pos-1].Multi = true
+	}
+}
+
+// isMulti returns whether the param is multi.
+func (p *paramCollector) isMulti(name string) bool {
+	if pos, ok := p.index[name]; ok {
+		return p.params[pos-1].Multi
+	}
+	return false
+}
+
+// setDefault records a default SQL expression for the parameter.
+func (p *paramCollector) setDefault(name, defaultSQL string) {
+	if pos, ok := p.index[name]; ok {
+		p.params[pos-1].Default = defaultSQL
+	}
+}
+
+// getDefault returns the default SQL expression for the parameter.
+func (p *paramCollector) getDefault(name string) string {
+	if pos, ok := p.index[name]; ok {
+		return p.params[pos-1].Default
+	}
+	return ""
+}
+
 // add registers a named param and returns its positional placeholder ($1, $2, ...).
 // If the param was already registered, returns the same placeholder.
 func (p *paramCollector) add(name, aqlType string) string {

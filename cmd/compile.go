@@ -19,6 +19,10 @@ var compileCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) { loadConfig() },
 	RunE: func(cmd *cobra.Command, args []string) error {
 		aqlStr, _ := cmd.Flags().GetString("aql")
+		cmdStr, _ := cmd.Flags().GetString("command")
+		if aqlStr == "" && cmdStr != "" {
+			aqlStr = cmdStr
+		}
 		aqlFile, _ := cmd.Flags().GetString("file")
 		outFile, _ := cmd.Flags().GetString("out")
 		outDir, _ := cmd.Flags().GetString("output-dir")
@@ -150,7 +154,8 @@ func compileFile(aqlPath, destDir string, ir *asl.SchemaIR) error {
 }
 
 func init() {
-	compileCmd.Flags().String("aql", "", "AQL query string")
+	compileCmd.Flags().StringP("command", "c", "", "AQL query string to compile")
+	compileCmd.Flags().StringP("aql", "q", "", "AQL query string to compile (alias for -c)")
 	compileCmd.Flags().StringP("file", "f", "", "Path to .aql file")
 	compileCmd.Flags().StringP("out", "o", "", "Output .sql file (single-file mode, default: stdout)")
 	compileCmd.Flags().String("output-dir", "", "Output directory for compiled .sql files")

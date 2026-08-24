@@ -67,30 +67,33 @@
       }
     },
     "parameters": {
-      "match": "(\\$)([A-Za-z_]\\w*)(?:\\s*(<)\\s*([A-Za-z_]\\w*)\\s*(>))?(\\?)?",
+      "match": "(?:\\b(multi)\\s+)?(\\$)([A-Za-z_]\\w*)(?:\\s*(<|:)\\s*([A-Za-z_]\\w*)\\s*(>)?)?(\\?)?",
       "captures": {
         "1": {
-          "name": "punctuation.definition.variable.aql"
+          "name": "keyword.control.aql"
         },
         "2": {
-          "name": "variable.parameter.aql"
+          "name": "punctuation.definition.variable.aql"
         },
         "3": {
-          "name": "punctuation.definition.typeparameters.begin.aql"
+          "name": "variable.parameter.aql"
         },
         "4": {
-          "name": "entity.name.type.aql"
+          "name": "punctuation.definition.typeparameters.begin.aql"
         },
         "5": {
-          "name": "punctuation.definition.typeparameters.end.aql"
+          "name": "entity.name.type.aql"
         },
         "6": {
+          "name": "punctuation.definition.typeparameters.end.aql"
+        },
+        "7": {
           "name": "keyword.operator.optional.aql"
         }
       }
     },
     "keywords": {
-      "match": "\\b(var|with|multi|select|insert|update|delete|filter|group|having|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
+      "match": "\\b(for|var|with|multi|select|insert|update|delete|filter|group|having|order|by|limit|offset|set|unless|conflict|on|else|global)\\b",
       "name": "keyword.control.aql"
     },
     "operator-keywords": {

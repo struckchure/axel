@@ -13,6 +13,8 @@ type ParamInfo struct {
 	AQLType  string // "str", "int32", "bool", "uuid" — inferred where possible
 	EnumType string // enum type name when the param is enum-backed; "" otherwise
 	Optional bool   // true when written as $name? — nullable, skipped-when-null in filters
+	Multi    bool   // true when declared as multi $name
+	Default  string // compiled default SQL expression if any (e.g. "ARRAY['Hot', 'Cold']::TEXT[]" or "'active'")
 }
 
 // Header returns the SQL comment block that maps param names to positions.

@@ -32,6 +32,8 @@ func printStmt(b *strings.Builder, stmt *Statement) {
 		printUpdate(b, stmt.Update)
 	case stmt.Delete != nil:
 		printDelete(b, stmt.Delete)
+	case stmt.For != nil:
+		printFor(b, stmt.For)
 	}
 }
 
@@ -41,14 +43,14 @@ func printVar(b *strings.Builder, v *VarBlock) {
 	}
 	if len(v.Params) == 1 && v.Pos.Line == v.EndPos.Line {
 		b.WriteString("var ")
-		printParam(b, v.Params[0])
+		printVarParam(b, v.Params[0])
 		b.WriteString(";\n")
 		return
 	}
 	b.WriteString("var (\n")
 	for _, p := range v.Params {
 		b.WriteString("  ")
-		printParam(b, p)
+		printVarParam(b, p)
 		b.WriteString(";\n")
 	}
 	b.WriteString(")\n")
@@ -71,17 +73,93 @@ func printWith(b *strings.Builder, w *WithBlock) {
 	b.WriteString(")\n")
 }
 
-func printParam(b *strings.Builder, p *Param) {
+func printVarParam(b *strings.Builder, p *VarParam) {
 	if p == nil {
 		return
 	}
-	fmt.Fprintf(b, "$%s", p.Name)
-	if p.Type != "" {
+	if p.Multi {
+		b.WriteString("multi ")
+	}
+	name := p.Name
+	if !strings.HasPrefix(name, "$") {
+		name = "$" + name
+	}
+	b.WriteString(name)
+	if p.ColonType != "" {
+		fmt.Fprintf(b, ": %s", p.ColonType)
+	} else if p.Type != "" {
 		fmt.Fprintf(b, "<%s>", p.Type)
 	}
 	if p.Optional {
 		b.WriteString("?")
 	}
+	if p.Default != nil {
+		b.WriteString(" := ")
+		if p.Default.Set != nil {
+			printSetLiteral(b, p.Default.Set)
+		} else if p.Default.Expr != nil {
+			printExpr(b, p.Default.Expr)
+		}
+	}
+}
+
+func printParam(b *strings.Builder, p *Param) {
+	if p == nil {
+		return
+	}
+	name := p.Name
+	if !strings.HasPrefix(name, "$") {
+		name = "$" + name
+	}
+	b.WriteString(name)
+	if p.ColonType != "" {
+		fmt.Fprintf(b, ": %s", p.ColonType)
+	} else if p.Type != "" {
+		fmt.Fprintf(b, "<%s>", p.Type)
+	}
+	if p.Optional {
+		b.WriteString("?")
+	}
+}
+
+func printSetLiteral(b *strings.Builder, s *SetLiteral) {
+	if s == nil {
+		return
+	}
+	b.WriteString("{")
+	for i, elem := range s.Elements {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		printExpr(b, elem)
+	}
+	b.WriteString("}")
+}
+
+func printFor(b *strings.Builder, f *ForStmt) {
+	if f == nil {
+		return
+	}
+	iter := f.Iterator
+	if !strings.HasPrefix(iter, "$") {
+		iter = "$" + iter
+	}
+	fmt.Fprintf(b, "for %s in ", iter)
+	printExpr(b, f.InExpr)
+	b.WriteString(" {\n")
+	if f.Body != nil {
+		switch {
+		case f.Body.Insert != nil:
+			printInsert(b, f.Body.Insert)
+		case f.Body.Select != nil:
+			printSelect(b, f.Body.Select)
+		case f.Body.Update != nil:
+			printUpdate(b, f.Body.Update)
+		case f.Body.Delete != nil:
+			printDelete(b, f.Body.Delete)
+		}
+	}
+	b.WriteString("\n}")
 }
 
 func printSelect(b *strings.Builder, s *SelectStmt) {
@@ -460,6 +538,8 @@ func printPrimary(b *strings.Builder, p *Primary) {
 		b.WriteString("(")
 		printExpr(b, p.SubExpr)
 		b.WriteString(")")
+	case p.Set != nil:
+		printSetLiteral(b, p.Set)
 	case p.FuncCall != nil:
 		fmt.Fprintf(b, "%s(", p.FuncCall.Name)
 		for i, a := range p.FuncCall.Args {

@@ -150,6 +150,15 @@ func stmtInfo(stmt *aql.Statement) (op, typeName string) {
 		op, typeName = "update", stmt.Update.TypeName
 	case stmt.Delete != nil:
 		op, typeName = "delete", stmt.Delete.TypeName
+	case stmt.For != nil:
+		op = "for"
+		if stmt.For.Body != nil {
+			if stmt.For.Body.Insert != nil {
+				typeName = stmt.For.Body.Insert.TypeName
+			} else if stmt.For.Body.Select != nil && stmt.For.Body.Select.Body != nil {
+				typeName = stmt.For.Body.Select.Body.TypeName
+			}
+		}
 	}
 	return op, typeName
 }

@@ -343,3 +343,52 @@ type Location {
 	}
 }
 
+func TestLSPForLoopAndVarMulti(t *testing.T) {
+	schemaText := `
+type PackageCondition {
+  required id: uuid;
+  name: str;
+}
+`
+	schema := parseSchema(t, schemaText)
+	query := `
+var multi $conditions: str? := {'Hot', 'Cold', 'Fragile'};
+
+for $condition in $conditions {
+  insert PackageCondition {
+    name := $condition
+  } unless conflict;
+}
+`
+	// 1. Diagnostics should be clean
+	diags := lsp.QueryDiagnostics(query, schema)
+	if len(diags) != 0 {
+		t.Fatalf("expected no query diagnostics, got %+v", diags)
+	}
+
+	// 2. Hover on $conditions param
+	hVar := lsp.QueryHover(query, offsetOf(t, query, "$conditions"), schema)
+	if hVar == nil {
+		t.Fatal("expected hover on $conditions")
+	}
+	if !strings.Contains(hVar.Contents, "var multi $conditions: str?") {
+		t.Errorf("unexpected hover content for $conditions:\n%s", hVar.Contents)
+	}
+
+	// 3. Hover on $condition loop iterator
+	hIter := lsp.QueryHover(query, offsetOf(t, query, "$condition\n"), schema)
+	if hIter == nil {
+		t.Fatal("expected hover on $condition")
+	}
+	if !strings.Contains(hIter.Contents, "for $condition in ...") || !strings.Contains(hIter.Contents, "Loop iterator variable") {
+		t.Errorf("unexpected hover content for $condition:\n%s", hIter.Contents)
+	}
+
+	// 4. Definition of $condition loop iterator
+	loc := lsp.QueryDefinition(query, offsetOf(t, query, "$condition\n"), schema, "file:///schema.asl", schemaText)
+	if loc == nil {
+		t.Fatal("expected definition location for $condition iterator")
+	}
+}
+
+
