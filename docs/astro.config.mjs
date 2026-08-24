@@ -250,6 +250,7 @@ export default defineConfig({
               items: [
                 { label: "Basics", slug: "aql/insert/basics" },
                 { label: "Conflicts", slug: "aql/insert/conflicts" },
+                { label: "Bulk Insert", slug: "aql/insert/bulk" },
               ],
             },
             {

@@ -54,6 +54,7 @@ one file at /llms-full.txt.
 - [Group By & Having — AQL](https://struckchure.github.io/axel/aql/select/group-by): Multi-row aggregation, grouped projections, and having clauses in AQL
 - [Insert basics — AQL](https://struckchure.github.io/axel/aql/insert/basics): Inserting rows and assigning links
 - [Conflicts (unless conflict) — AQL](https://struckchure.github.io/axel/aql/insert/conflicts): ON CONFLICT do-nothing and upsert behavior
+- [Bulk Insert — AQL](https://struckchure.github.io/axel/aql/insert/bulk): Bulk insert operations using for-loops and multi-value parameters in AQL
 - [Update basics — AQL](https://struckchure.github.io/axel/aql/update/basics): The update ... set statement
 - [Partial updates — AQL](https://struckchure.github.io/axel/aql/update/partial): Optional params in set, and keeping current values
 - [Updating links — AQL](https://struckchure.github.io/axel/aql/update/links): Reassigning a link's FK in an update set clause
