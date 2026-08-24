@@ -22,10 +22,10 @@ languages = ["Axel Schema", "Axel Query"]
 [grammars.asl]
 repository = "file:///Users/mohammed/projects/axel"
 path = "tools/zed/parsers/asl"
-rev = "1d44590b77d0a07589750f756e58e98cb3cdeabc"
+rev = "43cdd77aab0f8d825dfb1f7fe195a9168bf76802"
 
 [grammars.aql]
 repository = "file:///Users/mohammed/projects/axel"
 path = "tools/zed/parsers/aql"
-rev = "1d44590b77d0a07589750f756e58e98cb3cdeabc"
+rev = "43cdd77aab0f8d825dfb1f7fe195a9168bf76802"
 
