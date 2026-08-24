@@ -154,11 +154,10 @@ func (f *aqlFmt) varBlock(v *VarBlock) {
 	if v == nil || len(v.Params) == 0 {
 		return
 	}
-	if len(v.Params) == 1 && v.Pos.Line == v.EndPos.Line {
+	if len(v.Params) == 1 {
 		f.leading(v.Pos.Offset)
 		f.w("var ")
 		printVarParam(&f.cur, v.Params[0])
-		f.w(";")
 		f.clauseBreak(v.EndPos.Offset)
 		return
 	}
@@ -592,7 +591,8 @@ func (f *aqlFmt) forStmt(s *ForStmt) {
 	}
 	f.wf("for %s in ", iter)
 	printExpr(&f.cur, s.InExpr)
-	f.w(" {\n")
+	f.w(" {")
+	f.clauseBreak(1 << 30)
 	f.indent++
 	if s.Body != nil {
 		switch {
@@ -607,7 +607,7 @@ func (f *aqlFmt) forStmt(s *ForStmt) {
 		}
 	}
 	f.indent--
-	f.w("\n}")
+	f.w("}")
 	f.clauseBreak(s.EndPos.Offset)
 }
 

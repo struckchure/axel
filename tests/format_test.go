@@ -483,3 +483,22 @@ func TestASLFormatReformatsTypeWithMultiLineField(t *testing.T) {
 		t.Errorf("got:\n%q\nwant:\n%q", out, want)
 	}
 }
+
+func TestAQLFormatForLoopBulkInsert(t *testing.T) {
+	src := `var multi $conditions: str? := {'Hot', 'Cold', 'Fragile', 'Frozen'}
+
+for $condition in $conditions {
+  insert PackageCondition {
+    name := $condition,
+    added_by := (select User filter .email = 'ameenmohammed2311@gmail.com')
+  } unless conflict;
+}`
+	out, err := aql.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "var multi $conditions: str? := {'Hot', 'Cold', 'Fragile', 'Frozen'}\n\nfor $condition in $conditions {\n  insert PackageCondition {\n    name := $condition,\n    added_by := (select User filter .email = 'ameenmohammed2311@gmail.com')\n  } unless conflict;\n}\n"
+	if out != want {
+		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
