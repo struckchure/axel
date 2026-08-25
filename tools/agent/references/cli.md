@@ -82,11 +82,14 @@ axel run --parallel ./seeds/*.aql
 ### compile
 
 ```sh
-axel compile --aql 'select User { id, email } filter .id = $id'   # single-quote it
-axel compile -f queries/get_users.aql
-axel compile -f queries/get_users.aql -o queries/get_users.sql
-axel -d ./project compile --output-dir ./sql                      # batch: every *.aql in the project
+axel compile --aql 'select User { id, email } filter .id = $id'   # inline SQL preview (single-quote it)
+axel compile -f queries/get_users.aql                             # compile to stdout
+axel compile -f queries/get_users.aql -o queries/get_users.sql    # compile specific query to target file
+axel -d ./project compile --output-dir ./sql                      # batch compile all *.aql to directory
 ```
+
+> **Note:** Running `axel compile -d .` without `--output-dir` compiles every `.aql` query and writes `.sql` files directly into the root directory. To inspect queries during development, use `axel compile --aql '<query>'` or pass `--output-dir`.
+
 
 ### codegen
 

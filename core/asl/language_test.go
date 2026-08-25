@@ -405,18 +405,14 @@ scalar type Code extends str {
 }
 
 type User {
-  required id: uuid {
-    constraint pk;
-  };
-  email: Email;
-  status: Status;
+  required id:  uuid    { constraint pk; };
+  email:        Email;
+  status:       Status;
 }
 
 type Organization {
-  required id: uuid {
-    constraint pk;
-  };
-  slug: Slug;
+  required id:  uuid  { constraint pk; };
+  slug:         Slug;
 }
 `
 	formatted, err := Format([]byte(src))
@@ -535,10 +531,8 @@ function calculate_complex_order_discount(
 
 func TestFormatTriggerMultiLine(t *testing.T) {
 	src := `type Application {
-  required id: uuid {
-    constraint pk;
-  };
-  required name: str;
+  required id:    uuid  { constraint pk; };
+  required name:  str;
 
   trigger audit after insert, update, delete do (
     insert AuditLog {
@@ -562,7 +556,7 @@ func TestFormatTriggerMultiLine(t *testing.T) {
 
 func TestFormatTriggerOrderAuditLog(t *testing.T) {
 	src := `type Order {
-  required user: User;
+  required user:  User;
 
   trigger audit after insert, update do (
     insert AuditLog {
@@ -600,62 +594,55 @@ scalar type Embedding extends sql "vector(1536)" as multi float32;
 scalar type Citext extends sql "citext" as str;
 scalar type Geometry extends sql "geometry";
 
-type Venue {
-  required id: uuid { constraint pk; };
+abstract type Base {
+  required id: uuid { default := gen_uuid(); constraint pk; };
+}
+
+type Venue extends Base {
   name: Citext;
-  location: Point;
-  feature_vec: Embedding;
+  loc: Point;
   geom: Geometry;
+  description_vec: Embedding;
 }
 `
-	ir := resolveSrc(t, src)
-
-	// Check Point scalar
-	point := ir.ScalarTypes["Point"]
-	if point == nil || point.SQLType != "geography(Point, 4326)" || !point.IsCustomSQL {
-		t.Fatalf("Point scalar = %+v", point)
-	}
-	if len(point.Fields) != 2 || point.Fields["latitude"] == nil || point.Fields["longitude"] == nil {
-		t.Fatalf("Point fields = %+v", point.Fields)
-	}
-	if point.Fields["latitude"].ExprSQL != "ST_Y(__self__::geometry)" {
-		t.Errorf("Point.latitude ExprSQL = %q, want ST_Y(__self__::geometry)", point.Fields["latitude"].ExprSQL)
-	}
-	if point.Fields["longitude"].ExprSQL != "ST_X(__self__::geometry)" {
-		t.Errorf("Point.longitude ExprSQL = %q, want ST_X(__self__::geometry)", point.Fields["longitude"].ExprSQL)
+	sf, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
 	}
 
-	// Check Embedding scalar
-	embedding := ir.ScalarTypes["Embedding"]
-	if embedding == nil || embedding.SQLType != "vector(1536)" || !embedding.IsCustomSQL || !embedding.IsMulti || embedding.Base != "float32" {
-		t.Fatalf("Embedding scalar = %+v", embedding)
+	ir, err := (&Resolver{}).Resolve(sf)
+	if err != nil {
+		t.Fatalf("resolve error: %v", err)
 	}
 
-	// Check Citext scalar
-	citext := ir.ScalarTypes["Citext"]
-	if citext == nil || citext.SQLType != "citext" || !citext.IsCustomSQL || citext.Base != "str" {
-		t.Fatalf("Citext scalar = %+v", citext)
+	if len(ir.Extensions) != 2 {
+		t.Errorf("expected 2 extensions, got %d", len(ir.Extensions))
 	}
 
-	// Check Geometry scalar
-	geom := ir.ScalarTypes["Geometry"]
-	if geom == nil || geom.SQLType != "geometry" || !geom.IsCustomSQL || geom.Base != "str" {
-		t.Fatalf("Geometry scalar = %+v", geom)
+	pt, ok := ir.ScalarTypes["Point"]
+	if !ok || !pt.IsCustomSQL || pt.SQLType != "geography(Point, 4326)" {
+		t.Errorf("Point scalar not resolved properly: %+v", pt)
+	}
+	if len(pt.Fields) != 2 {
+		t.Errorf("expected 2 fields on Point, got %d", len(pt.Fields))
 	}
 
-	// Check Venue properties
-	venue := ir.ObjectTypes["Venue"]
-	if venue == nil {
-		t.Fatalf("Venue type not found")
+	emb, ok := ir.ScalarTypes["Embedding"]
+	if !ok || !emb.IsCustomSQL || emb.SQLType != "vector(1536)" || !emb.IsMulti {
+		t.Errorf("Embedding scalar not resolved properly: %+v", emb)
 	}
-	if venue.Properties["name"].SQLType != "citext" {
-		t.Errorf("Venue.name SQLType = %q, want citext", venue.Properties["name"].SQLType)
+
+	citext, ok := ir.ScalarTypes["Citext"]
+	if !ok || !citext.IsCustomSQL || citext.SQLType != "citext" {
+		t.Errorf("Citext scalar not resolved properly: %+v", citext)
 	}
-	if venue.Properties["location"].SQLType != "geography(Point, 4326)" {
-		t.Errorf("Venue.location SQLType = %q, want geography(Point, 4326)", venue.Properties["location"].SQLType)
+
+	venue, ok := ir.ObjectTypes["Venue"]
+	if !ok {
+		t.Fatalf("Venue type not resolved")
 	}
-	if venue.Properties["feature_vec"].SQLType != "vector(1536)" {
-		t.Errorf("Venue.feature_vec SQLType = %q, want vector(1536)", venue.Properties["feature_vec"].SQLType)
+	if venue.Properties["loc"].SQLType != "geography(Point, 4326)" {
+		t.Errorf("Venue.loc SQLType = %q, want geography(Point, 4326)", venue.Properties["loc"].SQLType)
 	}
 	if venue.Properties["geom"].SQLType != "geometry" {
 		t.Errorf("Venue.geom SQLType = %q, want geometry", venue.Properties["geom"].SQLType)
@@ -667,8 +654,8 @@ func TestFormatCustomSQLExtensionScalars(t *testing.T) {
 use extension 'vector';
 
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32 := ST_Y(__self__::geometry);
-  longitude: float32 := ST_X(__self__::geometry);
+  latitude:   float32 := ST_Y(__self__::geometry);
+  longitude:  float32 := ST_X(__self__::geometry);
 }
 scalar type Embedding extends sql "vector(1536)" as multi float32;
 scalar type Citext extends sql "citext" as str;

@@ -130,10 +130,14 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 
 		case def.Function != nil:
 			f := def.Function
-			if prev, ok := funcSeen[f.Name]; ok {
-				return nil, redeclared(prev, "function", f.Name, f.Pos)
+			funcKey := f.Name
+			if f.Receiver != nil {
+				funcKey = fmt.Sprintf("(%s).%s", f.Receiver.Type, f.Name)
 			}
-			funcSeen[f.Name] = declSite{"function", f.Pos}
+			if prev, ok := funcSeen[funcKey]; ok {
+				return nil, redeclared(prev, "function", funcKey, f.Pos)
+			}
+			funcSeen[funcKey] = declSite{"function", f.Pos}
 			funcDecls = append(funcDecls, f)
 
 		case def.ScalarType != nil:
@@ -345,6 +349,28 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 
 	// Pass 4: functions (parameter and return types may name scalars or enums).
 	for _, fd := range funcDecls {
+		if fd.Receiver != nil {
+			recType := fd.Receiver.Type
+			if scalar, ok := ir.ScalarTypes[recType]; ok {
+				if fd.Name == "deserialize" && fd.Return != nil {
+					scalar.DeserializeSQL = fd.Return.Raw
+					scalar.ReceiverName = fd.Receiver.Name
+					structFields := parseStructReturn(fd.Return.Raw)
+					if scalar.Fields == nil && len(structFields) > 0 {
+						scalar.Fields = make(map[string]*ResolvedScalarField)
+					}
+					for fName, fExpr := range structFields {
+						exprSelf := replaceParamWithSelf(fExpr, fd.Receiver.Name)
+						if sf, ok := scalar.Fields[fName]; ok {
+							sf.ExprSQL = exprSelf
+						}
+					}
+				} else if fd.Name == "serialize" && fd.Return != nil {
+					scalar.SerializeSQL = fd.Return.Raw
+					scalar.ReceiverName = fd.Receiver.Name
+				}
+			}
+		}
 		fn, err := r.resolveFunction(fd, ir)
 		if err != nil {
 			return nil, fmt.Errorf("function %q: %w", fd.Name, err)
@@ -668,12 +694,27 @@ func (r *Resolver) resolveTrigger(td *TriggerDecl) (*ResolvedTrigger, error) {
 
 // resolveFunction resolves a FunctionDecl to a ResolvedFunction.
 func (r *Resolver) resolveFunction(fd *FunctionDecl, ir *SchemaIR) (*ResolvedFunction, error) {
-	fn := &ResolvedFunction{Name: fd.Name, Language: "plpgsql"}
+	fnName := fd.Name
+	if fd.Receiver != nil {
+		fnName = fmt.Sprintf("%s_%s", toSnakeCase(fd.Receiver.Type), toSnakeCase(fd.Name))
+	}
+	fn := &ResolvedFunction{Name: fnName, Language: "plpgsql"}
+
+	if fd.Receiver != nil {
+		fn.ReceiverType = fd.Receiver.Type
+		fn.ReceiverName = fd.Receiver.Name
+		fn.Params = append(fn.Params, ResolvedFuncParam{
+			Name:    fd.Receiver.Name,
+			SQLType: resolveFunctionType(fd.Receiver.Type, fd.Receiver.Array, ir),
+		})
+	}
 
 	if fd.Returns == "trigger" {
 		fn.Returns = "trigger"
-	} else {
+	} else if fd.Returns != "" {
 		fn.Returns = resolveFunctionType(fd.Returns, fd.ReturnArray, ir)
+	} else if fd.Receiver != nil {
+		fn.Returns = resolveFunctionType(fd.Receiver.Type, false, ir)
 	}
 
 	for _, p := range fd.Params {
@@ -1226,3 +1267,78 @@ func mapLitDefault(lit, sqlType string) string {
 func toSnakeCase(s string) string {
 	return lo.SnakeCase(s)
 }
+
+// parseStructReturn extracts field mappings from `Type{field1: expr1, field2: expr2}`.
+func parseStructReturn(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	open := strings.Index(raw, "{")
+	close := strings.LastIndex(raw, "}")
+	if open == -1 || close == -1 || close <= open {
+		return nil
+	}
+	body := strings.TrimSpace(raw[open+1 : close])
+	fields := make(map[string]string)
+	depth := 0
+	start := 0
+	for i := 0; i < len(body); i++ {
+		ch := body[i]
+		switch ch {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				part := strings.TrimSpace(body[start:i])
+				if k, v, ok := parseFieldKeyValue(part); ok {
+					fields[k] = v
+				}
+				start = i + 1
+			}
+		}
+	}
+	if start < len(body) {
+		part := strings.TrimSpace(body[start:])
+		if k, v, ok := parseFieldKeyValue(part); ok {
+			fields[k] = v
+		}
+	}
+	return fields
+}
+
+func parseFieldKeyValue(part string) (string, string, bool) {
+	colon := strings.Index(part, ":")
+	if colon == -1 {
+		return "", "", false
+	}
+	key := strings.TrimSpace(part[:colon])
+	val := strings.TrimSpace(part[colon+1:])
+	return key, val, key != "" && val != ""
+}
+
+func replaceParamWithSelf(expr, param string) string {
+	if param == "" || param == "__self__" {
+		return expr
+	}
+	var sb strings.Builder
+	pLen := len(param)
+	for i := 0; i < len(expr); {
+		if i+pLen <= len(expr) && expr[i:i+pLen] == param {
+			leftOk := (i == 0) || !isIdentChar(rune(expr[i-1]))
+			rightOk := (i+pLen == len(expr)) || !isIdentChar(rune(expr[i+pLen]))
+			if leftOk && rightOk {
+				sb.WriteString("__self__")
+				i += pLen
+				continue
+			}
+		}
+		sb.WriteByte(expr[i])
+		i++
+	}
+	return sb.String()
+}
+
+func isIdentChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+}
+

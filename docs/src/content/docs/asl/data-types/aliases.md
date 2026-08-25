@@ -69,11 +69,19 @@ scalar type ExactCode extends ShortStr {
 For PostgreSQL extension types (such as PostGIS `geography`, `geometry`, `pgvector` `vector`, `citext`, `ltree`), declare custom SQL scalars with `extends sql "<type>"`. You can optionally supply client-side representation typing using `as`:
 
 ```asl
-# Record representation: generates interfaces/structs in codegen, enables AQL dot-access (.loc.lat)
-# __self__ refers to the column instance in AQL queries
+# Record representation: generates interfaces/structs in codegen, enables AQL dot-access (.location.latitude)
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32 := ST_Y(__self__::geometry);
-  longitude: float32 := ST_X(__self__::geometry);
+  latitude:   float32;
+  longitude:  float32;
+};
+
+# Codec functions for reading and writing:
+function (p Point) deserialize() Point {
+  return Point{ latitude: ST_Y(p::geometry), longitude: ST_X(p::geometry) };
+};
+
+function (p Point) serialize() {
+  return ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326);
 };
 
 # Multi-dimensional array representation: generates number[] / []float32 in codegen
@@ -85,6 +93,11 @@ scalar type Citext extends sql "citext" as str;
 # Opaque type: defaults to string in codegen
 scalar type Geometry extends sql "geometry";
 ```
+
+### How `deserialize` and `serialize` work:
+- **Zero-Overhead Read Inlining**: In `select` queries, `deserialize()` inlines PostGIS extraction via `json_build_object(...)` directly on the database side.
+- **SQL-Side Write Serialization**: In `insert` and `update` queries, passing a `{ latitude, longitude }` object or parameter is inlined using `serialize()` (`ST_SetSRID(ST_MakePoint(...), 4326)`) directly on the database side.
+- **Backwards Compatibility**: Legacy inline extraction `latitude: float32 := ST_Y(__self__::geometry);` is fully supported and auto-migrated by `axel fmt`.
 
 ---
 

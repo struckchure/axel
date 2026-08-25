@@ -52,12 +52,12 @@ func (r *ReturnExpr) Parse(lex *lexer.PeekingLexer) error {
 			return fmt.Errorf("unterminated return expression (missing ';')")
 		}
 		switch t.Value {
-		case "(":
+		case "(", "{", "[":
 			depth++
-		case ")":
+		case ")", "}", "]":
 			depth--
 		case ";":
-			if depth == 0 {
+			if depth <= 0 {
 				lex.Next() // consume the terminating ';'
 				r.Raw = reconstructTokens(toks)
 				if strings.TrimSpace(r.Raw) == "" {

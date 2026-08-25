@@ -143,9 +143,12 @@ func SchemaIRToFunctionsAndTriggers(ir *asl.SchemaIR) ([]Function, []Trigger, er
 	var fns []Function
 	var trigs []Trigger
 
-	// Declared top-level functions.
+	// Declared top-level functions (scalar receiver methods are for compiler/codegen only).
 	fnNames := make([]string, 0, len(ir.Functions))
-	for name := range ir.Functions {
+	for name, fn := range ir.Functions {
+		if fn.ReceiverType != "" {
+			continue
+		}
 		fnNames = append(fnNames, name)
 	}
 	sort.Strings(fnNames)

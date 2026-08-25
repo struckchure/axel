@@ -160,6 +160,33 @@ import { getUser } from "./gen/get_user.ts";
 const user = await getUser(tx, { id: "..." });
 ```
 
+### Fluent Query Builders & Custom Extension Types (PostGIS, Vector)
+
+The TypeScript client provides type-safe query builders (`runner.select`, `runner.insert`, `runner.update`). When writing data with custom PostgreSQL types (like `geography`, `geometry`, `vector`, `citext`):
+
+- **Do NOT** call SQL functions like `ST_MakePoint(...)` inside dynamic strings in `runner.run(...)`.
+- **DO** write through the generated query builders and pass values as standard string representations (e.g. EWKT format). PostgreSQL coerces the untyped parameter automatically to the target column type:
+
+```ts
+// Insert with PostGIS geography point using EWKT format:
+const loc = await runner.insert(Location).values({
+  description: "Headquarters",
+  radius_m: 5000,
+  point: `SRID=4326;POINT(${longitude} ${latitude})`, // EWKT string coerced by Postgres
+});
+
+// Insert with pgvector embedding:
+const item = await runner.insert(Document).values({
+  title: "Axel Guide",
+  embedding: "[0.021, -0.043, 0.812]", // Vector string literal coerced by Postgres
+});
+```
+
+### Dynamic Execution (`runner.run`) vs Compiled Queries
+
+- **Compiled queries (`.aql` files compiled with `axel codegen`)** and **fluent builders** are strongly typed and verified at compile time.
+- `runner.run(query, params)` uses a lightweight runtime parser. It does **not** support `var (...)` declaration blocks or function calls in value positions (such as `ST_MakePoint(...)`). Attempting to use these in `runner.run` causes runtime errors like `expected keyword, got {"k":"id","v":"var"}` or `expected id got "("`.
+
 ---
 
 ## 3. Globals and Row-Level Security
@@ -185,3 +212,4 @@ await runner.withCurrentUser(userId, async (q) => {
 // Or via options object on standalone functions:
 const doc = await createDoc(db, docParams, { currentUser: userId });
 ```
+

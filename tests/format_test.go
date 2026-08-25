@@ -40,7 +40,7 @@ func TestASLFormatNormalizesWhitespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "type A {\n  required id: uuid;\n  name: str;\n}\n"
+	want := "type A {\n  required id:  uuid;\n  name:         str;\n}\n"
 	if out != want {
 		t.Errorf("got:\n%q\nwant:\n%q", out, want)
 	}
@@ -63,10 +63,10 @@ func TestASLFormatPreservesComments(t *testing.T) {
 		}
 	}
 	// The trailing comment stays on the email line; the note stays above age.
-	if !strings.Contains(out, "required email: str;  # login") {
+	if !strings.Contains(out, "required email:  str;  # login") {
 		t.Errorf("trailing comment not attached to its line:\n%s", out)
 	}
-	if !strings.Contains(out, "# age note\n  required age") {
+	if !strings.Contains(out, "# age note\n  required age:    int32;") {
 		t.Errorf("leading comment not kept above its field:\n%s", out)
 	}
 }
@@ -385,29 +385,27 @@ multi select User { id, email };
 // constraints, indexes, policies, triggers — one blank line between blocks and
 // none inside one, whatever order they were written in.
 func TestASLFormatGroupsMembers(t *testing.T) {
-	src := `type Post extending Base {
-  required title: str;
-
-  index on (.title);
-  required content: str;
-  computed excerpt := .content;
+	src := `type Post extends Base {
   policy owner for all using ( .title != '' );
-  constraint exclusive on (.title);
-  trigger touch before update execute fn();
+  required content: str;
   index on (.content);
-
+  computed excerpt := .content;
+  trigger touch before update execute fn();
   required link author: User;
+  constraint exclusive on (.title);
+  index on (.title);
+  required title: str;
 }`
 	want := `type Post extends Base {
-  required title: str;
-  required content: str;
-  required link author: User;
+  required content:      str;
+  required link author:  User;
+  required title:        str;
   computed excerpt := .content;
 
   constraint exclusive on (.title);
 
-  index on (.title);
   index on (.content);
+  index on (.title);
 
   policy owner for all using ( .title != '' );
 
@@ -431,7 +429,7 @@ func TestASLFormatKeepsFieldOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "type A {\n  required c: str;\n  required a: str;\n  required b: str;\n}\n"
+	want := "type A {\n  required c:  str;\n  required a:  str;\n  required b:  str;\n}\n"
 	if out != want {
 		t.Errorf("got:\n%q\nwant:\n%q", out, want)
 	}
@@ -454,7 +452,7 @@ func TestASLFormatMovesCommentsWithMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"required name: str {\n    # inside the body\n    default := 'x';  # trailing inside the body",
+		"required name:  str {\n    # inside the body\n    default := 'x';  # trailing inside the body",
 		"# about the index\n  index on (.name);  # trailing on index",
 		"# dangling before the brace\n}",
 	} {
@@ -478,7 +476,7 @@ func TestASLFormatReformatsTypeWithMultiLineField(t *testing.T) {
 	if out == src {
 		t.Fatal("formatter returned the source unchanged; the safety net bailed")
 	}
-	want := "type A {\n  required id: uuid {\n    default := gen_uuid();\n  };\n  required name: str;\n}\n"
+	want := "type A {\n  required id:    uuid  { default := gen_uuid(); };\n  required name:  str;\n}\n"
 	if out != want {
 		t.Errorf("got:\n%q\nwant:\n%q", out, want)
 	}
@@ -502,3 +500,119 @@ for $condition in $conditions {
 		t.Errorf("formatted output differs:\ngot:\n%s\nwant:\n%s", out, want)
 	}
 }
+
+func TestASLFormatTabularAlignment(t *testing.T) {
+	src := `type User extends Base {
+  required email: EmailStr { constraint exclusive; };
+  name: Citext { default := 'n/a'; };
+  location: Point;
+  bio_vec: Embedding;
+  required role: Role;
+  active: bool { default := true; };
+}`
+	want := `type User extends Base {
+  required email:  EmailStr   { constraint exclusive; };
+  name:            Citext     { default := 'n/a'; };
+  location:        Point;
+  bio_vec:         Embedding;
+  required role:   Role;
+  active:          bool       { default := true; };
+}
+`
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != want {
+		t.Errorf("tabular alignment differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+	// Verify idempotence
+	out2, err := asl.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != out2 {
+		t.Errorf("tabular formatting not idempotent:\n%s\nvs\n%s", out, out2)
+	}
+}
+
+func TestASLFormatScalarStructuredTabularAlignment(t *testing.T) {
+	src := `scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+  elevation: float32;
+};`
+	want := `scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude:   float32;
+  longitude:  float32;
+  elevation:  float32;
+}
+`
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != want {
+		t.Errorf("scalar tabular alignment differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestASLFormatReceiverFunctions(t *testing.T) {
+	src := `scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+
+function (p Point) deserialize() Point {
+  return Point{ latitude: ST_Y(p::geometry), longitude: ST_X(p::geometry) };
+};
+
+function (p Point) serialize() {
+  return ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326);
+};
+`
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := asl.Parse([]byte(out)); err != nil {
+		t.Fatalf("receiver function output does not parse: %v\n%s", err, out)
+	}
+	out2, err := asl.Format([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != out2 {
+		t.Errorf("receiver function formatting not idempotent:\n%s\nvs\n%s", out, out2)
+	}
+}
+
+func TestASLFormatStructReturnSpacing(t *testing.T) {
+	messy := `scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude: float32;
+  longitude: float32;
+};
+
+function (p Point) deserialize() Point {
+  return Point {latitude:ST_Y(p::geometry), longitude:ST_X(p::geometry) };
+};
+`
+	out, err := asl.Format([]byte(messy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude:   float32;
+  longitude:  float32;
+}
+
+function (p Point) deserialize() -> Point {
+  return Point{ latitude: ST_Y(p::geometry), longitude: ST_X(p::geometry) };
+};
+`
+	if out != want {
+		t.Errorf("struct return spacing differs:\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+

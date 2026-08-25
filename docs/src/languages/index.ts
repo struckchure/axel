@@ -116,7 +116,7 @@ export const asl: LanguageRegistration = {
     },
     keyword: {
       match:
-        "\\b(scalar|type|model|enum|abstract|extends|extending|required|multi|single|property|link|constraint|index|on|computed|default|func|rewrite|trigger|function|before|after|for|each|row|statement|when|do|execute|use|extension|return|policy|using|with|check|to|global)\\b",
+        "\\b(scalar|type|model|enum|abstract|extends|extending|sql|as|required|multi|single|property|link|constraint|index|on|computed|default|func|rewrite|trigger|function|before|after|for|each|row|statement|when|do|execute|use|extension|return|policy|using|with|check|to|global)\\b",
       name: "keyword.declaration.asl",
     },
     "builtin-type": {
@@ -129,7 +129,8 @@ export const asl: LanguageRegistration = {
       name: "constant.language.asl",
     },
     "builtin-func": {
-      match: "\\b(gen_uuid|gen_random_uuid|now|datetime_current)\\b",
+      match:
+        "\\b(gen_uuid|gen_random_uuid|now|datetime_current|ST_Distance|ST_3DDistance|ST_DWithin|ST_MakePoint|ST_SetSRID|ST_GeogFromText|ST_GeomFromText|ST_Y|ST_X|ST_Z|ST_M|haversine)\\b",
       name: "support.function.builtin.asl",
     },
     "func-call": {
@@ -141,7 +142,7 @@ export const asl: LanguageRegistration = {
       name: "entity.name.type.asl",
     },
     operator: {
-      match: ":=|\\?\\?|!=|<=|>=|=|<|>|\\+|\\-|\\*|\\/|@",
+      match: "::|:=|\\?\\?|!=|<=|>=|=|<|>|\\+|\\-|\\*|\\/|@",
       name: "keyword.operator.asl",
     },
     "policy-predicate": {
