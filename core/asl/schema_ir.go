@@ -25,16 +25,19 @@ type ResolvedGlobal struct {
 
 // ResolvedScalar is a scalar type alias (e.g. EmailStr extends str), extended scalar type, or typed JSON scalar.
 type ResolvedScalar struct {
-	Name          string
-	Base          string // the builtin type it extends: "json", "jsonb", "str", "int32", etc.
-	SQLType       string // the SQL type to use: "JSON", "JSONB", "TEXT", "INTEGER", etc.
-	IsMulti       bool   // true when declared as `as multi <Type>`
-	IsCustomSQL   bool   // true when declared with `extends sql "..."`
-	Fields        map[string]*ResolvedScalarField
-	ExtendKeyword string // "extends" or "extending"
-	Default       string // SQL default expression
-	Constraints   []ResolvedConstraint
-	Rewrites      []ResolvedRewrite
+	Name           string
+	Base           string // the builtin type it extends: "json", "jsonb", "str", "int32", etc.
+	SQLType        string // the SQL type to use: "JSON", "JSONB", "TEXT", "INTEGER", etc.
+	IsMulti        bool   // true when declared as `as multi <Type>`
+	IsCustomSQL    bool   // true when declared with `extends sql "..."`
+	Fields         map[string]*ResolvedScalarField
+	ExtendKeyword  string // "extends" or "extending"
+	Default        string // SQL default expression
+	Constraints    []ResolvedConstraint
+	Rewrites       []ResolvedRewrite
+	SerializeSQL   string // SQL expression from `function (p Type) serialize()`
+	DeserializeSQL string // SQL expression from `function (p Type) deserialize()`
+	ReceiverName   string // parameter name of receiver, e.g. "p"
 }
 
 // ResolvedScalarField is a field in a typed JSON or custom SQL scalar.
@@ -113,6 +116,10 @@ type ResolvedFunction struct {
 	Parallel   string // "safe" | "unsafe" | "restricted" | ""
 	Security   string // "definer" | "invoker" | ""
 	Cost       string // numeric cost, e.g. "100"; "" if unset
+
+	// Receiver attributes if declared with a receiver: function (p Point) serialize()
+	ReceiverType string
+	ReceiverName string
 
 	// RunOnceFor names the type an @for function is a one-time setup for. When
 	// set, the migration that first creates the function also invokes it once

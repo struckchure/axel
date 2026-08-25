@@ -218,7 +218,7 @@
       "name": "constant.numeric.asl"
     },
     "operators": {
-      "match": "!=|<=|>=|:=|\\?\\?|=|<|>|\\+|\\-|\\*|\\/|@",
+      "match": "::|!=|<=|>=|:=|\\?\\?|=|<|>|\\+|\\-|\\*|\\/|@",
       "name": "keyword.operator.asl"
     },
     "punctuation": {

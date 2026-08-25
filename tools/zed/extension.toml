@@ -20,12 +20,12 @@ languages = ["Axel Schema", "Axel Query"]
 # "https://github.com/struckchure/axel" and re-pin `rev` to the pushed commit
 # before releasing. A published extension cannot fetch from a file:// URL.
 [grammars.asl]
-repository = "https://github.com/struckchure/axel"
+repository = "file:///Users/mohammed/projects/axel"
 path = "tools/zed/parsers/asl"
-rev = "43cdd77aab0f8d825dfb1f7fe195a9168bf76802"
+rev = "7263be32d5a6f9652299de771b44a14233e50f84"
 
 [grammars.aql]
-repository = "https://github.com/struckchure/axel"
+repository = "file:///Users/mohammed/projects/axel"
 path = "tools/zed/parsers/aql"
-rev = "43cdd77aab0f8d825dfb1f7fe195a9168bf76802"
+rev = "7263be32d5a6f9652299de771b44a14233e50f84"
 

@@ -206,10 +206,11 @@ axel codegen -g go -o ./gen --option package=gen
 axel codegen -g ts -o ./gen
 ```
 
-- **Query execution**: Compiled `.aql` files generate typed methods (`runner.Query.GetUser(ctx, params)` in Go, `runner.query.getUser(params)` in TypeScript).
+- **Query execution**: Compiled `.aql` files generate typed methods (`runner.Query.GetUser(ctx, params)` in Go, `runner.query.getUser(params)` in TypeScript). **Always prefer compiled queries or query builders over runtime `runner.run(...)`.**
 - **Transactions & Custom Connections**: Pass transactions directly using `runner.WithDB(tx)` / `gen.NewQueries(tx)` in Go, or `runner.withDb(tx)` in TypeScript.
-- **Dynamic execution**: Run uncompiled AQL strings at runtime with `runner.Run(...)` (Go) or `runner.run(...)` (TypeScript).
 - **Fluent query builders (TypeScript)**: Build runtime shapes and queries with `runner.select()`, `runner.insert()`, `runner.update()`.
+- **Custom SQL & PostGIS types in builders**: When inserting or updating custom extension types (`geography`, `geometry`, `vector`), pass values in their native PostgreSQL input text representation (e.g. EWKT format `"SRID=4326;POINT(lng lat)"` for geography, `"[1.0, 2.0]"` for vector, ISO strings for timestamps). PostgreSQL coerces untyped parameters to the target column type automatically at execution time without requiring SQL function calls in value positions.
+- **Runtime `runner.run(...)` limitations**: The client-bundled runtime parser is intentionally narrower than `axel compile`. It does **not** support `var (...)` blocks, SQL function calls in value positions (like `ST_MakePoint(...)`), or complex AST transforms. Queries that fail in `runner.run` will fail at **runtime** (not build-time).
 - **Session globals**: Scoped via `runner.With<Global>(...)` (Go) / `runner.with<Global>(...)` (TypeScript), or functional options on standalone functions.
 
 Full codegen guide — generated files, options, transaction patterns, and plugin protocol:
@@ -222,9 +223,12 @@ The compiler is the source of truth and it is fast. Prefer running it over reaso
 ```bash
 axel fmt -w .                                    # format all .asl / .aql files in place
 axel validate                                    # schema resolves?
-axel compile --aql 'select User { id }'          # what SQL does this shape produce?
+axel compile --aql 'select User { id }'          # inspect compiled SQL inline
+axel compile -f queries/x.aql -o queries/x.sql   # compile a specific query to a file
 axel diff -n "wip" && cat migrations/*/up.sql    # what DDL does this change produce?
 ```
+
+> **Warning:** Do not run `axel compile -d .` without `--output-dir`, as it will compile every `.aql` query and write `.sql` files directly into your project working directory. Use `axel compile --aql '<query>'` for inline inspection or specify `--output-dir`.
 
 Read the SQL that comes back. If it is not what the user wanted, the fix belongs in the `.asl` or
 `.aql` source, never in the output.
@@ -236,22 +240,24 @@ field on a shape, a filter on a column that is not there.
 
 ## Common corrections
 
-| Symptom | Cause |
-|---|---|
-| `axel diff` writes an empty migration | The schema did not actually change, or `schema-path` points somewhere else than you edited |
-| Migration wants to `DROP` and re-`CREATE` a column | A rename read as delete-plus-add; Axel diffs structure, not intent |
-| `unknown type "Foo"` | Typo, or the file declaring `Foo` is not covered by `schema-path` |
-| `declared more than once` | The same name in two files of a split schema — they share one namespace |
-| A `multi link` produced no column | Correct: it produced a junction table |
-| Query returns only one row | A plain `select`; use `multi select` |
-| `limit/offset require 'multi select'` | Same cause — add `multi` |
-| `type "User" has no field "posts"` | Reverse links do not exist; query from the side holding the link |
-| Inline query in the shell loses its parameters | Double quotes; use single quotes |
+| Symptom | Cause | Fix |
+|---|---|---|
+| `axel diff` writes an empty migration | The schema did not actually change, or `schema-path` points somewhere else than you edited | Check `axel.yaml` `schema-path` |
+| Migration wants to `DROP` and re-`CREATE` a column | A rename read as delete-plus-add; Axel diffs structure, not intent | Check `up.sql` and write rename migration explicitly if needed |
+| `unknown type "Foo"` | Typo, or the file declaring `Foo` is not covered by `schema-path` | Fix typo or check `schema-path` glob |
+| `declared more than once` | The same name in two files of a split schema — they share one namespace | Rename duplicate declaration |
+| A `multi link` produced no column | Correct: it produced a junction table | Expected behavior |
+| Query returns only one row | A plain `select`; use `multi select` | Change `select` to `multi select` |
+| `limit/offset require 'multi select'` | Same cause — add `multi` | Add `multi` prefix |
+| `type "User" has no field "posts"` | Reverse links do not exist; query from the side holding the link | Query from the model owning the `link` |
+| Inline query in the shell loses its parameters | Double quotes; use single quotes | Single-quote the query string: `'select ... $param'` |
+| Runtime error `expected keyword, got {"k":"id","v":"var"}` or `expected id got "("` in `runner.run` | `runner.run` runtime parser does not support `var` blocks or function calls (e.g. `ST_MakePoint`) in value positions | Use generated query builder (`runner.insert`) or compiled `.aql` file; pass custom types as EWKT strings (`"SRID=4326;POINT(lng lat)"`) |
+| Unwanted `.sql` files generated in project root | Ran `axel compile -d .` without `--output-dir` | Use `axel compile --aql '...'` for inspection, or supply `--output-dir` |
 
 ## Reference files
 
 - `references/asl.md` — the full schema language: every declaration, field body item, constraint,
   trigger, policy, function directive, and the SQL each lowers to.
 - `references/aql.md` — the full query grammar, with the compiled SQL shape for each construct.
-- `references/codegen.md` — client code generation for Go and TypeScript, transactions, and custom plugins.
+- `references/codegen.md` — client code generation for Go and TypeScript, transactions, custom types, and custom plugins.
 - `references/cli.md` — every command and flag, the config file, and codegen.

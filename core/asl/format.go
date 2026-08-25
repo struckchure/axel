@@ -281,24 +281,30 @@ func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
 		}
 		f.commit(end)
 	}
+
+	maxCol1 := 0
+	for _, field := range body.Fields {
+		c1 := scalarFieldCol1(field)
+		if len(c1) > maxCol1 {
+			maxCol1 = len(c1)
+		}
+	}
+
 	for i, field := range body.Fields {
 		f.leading(field.Pos.Offset)
 		fieldNext := next
 		if i+1 < len(body.Fields) {
 			fieldNext = body.Fields[i+1].Pos.Offset
 		}
-		req := ""
-		if field.Required {
-			req = "required "
-		}
-		multi := ""
-		if field.Multi {
-			multi = "multi "
+		c1 := scalarFieldCol1(field)
+		pad1 := ""
+		if len(c1) < maxCol1 {
+			pad1 = strings.Repeat(" ", maxCol1-len(c1))
 		}
 		if field.Computed != nil {
-			f.wf("%s%s%s: %s := %s;", req, multi, field.Name, field.Type, field.Computed.Raw)
+			f.wf("%s%s  %s := %s;", c1, pad1, field.Type, field.Computed.Raw)
 		} else {
-			f.wf("%s%s%s: %s;", req, multi, field.Name, field.Type)
+			f.wf("%s%s  %s;", c1, pad1, field.Type)
 		}
 		f.commit(fieldNext)
 	}
@@ -306,6 +312,18 @@ func (f *aslFmt) scalarTypeDef(s *ScalarTypeDef, next int) {
 	f.leading(s.EndPos.Offset)
 	f.w("}")
 	f.commit(next)
+}
+
+func scalarFieldCol1(field *ScalarFieldDecl) string {
+	req := ""
+	if field.Required {
+		req = "required "
+	}
+	multi := ""
+	if field.Multi {
+		multi = "multi "
+	}
+	return fmt.Sprintf("%s%s%s:", req, multi, field.Name)
 }
 
 func (f *aslFmt) function(fn *FunctionDecl, next int) {
@@ -329,11 +347,24 @@ func (f *aslFmt) function(fn *FunctionDecl, next int) {
 	if fn.ReturnArray {
 		ret += "[]"
 	}
-	singleHeader := fmt.Sprintf("function %s(%s) -> %s {", fn.Name, strings.Join(params, ", "), ret)
+	recvPrefix := ""
+	if fn.Receiver != nil {
+		arr := ""
+		if fn.Receiver.Array {
+			arr = "[]"
+		}
+		recvPrefix = fmt.Sprintf("(%s %s%s) ", fn.Receiver.Name, fn.Receiver.Type, arr)
+	}
+	var singleHeader string
+	if ret != "" {
+		singleHeader = fmt.Sprintf("function %s%s(%s) -> %s {", recvPrefix, fn.Name, strings.Join(params, ", "), ret)
+	} else {
+		singleHeader = fmt.Sprintf("function %s%s(%s) {", recvPrefix, fn.Name, strings.Join(params, ", "))
+	}
 	if len(singleHeader) <= maxLineWidth || len(params) <= 1 {
 		f.w(singleHeader)
 	} else {
-		f.wf("function %s(", fn.Name)
+		f.wf("function %s%s(", recvPrefix, fn.Name)
 		f.commit(next)
 		f.indent++
 		for i, p := range params {
@@ -345,7 +376,11 @@ func (f *aslFmt) function(fn *FunctionDecl, next int) {
 			f.commit(next)
 		}
 		f.indent--
-		f.wf(") -> %s {", ret)
+		if ret != "" {
+			f.wf(") -> %s {", ret)
+		} else {
+			f.wf(") {")
+		}
 	}
 	if fn.Return != nil {
 		f.commit(fn.Return.Pos.Offset)
@@ -388,6 +423,22 @@ func (f *aslFmt) typeDef(t *TypeDef, next int) {
 	// whichever member happened to be printed at that moment.
 	slots, tail := f.splitBodyComments(t)
 
+	// Calculate tabular column widths for field members across the type
+	maxCol1 := 0
+	maxCol2 := 0
+	for _, m := range t.Members {
+		if m.Field != nil {
+			c1 := fieldCol1(m.Field)
+			c2 := fieldCol2(m.Field)
+			if len(c1) > maxCol1 {
+				maxCol1 = len(c1)
+			}
+			if len(c2) > maxCol2 {
+				maxCol2 = len(c2)
+			}
+		}
+	}
+
 	prevBlock := -1
 	for _, i := range orderedMembers(t.Members) {
 		m := t.Members[i]
@@ -403,7 +454,11 @@ func (f *aslFmt) typeDef(t *TypeDef, next int) {
 		}
 		f.withComments(slots[i], func() {
 			f.leading(memberOffset(m))
-			f.member(m, end)
+			if m.Field != nil {
+				f.alignedField(m.Field, maxCol1, maxCol2, end)
+			} else {
+				f.member(m, end)
+			}
 		})
 	}
 	for _, c := range tail {
@@ -603,7 +658,8 @@ func (f *aslFmt) member(m *Member, next int) {
 	}
 }
 
-func (f *aslFmt) field(fd *FieldDecl, next int) {
+func fieldCol1(fd *FieldDecl) string {
+	var sb strings.Builder
 	for _, kw := range []struct {
 		on   bool
 		word string
@@ -615,25 +671,79 @@ func (f *aslFmt) field(fd *FieldDecl, next int) {
 		{fd.LinkKeyword, "link"},
 	} {
 		if kw.on {
-			f.w(kw.word + " ")
+			sb.WriteString(kw.word + " ")
 		}
 	}
-	f.w(fd.Name)
+	sb.WriteString(fd.Name)
+	sb.WriteString(":")
+	return sb.String()
+}
+
+func fieldCol2(fd *FieldDecl) string {
 	if fd.TypeSpec != nil && fd.TypeSpec.PropType != nil {
-		f.wf(": %s", *fd.TypeSpec.PropType)
+		return *fd.TypeSpec.PropType
 	}
+	return ""
+}
+
+func singleBodyItemString(it *FieldBodyItem) string {
+	switch {
+	case it.Constraint != nil:
+		c := it.Constraint
+		if len(c.Args) > 0 {
+			return fmt.Sprintf("constraint %s(%s)", c.Name, strings.Join(c.Args, ", "))
+		}
+		return fmt.Sprintf("constraint %s", c.Name)
+	case it.Rewrite != nil:
+		r := it.Rewrite
+		return fmt.Sprintf("rewrite %s := %s", strings.Join(r.Events, ", "), rewriteValue(r))
+	case it.Default != nil:
+		return fmt.Sprintf("default := %s", defaultValue(it.Default))
+	case it.OnClause != nil:
+		return fmt.Sprintf("on %s", it.OnClause.Field)
+	}
+	return ""
+}
+
+func (f *aslFmt) alignedField(fd *FieldDecl, maxCol1, maxCol2 int, next int) {
+	col1 := fieldCol1(fd)
+	col2 := fieldCol2(fd)
+	pad1 := ""
+	if len(col1) < maxCol1 {
+		pad1 = strings.Repeat(" ", maxCol1-len(col1))
+	}
+
 	if fd.Body == nil || len(fd.Body.Items) == 0 {
-		f.w(";")
+		f.wf("%s%s  %s;", col1, pad1, col2)
 		f.commit(next)
 		return
 	}
-	f.w(" {")
+
+	// Try formatting as single-line body if it has 1 item and no internal comments
+	if len(fd.Body.Items) == 1 && f.ci >= len(f.cmts) {
+		itemStr := singleBodyItemString(fd.Body.Items[0])
+		if itemStr != "" {
+			singleBody := "{ " + itemStr + "; };"
+			pad2 := ""
+			if len(col2) < maxCol2 {
+				pad2 = strings.Repeat(" ", maxCol2-len(col2))
+			}
+			lineCandidate := fmt.Sprintf("%s%s  %s%s  %s", col1, pad1, col2, pad2, singleBody)
+			if f.indent*2+len(lineCandidate) <= maxLineWidth {
+				f.w(lineCandidate)
+				f.commit(next)
+				return
+			}
+		}
+	}
+
+	// Multi-line body
+	f.wf("%s%s  %s {", col1, pad1, col2)
 	f.commit(fieldBodyItemOffset(fd.Body.Items[0], next))
 	f.indent++
 	for i, it := range fd.Body.Items {
 		f.leading(fieldBodyItemOffset(it, next))
 		f.bodyItem(it)
-		// A trailing comment belongs to this item's line, not to the whole body.
 		end := next
 		if i+1 < len(fd.Body.Items) {
 			end = fieldBodyItemOffset(fd.Body.Items[i+1], next)
@@ -643,6 +753,10 @@ func (f *aslFmt) field(fd *FieldDecl, next int) {
 	f.indent--
 	f.w("};")
 	f.commit(next)
+}
+
+func (f *aslFmt) field(fd *FieldDecl, next int) {
+	f.alignedField(fd, 0, 0, next)
 }
 
 // fieldBodyItemOffset returns a body item's source offset when it has one, else
@@ -874,13 +988,27 @@ func ownLine(src string, offset int) bool {
 // ─────────────────────────────────────────────────────────────
 
 type sqlExprNode struct {
-	kind     string // "token", "call", "group"
+	kind     string // "token", "call", "group", "struct", "brace_group"
 	name     string
 	tok      lexer.Token
 	children []*sqlExprNode
 }
 
 func parseSQLExprNodes(toks []lexer.Token) []*sqlExprNode {
+	// Pre-process: coalesce adjacent ":" tokens into "::"
+	var coalesced []lexer.Token
+	for i := 0; i < len(toks); i++ {
+		if toks[i].Value == ":" && i+1 < len(toks) && toks[i+1].Value == ":" {
+			merged := toks[i]
+			merged.Value = "::"
+			coalesced = append(coalesced, merged)
+			i++
+			continue
+		}
+		coalesced = append(coalesced, toks[i])
+	}
+	toks = coalesced
+
 	var nodes []*sqlExprNode
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
@@ -921,6 +1049,43 @@ func parseSQLExprNodes(toks []lexer.Token) []*sqlExprNode {
 			i = j
 			continue
 		}
+		if t.Value == "{" {
+			var structNode *sqlExprNode
+			if len(nodes) > 0 && nodes[len(nodes)-1].kind == "token" && nodes[len(nodes)-1].tok.Type == aslLexer.Symbols()["Ident"] {
+				last := nodes[len(nodes)-1]
+				nodes = nodes[:len(nodes)-1]
+				structNode = &sqlExprNode{kind: "struct", name: last.tok.Value}
+			}
+
+			depth := 1
+			start := i + 1
+			j := start
+			for ; j < len(toks); j++ {
+				if toks[j].Value == "{" {
+					depth++
+				} else if toks[j].Value == "}" {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+			}
+			var innerToks []lexer.Token
+			if j > start {
+				innerToks = toks[start:j]
+			}
+			children := parseSQLExprNodes(innerToks)
+
+			if structNode != nil {
+				structNode.children = children
+				nodes = append(nodes, structNode)
+			} else {
+				groupNode := &sqlExprNode{kind: "brace_group", children: children}
+				nodes = append(nodes, groupNode)
+			}
+			i = j
+			continue
+		}
 		nodes = append(nodes, &sqlExprNode{kind: "token", tok: t})
 	}
 	return nodes
@@ -953,11 +1118,21 @@ func needsSpace(prev, next *sqlExprNode) bool {
 		return false
 	}
 	// Type cast ::
-	if next.kind == "token" && next.tok.Value == ":" {
+	if next.kind == "token" && (next.tok.Value == "::" || next.tok.Value == ":") {
+		return false
+	}
+	if prev.kind == "token" && next.kind == "token" && (prev.tok.Value == "::" || prev.tok.Value == ":") {
+		if prev.tok.Value == "::" {
+			return false
+		}
+		// Single colon in key-value struct literal: "key: value"
+		return true
+	}
+	if prev.kind == "token" && prev.tok.Value == "::" {
 		return false
 	}
 	if prev.kind == "token" && prev.tok.Value == ":" {
-		return false
+		return true
 	}
 	// Multi-char operators: ||, !=, <=, >=, <>
 	if prev.kind == "token" && next.kind == "token" {
@@ -986,12 +1161,12 @@ func needsSpace(prev, next *sqlExprNode) bool {
 		return true
 	}
 	if prev.kind == "token" && (prev.tok.Type == aslLexer.Symbols()["Ident"] || prev.tok.Type == aslLexer.Symbols()["Int"] || prev.tok.Type == aslLexer.Symbols()["String"] || prev.tok.Type == aslLexer.Symbols()["AQLString"]) {
-		if next.kind == "token" || next.kind == "call" || next.kind == "group" {
+		if next.kind == "token" || next.kind == "call" || next.kind == "group" || next.kind == "struct" || next.kind == "brace_group" {
 			return true
 		}
 	}
-	if prev.kind == "call" || prev.kind == "group" {
-		if next.kind == "token" || next.kind == "call" || next.kind == "group" {
+	if prev.kind == "call" || prev.kind == "group" || prev.kind == "struct" || prev.kind == "brace_group" {
+		if next.kind == "token" || next.kind == "call" || next.kind == "group" || next.kind == "struct" || next.kind == "brace_group" {
 			return true
 		}
 	}
@@ -1018,6 +1193,23 @@ func renderSingle(nodes []*sqlExprNode) string {
 			sb.WriteByte('(')
 			sb.WriteString(renderSingle(n.children))
 			sb.WriteByte(')')
+		case "struct":
+			sb.WriteString(n.name)
+			if len(n.children) == 0 {
+				sb.WriteString("{}")
+			} else {
+				sb.WriteString("{ ")
+				sb.WriteString(renderSingle(n.children))
+				sb.WriteString(" }")
+			}
+		case "brace_group":
+			if len(n.children) == 0 {
+				sb.WriteString("{}")
+			} else {
+				sb.WriteString("{ ")
+				sb.WriteString(renderSingle(n.children))
+				sb.WriteString(" }")
+			}
 		}
 	}
 	return sb.String()

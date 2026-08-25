@@ -52,11 +52,18 @@ use extension 'postgis';
 use extension 'vector';
 use extension 'citext';
 
-# 1. Structured record representation with custom SQL extraction expressions
-# (__self__ refers to the column instance in AQL queries)
+# 1. Structured record representation with deserialize and serialize receiver functions
 scalar type Point extends sql "geography(Point, 4326)" as {
-  latitude: float32 := ST_Y(__self__::geometry);
-  longitude: float32 := ST_X(__self__::geometry);
+  latitude:   float32;
+  longitude:  float32;
+};
+
+function (p Point) deserialize() Point {
+  return Point{ latitude: ST_Y(p::geometry), longitude: ST_X(p::geometry) };
+};
+
+function (p Point) serialize() {
+  return ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326);
 };
 
 # 2. Multi-dimensional array representation (codegen emits number[] / []float32)
@@ -70,16 +77,17 @@ scalar type Geometry extends sql "geometry";
 
 type Venue {
   required id: uuid { constraint pk; };
-  name: Citext;
-  location: Point;
+  name:        Citext;
+  location:    Point;
   feature_vec: Embedding;
-  geom: Geometry;
+  geom:        Geometry;
 }
 ```
 
 ### Benefits:
 - **Exact DDL**: Generated migration SQL produces columns with the precise PostgreSQL type (e.g. `geography(Point, 4326)`, `vector(1536)`).
 - **Client Typing**: SDK generators produce typed interfaces/structs (`Point` as `{ latitude: number, longitude: number }`, `Embedding` as `number[]`).
-- **AQL Dot-Access**: Structured fields can be traversed directly in AQL expressions (`.location.latitude`).
+- **AQL Dot-Access & Sub-shapes**: Structured fields can be traversed directly in AQL expressions (`.location.latitude`) and projected with sub-shapes (`select Venue { location: { latitude, longitude } }`).
+- **Zero-Overhead SQL Inlining**: Queries automatically inline PostGIS conversions (`json_build_object` on reads, `ST_SetSRID` on writes).
 
 See [Functions](/asl/functions) for the full function syntax and [Aliases & Extended Types](/asl/data-types/aliases) for more on custom scalar types.

@@ -576,6 +576,28 @@ func (c *compiler) compileShapeField(f *aql.ShapeField, parentType *asl.Resolved
 
 	// Check scalar properties.
 	if prop, ok := parentType.Properties[f.Name]; ok {
+		if f.SubShape != nil && c.schema != nil {
+			if scalar, ok := c.schema.ScalarTypes[prop.AQLType]; ok && len(scalar.Fields) > 0 {
+				var jsonArgs []string
+				for _, subf := range f.SubShape.Fields {
+					sf, ok := scalar.Fields[subf.Name]
+					if !ok {
+						return "", "", fmt.Errorf("scalar type %q has no field %q", scalar.Name, subf.Name)
+					}
+					colRef := fmt.Sprintf("%s.%s", parentAlias, prop.Column)
+					var valExpr string
+					if sf.ExprSQL != "" {
+						valExpr = strings.ReplaceAll(sf.ExprSQL, "__self__", colRef)
+					} else if sf.SQLType == "TEXT" {
+						valExpr = fmt.Sprintf("(%s->>'%s')", colRef, subf.Name)
+					} else {
+						valExpr = fmt.Sprintf("((%s->>'%s')::%s)", colRef, subf.Name, sf.SQLType)
+					}
+					jsonArgs = append(jsonArgs, fmt.Sprintf("'%s', %s", subf.Name, valExpr))
+				}
+				return fmt.Sprintf("json_build_object(%s) AS %s", strings.Join(jsonArgs, ", "), f.Name), "", nil
+			}
+		}
 		col := fmt.Sprintf("%s.%s AS %s", parentAlias, prop.Column, f.Name)
 		return col, "", nil
 	}
@@ -855,11 +877,10 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		if !ok {
 			return "", fmt.Errorf("type %q has no field %q", typeName, a.Field)
 		}
-		val, err := c.compileExpr(a.Value, "", rt)
+		val, err := c.compileScalarAssignmentValue(prop, a.Value, "", rt)
 		if err != nil {
 			return "", err
 		}
-		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
 		cols = append(cols, fmt.Sprintf("%q", prop.Column))
 		vals = append(vals, val)
 	}
@@ -1008,11 +1029,10 @@ func (c *compiler) compileFor(stmt *aql.ForStmt) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("type %q has no field %q", ins.TypeName, a.Field)
 		}
-		val, err := c.compileExpr(a.Value, "", rt)
+		val, err := c.compileScalarAssignmentValue(prop, a.Value, "", rt)
 		if err != nil {
 			return "", err
 		}
-		inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
 		cols = append(cols, fmt.Sprintf("%q", prop.Column))
 		vals = append(vals, val)
 	}
@@ -1470,11 +1490,10 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		}
 
 		if prop, ok := rt.Properties[a.Field]; ok {
-			val, err := c.compileExpr(a.Value, alias, rt)
+			val, err := c.compileScalarAssignmentValue(prop, a.Value, alias, rt)
 			if err != nil {
 				return "", err
 			}
-			inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
 			sets = append(sets, fmt.Sprintf("%s = %s", prop.Column, val))
 			continue
 		}
@@ -2763,4 +2782,40 @@ func expandComputedExpr(expr, alias string) string {
 		return expr
 	}
 	return strings.Join(result, " ")
+}
+
+func (c *compiler) compileScalarAssignmentValue(prop *asl.ResolvedProp, valExpr *aql.Expr, alias string, rt *asl.ResolvedType) (string, error) {
+	val, err := c.compileExpr(valExpr, alias, rt)
+	if err != nil {
+		return "", err
+	}
+	inferAssignmentParamType(c.params, valExpr, sqlToAQLType(prop.SQLType), prop.EnumType)
+
+	if c.schema != nil && prop.AQLType != "" {
+		if scalar, ok := c.schema.ScalarTypes[prop.AQLType]; ok && scalar.SerializeSQL != "" && scalar.ReceiverName != "" {
+			if !strings.HasPrefix(val, "ST_") && !strings.HasPrefix(val, "st_") {
+				val = expandScalarSerialize(scalar, val)
+			}
+		}
+	}
+	return val, nil
+}
+
+func expandScalarSerialize(scalar *asl.ResolvedScalar, valSQL string) string {
+	if scalar == nil || scalar.SerializeSQL == "" || scalar.ReceiverName == "" {
+		return valSQL
+	}
+	serializeExpr := scalar.SerializeSQL
+	recPrefix := scalar.ReceiverName + "."
+	for fName, sf := range scalar.Fields {
+		sqlType := "double precision"
+		if sf.SQLType == "float4" || sf.SQLType == "float32" {
+			sqlType = "real"
+		} else if sf.SQLType != "" {
+			sqlType = sf.SQLType
+		}
+		fieldExtraction := fmt.Sprintf("((%s::jsonb)->>'%s')::%s", valSQL, fName, sqlType)
+		serializeExpr = strings.ReplaceAll(serializeExpr, recPrefix+fName, fieldExtraction)
+	}
+	return serializeExpr
 }

@@ -220,3 +220,26 @@ type Post {
 Functions are emitted as `CREATE OR REPLACE FUNCTION`; editing a definition
 produces a single replace in the migration.
 
+## Receiver Functions (Custom Scalar Codecs)
+
+Functions can be declared with a receiver on custom scalar types to define read/write codec mappings:
+
+```asl
+scalar type Point extends sql "geography(Point, 4326)" as {
+  latitude:   float32;
+  longitude:  float32;
+};
+
+function (p Point) deserialize() Point {
+  return Point{ latitude: ST_Y(p::geometry), longitude: ST_X(p::geometry) };
+};
+
+function (p Point) serialize() {
+  return ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326);
+};
+```
+
+- **`deserialize()`**: Maps the database representation (`p`) to the typed structured projection. The AQL compiler inlines this as `json_build_object(...)` on `select` queries.
+- **`serialize()`**: Maps client-supplied objects `{ latitude, longitude }` into the database SQL representation. The AQL compiler inlines this into `insert` and `update` queries.
+
+

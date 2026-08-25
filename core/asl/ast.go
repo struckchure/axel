@@ -318,7 +318,7 @@ type TriggerDecl struct {
 	EndPos  lexer.Position
 }
 
-// FunctionDecl is a top-level Postgres function. Attributes are declared as
+// FunctionDecl is a top-level Postgres function or receiver method. Attributes are declared as
 // leading directives (decorator-style, above the declaration); the body is a
 // single `return <sql-expr>;` — a raw Postgres expression the lowerer wraps
 // (`BEGIN RETURN …; END;` for plpgsql, `SELECT …;` for `@language sql`).
@@ -327,15 +327,26 @@ type TriggerDecl struct {
 //	@immutable
 //	@strict
 //	function slugify(value: text) -> text { return lower(value); };
+//	function (p Point) serialize() { return ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326); };
+//	function (p Point) deserialize() Point { return Point{latitude: ST_Y(p::geometry), longitude: ST_X(p::geometry)}; };
 type FunctionDecl struct {
 	Pos         lexer.Position
 	Directives  []*FuncDirective `parser:"@@*"`
-	Name        string           `parser:"'function' @Ident '('"`
+	Receiver    *FuncReceiver    `parser:"'function' ( '(' @@ ')' )?"`
+	Name        string           `parser:"@Ident '('"`
 	Params      []*FuncParam     `parser:"( @@ ( ',' @@ )* )? ')'"`
-	Returns     string           `parser:"'->' @Ident"`
-	ReturnArray bool             `parser:"( @'[' ']' )?"`
+	Returns     string           `parser:"( '->'? @Ident"`
+	ReturnArray bool             `parser:"  ( @'[' ']' )? )?"`
 	Return      *ReturnExpr      `parser:"'{' 'return' @@ '}' ';'?"`
 	EndPos      lexer.Position
+}
+
+// FuncReceiver is an optional `(name Type)` receiver on a method-style function.
+type FuncReceiver struct {
+	Pos   lexer.Position
+	Name  string `parser:"@Ident"`
+	Type  string `parser:"( ':' )? @Ident"`
+	Array bool   `parser:"( @'[' ']' )?"`
 }
 
 // FuncDirective is a leading `@name value?` attribute on a function. The value is
@@ -356,3 +367,4 @@ type FuncParam struct {
 	Type  string `parser:"@Ident"`
 	Array bool   `parser:"( @'[' ']' )?"`
 }
+
