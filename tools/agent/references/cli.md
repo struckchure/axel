@@ -71,6 +71,12 @@ axel run -f queries/get_users.aql -p '{"limit": 20}'
 
 # With relaxed JSON / object parameters
 axel run queries/get_users.aql "params={skip: 1, limit: 20}"
+
+# Run multiple .aql files sequentially
+axel run ./seeds/*.aql
+
+# Run multiple .aql files concurrently/in parallel
+axel run --parallel ./seeds/*.aql
 ```
 
 ### compile

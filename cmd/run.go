@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
@@ -30,6 +31,7 @@ Parameters can be passed in several formats:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
+		// Flags handling
 		aqlStr, _ := cmd.Flags().GetString("aql")
 		cmdStr, _ := cmd.Flags().GetString("command")
 		if aqlStr == "" && cmdStr != "" {
@@ -38,6 +40,7 @@ Parameters can be passed in several formats:
 		aqlFile, _ := cmd.Flags().GetString("file")
 		paramFlags, _ := cmd.Flags().GetStringArray("params")
 		format, _ := cmd.Flags().GetString("format")
+		parallel, _ := cmd.Flags().GetBool("parallel")
 
 		// Load schema
 		sp, _ := cmd.Flags().GetString("schema-path")
@@ -52,48 +55,7 @@ Parameters can be passed in several formats:
 			return fmt.Errorf("loading schema: %w", err)
 		}
 
-		// Resolve query source and positional param arguments
-		var src string
-		var positionalParams []string
-
-		switch {
-		case aqlStr != "":
-			src = aqlStr
-			positionalParams = args
-		case aqlFile != "":
-			b, err := os.ReadFile(aqlFile)
-			if err != nil {
-				return fmt.Errorf("reading --file: %w", err)
-			}
-			src = string(b)
-			positionalParams = args
-		case len(args) > 0:
-			first := args[0]
-			if strings.HasSuffix(first, ".aql") || fileExists(first) {
-				b, err := os.ReadFile(first)
-				if err != nil {
-					return fmt.Errorf("reading aql file %s: %w", first, err)
-				}
-				src = string(b)
-			} else {
-				src = first
-			}
-			positionalParams = args[1:]
-		default:
-			return fmt.Errorf("a query or .aql file is required (e.g. axel run \"select User { id }\" or axel run query.aql)")
-		}
-
-		// Collect and parse all parameter inputs
-		var allParamInputs []string
-		allParamInputs = append(allParamInputs, paramFlags...)
-		allParamInputs = append(allParamInputs, positionalParams...)
-
-		params, err := runner.ParseParams(allParamInputs...)
-		if err != nil {
-			return fmt.Errorf("parsing parameters: %w", err)
-		}
-
-		// Connect to DB
+		// Database connection (shared pool)
 		dbURL := ""
 		if config != nil && config.DatabaseURL != "" {
 			dbURL = config.DatabaseURL
@@ -101,37 +63,116 @@ Parameters can be passed in several formats:
 		if dbURL == "" {
 			return fmt.Errorf("no database URL configured; specify --url or set DATABASE_URL")
 		}
-
 		pool, err := pgxpool.New(ctx, dbURL)
 		if err != nil {
 			return fmt.Errorf("connecting to database: %w", err)
 		}
 		defer pool.Close()
 
-		r := runner.New(pool, ir)
-		result, err := r.Run(ctx, src, params)
-		if err != nil {
-			return fmt.Errorf("running query: %w", err)
-		}
+		// Helper to execute a single AQL source with given positional params
+		execOne := func(src string, positionalParams []string) error {
+			allParamInputs := append(paramFlags, positionalParams...)
+			parsedParams, err := runner.ParseParams(allParamInputs...)
+			if err != nil {
+				return fmt.Errorf("parsing parameters: %w", err)
+			}
 
-		// Output result
-		if stmtIsDelete(src) {
-			fmt.Printf("{\"rows_affected\": %d}\n", result.RowsAffected)
+			r := runner.New(pool, ir)
+			result, err := r.Run(ctx, src, parsedParams)
+			if err != nil {
+				return fmt.Errorf("running query: %w", err)
+			}
+
+			if stmtIsDelete(src) {
+				fmt.Printf("{\"rows_affected\": %d}\n", result.RowsAffected)
+				return nil
+			}
+
+			// Format any UUID fields to string representations
+			formattedRows := make([]runner.Row, len(result.Rows))
+			for i, row := range result.Rows {
+				formattedRows[i] = formatUUIDs(row).(runner.Row)
+			}
+
+			var out []byte
+			if format == "compact" {
+				out, err = json.Marshal(formattedRows)
+			} else {
+				out, err = json.MarshalIndent(formattedRows, "", "  ")
+			}
+			if err != nil {
+				return fmt.Errorf("formatting output: %w", err)
+			}
+			fmt.Println(string(out))
 			return nil
 		}
 
-		var out []byte
-		if format == "compact" {
-			out, err = json.Marshal(result.Rows)
-		} else {
-			out, err = json.MarshalIndent(result.Rows, "", "  ")
-		}
-		if err != nil {
-			return fmt.Errorf("formatting output: %w", err)
+		// Execution paths
+		if aqlStr != "" {
+			return execOne(aqlStr, args)
 		}
 
-		fmt.Println(string(out))
-		return nil
+		if aqlFile != "" {
+			b, err := os.ReadFile(aqlFile)
+			if err != nil {
+				return fmt.Errorf("reading --file: %w", err)
+			}
+			return execOne(string(b), args)
+		}
+
+		if len(args) == 0 {
+			return fmt.Errorf("a query or .aql file is required (e.g. axel run \"select User { id }\" or axel run query.aql)")
+		}
+
+		first := args[0]
+		if strings.HasSuffix(first, ".aql") || fileExists(first) {
+			files := []string{}
+			for _, a := range args {
+				if strings.HasSuffix(a, ".aql") || fileExists(a) {
+					files = append(files, a)
+				} else {
+					return fmt.Errorf("unexpected non-.aql argument %s when multiple .aql files are provided", a)
+				}
+			}
+
+			if parallel {
+				var wg sync.WaitGroup
+				errCh := make(chan error, len(files))
+				for _, f := range files {
+					wg.Add(1)
+					go func(filePath string) {
+						defer wg.Done()
+						b, err := os.ReadFile(filePath)
+						if err != nil {
+							errCh <- fmt.Errorf("reading %s: %w", filePath, err)
+							return
+						}
+						if err := execOne(string(b), nil); err != nil {
+							errCh <- err
+						}
+					}(f)
+				}
+				wg.Wait()
+				close(errCh)
+				if len(errCh) > 0 {
+					return <-errCh
+				}
+				return nil
+			}
+
+			for _, f := range files {
+				b, err := os.ReadFile(f)
+				if err != nil {
+					return fmt.Errorf("reading %s: %w", f, err)
+				}
+				if err := execOne(string(b), nil); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		return execOne(first, args[1:])
 	},
 }
 
@@ -152,5 +193,40 @@ func init() {
 	runCmd.Flags().StringArrayP("params", "p", nil, "Query parameters in JSON or key=value format (e.g. '{\"skip\": 1, \"limit\": 20}' or 'params={skip: 1, limit: 20}')")
 	runCmd.Flags().String("format", "pretty", "Output format: pretty, compact")
 	runCmd.Flags().String("schema-path", "", "Schema file, directory or glob (.asl) (default: axel/schema.asl)")
+	runCmd.Flags().Bool("parallel", false, "Run multiple .aql files concurrently (default sequential)")
 	RootCmd.AddCommand(runCmd)
+}
+
+func formatUUIDs(v any) any {
+	if v == nil {
+		return nil
+	}
+	if b, ok := v.([16]byte); ok {
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	if m, ok := v.(map[string]any); ok {
+		for k, val := range m {
+			m[k] = formatUUIDs(val)
+		}
+		return m
+	}
+	if r, ok := v.(runner.Row); ok {
+		for k, val := range r {
+			r[k] = formatUUIDs(val)
+		}
+		return r
+	}
+	if s, ok := v.([]any); ok {
+		for i, val := range s {
+			s[i] = formatUUIDs(val)
+		}
+		return s
+	}
+	if s, ok := v.([]runner.Row); ok {
+		for i, val := range s {
+			s[i] = formatUUIDs(val).(runner.Row)
+		}
+		return s
+	}
+	return v
 }

@@ -249,7 +249,7 @@ WHERE u.active = $1 AND u.age >= $2;
 
 ### `axel run`
 
-Executes an AQL query directly against the connected PostgreSQL database and outputs the JSON result to stdout.
+Executes AQL queries directly against the connected PostgreSQL database and outputs the JSON results to stdout.
 
 ```sh
 # Inline query with parameters:
@@ -260,6 +260,12 @@ axel run -f queries/get_users.aql -p '{"limit": 20}'
 
 # Using relaxed JSON or prefixed format:
 axel run queries/get_users.aql "params={skip: 1, limit: 20}"
+
+# Execute multiple AQL query files sequentially:
+axel run ./axel/seeds/*.aql
+
+# Execute multiple AQL query files concurrently:
+axel run --parallel ./axel/seeds/*.aql
 ```
 
 | Flag            | Short | Default           | Description                                                         |
@@ -269,6 +275,7 @@ axel run queries/get_users.aql "params={skip: 1, limit: 20}"
 | `--file`        | `-f`  |                   | Path to `.aql` file to execute                                      |
 | `--params`      | `-p`  |                   | Query parameters in JSON, relaxed JSON, or key=value format         |
 | `--format`      |       | `pretty`          | Output format: `pretty` or `compact`                                |
+| `--parallel`    |       | `false`           | Run multiple `.aql` files concurrently (default sequential)         |
 | `--schema-path` |       | `axel/schema.asl` | Schema to compile against                                           |
 
 ---
