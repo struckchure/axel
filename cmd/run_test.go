@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/struckchure/axel/core/runner"
 )
 
@@ -24,6 +25,40 @@ func TestFormatUUIDs(t *testing.T) {
 		{
 			name:     "raw [16]byte uuid",
 			input:    uuidBytes,
+			expected: expectedUUIDStr,
+		},
+		{
+			name:     "pointer *[16]byte uuid",
+			input:    &uuidBytes,
+			expected: expectedUUIDStr,
+		},
+		{
+			name:     "raw []byte uuid of length 16",
+			input:    uuidBytes[:],
+			expected: expectedUUIDStr,
+		},
+		{
+			name: "pgtype.UUID valid",
+			input: pgtype.UUID{
+				Bytes: uuidBytes,
+				Valid: true,
+			},
+			expected: expectedUUIDStr,
+		},
+		{
+			name: "pgtype.UUID invalid",
+			input: pgtype.UUID{
+				Bytes: uuidBytes,
+				Valid: false,
+			},
+			expected: nil,
+		},
+		{
+			name: "pointer *pgtype.UUID valid",
+			input: &pgtype.UUID{
+				Bytes: uuidBytes,
+				Valid: true,
+			},
 			expected: expectedUUIDStr,
 		},
 		{

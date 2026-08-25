@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/struckchure/axel/core/runner"
 )
 
@@ -29,21 +30,27 @@ func FormatResult(res *runner.Result, format OutputFormat) string {
 		return fmt.Sprintf("{\"rows_affected\": %d}", res.RowsAffected)
 	}
 
+	// Format any UUID fields to string representations
+	formattedRows := make([]runner.Row, len(res.Rows))
+	for i, row := range res.Rows {
+		formattedRows[i] = formatUUIDs(row).(runner.Row)
+	}
+
 	switch format {
 	case FormatCompact:
-		b, err := json.Marshal(res.Rows)
+		b, err := json.Marshal(formattedRows)
 		if err != nil {
 			return fmt.Sprintf("error formatting compact JSON: %v", err)
 		}
 		return string(b)
 
 	case FormatTable:
-		return FormatTableRows(res.Rows)
+		return FormatTableRows(formattedRows)
 
 	case FormatPretty:
 		fallthrough
 	default:
-		b, err := json.MarshalIndent(res.Rows, "", "  ")
+		b, err := json.MarshalIndent(formattedRows, "", "  ")
 		if err != nil {
 			return fmt.Sprintf("error formatting pretty JSON: %v", err)
 		}
@@ -194,4 +201,67 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.2fms", float64(d.Microseconds())/1000.0)
 	}
 	return fmt.Sprintf("%.2fs", d.Seconds())
+}
+
+func formatUUIDs(v any) any {
+	if v == nil {
+		return nil
+	}
+	// 1. [16]byte
+	if b, ok := v.([16]byte); ok {
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 2. *[16]byte
+	if b, ok := v.(*[16]byte); ok {
+		if b == nil {
+			return nil
+		}
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 3. []byte (slice) of length 16
+	if b, ok := v.([]byte); ok && len(b) == 16 {
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 4. pgtype.UUID
+	if u, ok := v.(pgtype.UUID); ok {
+		if !u.Valid {
+			return nil
+		}
+		b := u.Bytes
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 5. *pgtype.UUID
+	if u, ok := v.(*pgtype.UUID); ok {
+		if u == nil || !u.Valid {
+			return nil
+		}
+		b := u.Bytes
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+
+	if m, ok := v.(map[string]any); ok {
+		for k, val := range m {
+			m[k] = formatUUIDs(val)
+		}
+		return m
+	}
+	if r, ok := v.(runner.Row); ok {
+		for k, val := range r {
+			r[k] = formatUUIDs(val)
+		}
+		return r
+	}
+	if s, ok := v.([]any); ok {
+		for i, val := range s {
+			s[i] = formatUUIDs(val)
+		}
+		return s
+	}
+	if s, ok := v.([]runner.Row); ok {
+		for i, val := range s {
+			s[i] = formatUUIDs(val).(runner.Row)
+		}
+		return s
+	}
+	return v
 }

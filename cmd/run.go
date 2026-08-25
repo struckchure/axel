@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/struckchure/axel/core/runner"
@@ -201,9 +202,38 @@ func formatUUIDs(v any) any {
 	if v == nil {
 		return nil
 	}
+	// 1. [16]byte
 	if b, ok := v.([16]byte); ok {
 		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 	}
+	// 2. *[16]byte
+	if b, ok := v.(*[16]byte); ok {
+		if b == nil {
+			return nil
+		}
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 3. []byte (slice) of length 16
+	if b, ok := v.([]byte); ok && len(b) == 16 {
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 4. pgtype.UUID
+	if u, ok := v.(pgtype.UUID); ok {
+		if !u.Valid {
+			return nil
+		}
+		b := u.Bytes
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	// 5. *pgtype.UUID
+	if u, ok := v.(*pgtype.UUID); ok {
+		if u == nil || !u.Valid {
+			return nil
+		}
+		b := u.Bytes
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+
 	if m, ok := v.(map[string]any); ok {
 		for k, val := range m {
 			m[k] = formatUUIDs(val)

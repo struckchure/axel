@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/struckchure/axel/core/asl"
 	"github.com/struckchure/axel/core/runner"
 )
@@ -41,27 +42,30 @@ func TestIsCompleteStatement(t *testing.T) {
 }
 
 func TestFormatResult(t *testing.T) {
+	uuidBytes := [16]byte{138, 186, 24, 167, 17, 231, 75, 36, 150, 150, 124, 63, 83, 204, 202, 73}
+	expectedUUIDStr := "8aba18a7-11e7-4b24-9696-7c3f53ccca49"
+
 	rows := []runner.Row{
-		{"id": "u1", "name": "Alice", "age": 30},
-		{"id": "u2", "name": "Bob", "age": 25},
+		{"id": uuidBytes, "name": "Alice", "age": 30},
+		{"id": pgtype.UUID{Bytes: uuidBytes, Valid: true}, "name": "Bob", "age": 25},
 	}
 	res := &runner.Result{Rows: rows}
 
 	// Pretty
 	pretty := FormatResult(res, FormatPretty)
-	if !strings.Contains(pretty, "Alice") || !strings.Contains(pretty, "\n") {
+	if !strings.Contains(pretty, "Alice") || !strings.Contains(pretty, expectedUUIDStr) || !strings.Contains(pretty, "\n") {
 		t.Errorf("FormatResult(pretty) = %s", pretty)
 	}
 
 	// Compact
 	compact := FormatResult(res, FormatCompact)
-	if !strings.Contains(compact, "Alice") || strings.Contains(compact, "\n") {
+	if !strings.Contains(compact, "Alice") || !strings.Contains(compact, expectedUUIDStr) || strings.Contains(compact, "\n") {
 		t.Errorf("FormatResult(compact) = %s", compact)
 	}
 
 	// Table
 	table := FormatResult(res, FormatTable)
-	if !strings.Contains(table, "+") || !strings.Contains(table, "Alice") || !strings.Contains(table, "| id") {
+	if !strings.Contains(table, "+") || !strings.Contains(table, "Alice") || !strings.Contains(table, expectedUUIDStr) || !strings.Contains(table, "| id") {
 		t.Errorf("FormatResult(table) =\n%s", table)
 	}
 
