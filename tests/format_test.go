@@ -615,4 +615,51 @@ function (p Point) deserialize() -> Point {
 	}
 }
 
+func TestASLFormatPolicyMultiLine(t *testing.T) {
+	src := `type Organization {
+  required name:  str;
+
+  policy owner_only for all
+  using (
+    .organization.owner = global current_user
+    or global current_user in .organization.members
+  )
+  with check (
+    .organization.owner = global current_user
+    or global current_user in .organization.members
+  );
+}
+`
+	out, err := asl.Format([]byte(src))
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if out != src {
+		t.Errorf("got:\n%s\nwant:\n%s", out, src)
+	}
+
+	// Reformatting from a messy oneliner produces the clean multiline output
+	oneliner := `type Organization {
+  required name: str;
+  policy owner_only for all using ( .organization.owner = global current_user or global current_user in .organization.members ) with check ( .organization.owner = global current_user or global current_user in .organization.members );
+}`
+	out2, err := asl.Format([]byte(oneliner))
+	if err != nil {
+		t.Fatalf("format oneliner: %v", err)
+	}
+	if out2 != src {
+		t.Errorf("oneliner format differs:\ngot:\n%s\nwant:\n%s", out2, src)
+	}
+
+	// Idempotent
+	out3, err := asl.Format([]byte(out2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out3 != out2 {
+		t.Errorf("policy formatting not idempotent:\n%s\nvs\n%s", out3, out2)
+	}
+}
+
+
 

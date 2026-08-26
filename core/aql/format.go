@@ -32,6 +32,49 @@ func formatStmt(origSrc string, stmt *Statement) string {
 	return f.done()
 }
 
+// FormatExpr formats an AQL boolean expression AST at the given indent level.
+func FormatExpr(expr *Expr, indent int) []string {
+	if expr == nil {
+		return nil
+	}
+	f := &aqlFmt{indent: indent}
+	f.expr(expr, false)
+	f.clauseBreak(1 << 30)
+	res := strings.TrimRight(f.done(), "\n")
+	if res == "" {
+		return nil
+	}
+	return strings.Split(res, "\n")
+}
+
+// FormatExprLines parses and formats an AQL expression string at the given indent level.
+// If parsing fails, it falls back to the trimmed raw string indented at indent.
+func FormatExprLines(raw string, indent int) []string {
+	expr, err := ParseExpr(raw)
+	if err != nil {
+		lines := strings.Split(strings.TrimSpace(raw), "\n")
+		var out []string
+		for _, l := range lines {
+			t := strings.TrimSpace(l)
+			if t != "" {
+				out = append(out, strings.Repeat("  ", indent)+t)
+			}
+		}
+		return out
+	}
+	f := &aqlFmt{
+		indent: indent,
+		cmts:   collectComments(raw),
+	}
+	f.expr(expr, false)
+	f.clauseBreak(1 << 30)
+	res := strings.TrimRight(f.done(), "\n")
+	if res == "" {
+		return nil
+	}
+	return strings.Split(res, "\n")
+}
+
 // aqlFmt accumulates formatted output line by line, mirroring the ASL formatter,
 // so trailing comments can be appended to the line they belong to.
 type aqlFmt struct {
