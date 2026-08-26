@@ -846,18 +846,81 @@ func (f *aslFmt) trigger(t *TriggerDecl, next int) {
 }
 
 func (f *aslFmt) policy(p *PolicyDecl, next int) {
-	f.wf("policy %s for %s", p.Name, strings.Join(p.Commands, ", "))
+	header := fmt.Sprintf("policy %s for %s", p.Name, strings.Join(p.Commands, ", "))
 	if len(p.Roles) > 0 {
-		f.wf(" to %s", strings.Join(p.Roles, ", "))
+		header += " to " + strings.Join(p.Roles, ", ")
 	}
+
+	single := header
 	if p.Using != nil {
-		f.wf(" using ( %s )", p.Using.AQL())
+		single += fmt.Sprintf(" using ( %s )", p.Using.AQL())
 	}
 	if p.Check != nil {
-		f.wf(" with check ( %s )", p.Check.AQL())
+		single += fmt.Sprintf(" with check ( %s )", p.Check.AQL())
 	}
-	f.w(";")
-	f.commit(next)
+	single += ";"
+
+	var usingLines, checkLines []string
+	if p.Using != nil {
+		usingLines = aql.FormatExprLines(p.Using.AQL(), f.indent+1)
+	}
+	if p.Check != nil {
+		checkLines = aql.FormatExprLines(p.Check.AQL(), f.indent+1)
+	}
+
+	if f.indent*2+len(single) <= maxLineWidth && len(usingLines) <= 1 && len(checkLines) <= 1 && f.ci >= len(f.cmts) {
+		f.w(single)
+		f.commit(next)
+		return
+	}
+
+	f.w(header)
+	usingOffset := next
+	if p.Using != nil {
+		usingOffset = p.Using.Pos.Offset
+	} else if p.Check != nil {
+		usingOffset = p.Check.Pos.Offset
+	}
+	f.commit(usingOffset)
+
+	if p.Using != nil {
+		f.w("using (")
+		f.commit(p.Using.Pos.Offset)
+		for _, line := range usingLines {
+			content := line
+			if strings.HasPrefix(content, strings.Repeat("  ", f.indent+1)) {
+				content = content[len(strings.Repeat("  ", f.indent+1)):]
+			}
+			f.indent++
+			f.w(content)
+			f.commit(usingOffset)
+			f.indent--
+		}
+		if p.Check != nil {
+			f.w(")")
+			f.commit(p.Check.Pos.Offset)
+		} else {
+			f.w(");")
+			f.commit(next)
+		}
+	}
+
+	if p.Check != nil {
+		f.w("with check (")
+		f.commit(p.Check.Pos.Offset)
+		for _, line := range checkLines {
+			content := line
+			if strings.HasPrefix(content, strings.Repeat("  ", f.indent+1)) {
+				content = content[len(strings.Repeat("  ", f.indent+1)):]
+			}
+			f.indent++
+			f.w(content)
+			f.commit(next)
+			f.indent--
+		}
+		f.w(");")
+		f.commit(next)
+	}
 }
 
 func rewriteValue(r *RewriteDecl) string {

@@ -580,6 +580,35 @@ func TestFormatTriggerOrderAuditLog(t *testing.T) {
 	}
 }
 
+func TestFormatPolicyVariants(t *testing.T) {
+	src := `type Organization {
+  required name:  str;
+
+  policy not_deleted for select using ( .deleted_at is null );
+  policy member_can_read for select to app_user
+  using (
+    global current_user in .organization.members
+    or .organization.owner = global current_user
+  );
+  policy insert_check for insert
+  with check (
+    .status = 'new'
+    and .created_at <= now()
+    and .creator = global current_user
+    and .organization.active = true
+  );
+}
+`
+	formatted, err := Format([]byte(src))
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	if formatted != src {
+		t.Errorf("Format output mismatch.\n--- GOT ---\n%s\n--- WANT ---\n%s", formatted, src)
+	}
+}
+
+
 func TestCustomSQLExtensionScalars(t *testing.T) {
 	src := `
 use extension 'postgis';
