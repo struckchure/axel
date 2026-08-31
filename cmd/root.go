@@ -55,6 +55,8 @@ func expandConfigEnv(c *axel.MigrationConfig) {
 }
 
 var (
+	envFile string
+
 	config  *axel.MigrationConfig
 	manager *axel.MigrationManager
 
@@ -165,6 +167,16 @@ func loadConfig() {
 // without overriding variables that are already set. It checks the project
 // directory (--dir) first, then the current working directory.
 func loadDotEnv() {
+	// An explicit --env-file wins and is the only file consulted: naming one and
+	// then silently merging .env underneath would make the source of a value
+	// impossible to reason about.
+	if !lo.IsEmpty(envFile) {
+		if err := godotenv.Load(envFile); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not read --env-file %q: %v\n", envFile, err)
+		}
+		return
+	}
+
 	var candidates []string
 	if !lo.IsEmpty(projectDir) {
 		candidates = append(candidates, projectDir+"/.env")
@@ -192,6 +204,7 @@ func databaseURLFromEnv() string {
 func init() {
 	RootCmd.PersistentFlags().StringVarP(&projectDir, "dir", "d", ".", "Project directory (auto-discovers axel.yaml, schema.asl, default.asl, or schema/)")
 	RootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Config file path (overrides --dir)")
+	RootCmd.PersistentFlags().StringVar(&envFile, "env-file", "", "Env file to load instead of .env (e.g. .env.production)")
 
 	RootCmd.PersistentFlags().StringVarP(&databaseURL, "url", "u", "", "Database URL")
 	RootCmd.PersistentFlags().StringVar(&migrationsDir, "migrations-dir", "", "Migrations directory")

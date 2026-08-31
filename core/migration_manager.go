@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -42,17 +44,41 @@ func (m *MigrationManager) Connect() error {
 		return nil // Already connected
 	}
 
+	// An empty URL is not a connection to localhost: libpq fills in its own
+	// defaults and the failure surfaces as something unrelated ("SSL is not
+	// enabled on the server"), which sends people looking in the wrong place.
+	if strings.TrimSpace(m.config.DatabaseURL) == "" {
+		return fmt.Errorf(
+			"no database URL: set database-url in axel.yaml, pass --url, or set DATABASE_URL " +
+				"(AXEL_DATABASE_URL takes precedence). Use --env-file to load a non-default env file")
+	}
+
 	db, err := sql.Open("postgres", m.config.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	if err := db.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database: %w", err)
+		return fmt.Errorf("failed to ping database at %s: %w", redactURL(m.config.DatabaseURL), err)
 	}
 
 	m.db = db
 	return nil
+}
+
+// redactURL renders a connection URL for an error message with the password
+// removed, so a failing command can name what it actually tried to reach.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "the configured URL"
+	}
+	if u.User != nil {
+		if _, hasPw := u.User.Password(); hasPw {
+			u.User = url.UserPassword(u.User.Username(), "****")
+		}
+	}
+	return u.Redacted()
 }
 
 // Close closes the database connection
