@@ -74,9 +74,9 @@ func (g *GoGenerator) OnScalar(_ *codegen.Context, s codegen.ScalarDescriptor) e
 	if len(s.Fields) > 0 {
 		fmt.Fprintf(&g.models, "type %s struct {\n", s.Name)
 		for _, f := range s.Fields {
-			goType := aqlToGoType(f.AQLType, !f.IsRequired)
+			goType := aqlToGoJSONType(f.AQLType, !f.IsRequired)
 			if f.IsMulti {
-				goType = "[]" + aqlToGoType(f.AQLType, false)
+				goType = "[]" + aqlToGoJSONType(f.AQLType, false)
 			}
 			fieldName := toGoFieldName(f.Name)
 			fmt.Fprintf(&g.models, "\t%s %s `json:%q`\n", fieldName, goType, f.Name)
@@ -710,6 +710,22 @@ func aqlToGoType(aqlType string, nullable bool) string {
 		return "*" + base
 	}
 	return base
+}
+
+// aqlToGoJSONType maps an AQL type name to a Go type for a field that lives
+// inside a JSON/JSONB document rather than in its own column. Temporal types
+// are carried as JSON strings (Postgres renders date/time/timestamptz into JSON
+// as text, and encoding/json only parses RFC 3339 into time.Time), so they map
+// to string here instead of time.Time.
+func aqlToGoJSONType(aqlType string, nullable bool) string {
+	switch aqlType {
+	case "date", "time", "datetime":
+		if nullable {
+			return "*string"
+		}
+		return "string"
+	}
+	return aqlToGoType(aqlType, nullable)
 }
 
 // neededImports scans generated source for type references and returns needed imports.

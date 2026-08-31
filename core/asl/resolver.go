@@ -29,15 +29,19 @@ var builtinTypes = map[string]string{
 }
 
 // allowedJsonScalarFieldTypes restricts field types inside typed JSON scalars
-// strictly to strings and numbers.
+// to strings, numbers and temporal types. Temporal fields live in the document
+// as JSON strings and are cast on extraction (e.g. (col->>'opening')::TIME).
 var allowedJsonScalarFieldTypes = map[string]bool{
-	"str":     true,
-	"int16":   true,
-	"int32":   true,
-	"int64":   true,
-	"float32": true,
-	"float64": true,
-	"decimal": true,
+	"str":      true,
+	"int16":    true,
+	"int32":    true,
+	"int64":    true,
+	"float32":  true,
+	"float64":  true,
+	"decimal":  true,
+	"date":     true,
+	"time":     true,
+	"datetime": true,
 }
 
 // BuiltinSQLType returns the SQL type for a builtin scalar name (e.g. "str" →
@@ -288,7 +292,7 @@ func (r *Resolver) Resolve(src *SourceFile) (*SchemaIR, error) {
 							return fmt.Errorf("scalar type %q: field %q declared more than once", s.Name, f.Name)
 						}
 						if !allowedJsonScalarFieldTypes[f.Type] {
-							return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON/custom scalar fields currently only support strings (str) and numbers (int16, int32, int64, float32, float64, decimal)", s.Name, f.Name, f.Type)
+							return fmt.Errorf("scalar type %q field %q: type %q is not allowed; typed JSON/custom scalar fields currently only support strings (str), numbers (int16, int32, int64, float32, float64, decimal) and temporal types (date, time, datetime)", s.Name, f.Name, f.Type)
 						}
 						fSQLType, ok := builtinTypes[f.Type]
 						if !ok {

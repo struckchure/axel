@@ -118,7 +118,7 @@ func (g *TsGenerator) OnScalar(_ *codegen.Context, s codegen.ScalarDescriptor) e
 		fmt.Fprintf(&g.models, "export interface %s {\n", s.Name)
 		for _, f := range s.Fields {
 			optional := !f.IsRequired
-			tsType := aqlToTsType(f.AQLType, false)
+			tsType := aqlToTsJSONType(f.AQLType, false)
 			if f.IsMulti {
 				tsType += "[]"
 			}
@@ -1615,6 +1615,21 @@ func aqlToTsType(aqlType string, nullable bool) string {
 		return base + " | null"
 	}
 	return base
+}
+
+// aqlToTsJSONType maps an AQL type name to a TypeScript type for a field that
+// lives inside a JSON/JSONB document rather than in its own column. Temporal
+// types arrive as JSON strings (JSON.parse never revives them into Date), so
+// they map to string here instead of Date.
+func aqlToTsJSONType(aqlType string, nullable bool) string {
+	switch aqlType {
+	case "date", "time", "datetime":
+		if nullable {
+			return "string | null"
+		}
+		return "string"
+	}
+	return aqlToTsType(aqlType, nullable)
 }
 
 // toTsCamelCase converts snake_case to camelCase.

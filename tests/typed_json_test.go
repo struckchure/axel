@@ -313,3 +313,162 @@ type Venue {
 }
 
 
+
+const temporalJsonSchema = `
+scalar type VendorAvailability extends jsonb {
+  required day: str;
+  opening: time;
+  closing: time;
+  effective_from: date;
+  updated_at: datetime;
+  multi holidays: date;
+}
+
+type Vendor {
+  required id: uuid;
+  name: str;
+  availability: VendorAvailability;
+}
+`
+
+func TestTypedJsonTemporalFieldsAQLCompilation(t *testing.T) {
+	ir := parseSchema(t, temporalJsonSchema)
+
+	cases := []struct {
+		name       string
+		query      string
+		wantSQL    []string
+		wantParams []compiler.ParamInfo
+	}{
+		{
+			name:  "time field casts to TIME",
+			query: `select Vendor { id, name } filter .availability.opening <= $now;`,
+			wantSQL: []string{
+				`FROM "vendor" v`,
+				`((v.availability->>'opening')::TIME) <= $1`,
+			},
+			wantParams: []compiler.ParamInfo{
+				{Name: "now", AQLType: "time"},
+			},
+		},
+		{
+			name:  "date field casts to DATE",
+			query: `select Vendor { id, name } filter .availability.effective_from > $from;`,
+			wantSQL: []string{
+				`((v.availability->>'effective_from')::DATE) > $1`,
+			},
+			wantParams: []compiler.ParamInfo{
+				{Name: "from", AQLType: "date"},
+			},
+		},
+		{
+			name:  "datetime field casts to TIMESTAMPTZ",
+			query: `select Vendor { id, name } filter .availability.updated_at >= $since;`,
+			wantSQL: []string{
+				`((v.availability->>'updated_at')::TIMESTAMPTZ) >= $1`,
+			},
+			wantParams: []compiler.ParamInfo{
+				{Name: "since", AQLType: "datetime"},
+			},
+		},
+		{
+			name:  "temporal fields in a sub-shape are cast inside json_build_object",
+			query: `select Vendor { id, availability: { day, opening, updated_at } };`,
+			wantSQL: []string{
+				`json_build_object('day', (v.availability->>'day'), 'opening', ((v.availability->>'opening')::TIME), 'updated_at', ((v.availability->>'updated_at')::TIMESTAMPTZ)) AS availability`,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stmt, err := aql.ParseString(tc.query)
+			if err != nil {
+				t.Fatalf("parse error: %v", err)
+			}
+			compiled, err := compiler.Compile(stmt, ir)
+			if err != nil {
+				t.Fatalf("compile error: %v", err)
+			}
+			gotSQL := normalizeSQL(compiled.SQL)
+			for _, want := range tc.wantSQL {
+				if !strings.Contains(gotSQL, normalizeSQL(want)) {
+					t.Errorf("SQL missing %q:\n%s", want, compiled.SQL)
+				}
+			}
+			if len(tc.wantParams) > 0 {
+				if len(compiled.Params) != len(tc.wantParams) {
+					t.Fatalf("params = %+v, want %+v", compiled.Params, tc.wantParams)
+				}
+				for i, want := range tc.wantParams {
+					if got := compiled.Params[i]; got.Name != want.Name || got.AQLType != want.AQLType {
+						t.Errorf("param %d = %+v, want %+v", i, got, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestTypedJsonTemporalCodegen(t *testing.T) {
+	ir := parseSchema(t, temporalJsonSchema)
+	desc := codegen.FromSchemaIR(ir)
+	q := buildQueryDesc(t, ir, "getVendor", "get_vendor.aql", `select Vendor { id, name };`)
+
+	tsGen := &typescript.TsGenerator{}
+	tsDir := t.TempDir()
+	if err := codegen.Walk(desc, []codegen.QueryDescriptor{q}, tsGen, &codegen.Context{OutDir: tsDir}); err != nil {
+		t.Fatalf("generate ts: %v", err)
+	}
+	modelsTs := readFile(t, filepath.Join(tsDir, "models.ts"))
+	// Temporal fields inside a JSON document arrive as strings, not Dates.
+	for _, want := range []string{
+		"export interface VendorAvailability {",
+		"opening?: string | null;",
+		"effectiveFrom?: string | null;",
+		"updatedAt?: string | null;",
+		"holidays?: string[] | null;",
+	} {
+		if !strings.Contains(modelsTs, want) {
+			t.Errorf("models.ts missing %q:\n%s", want, modelsTs)
+		}
+	}
+	if strings.Contains(modelsTs, "Date") {
+		t.Errorf("models.ts should not type JSON temporal fields as Date:\n%s", modelsTs)
+	}
+
+	goGen := &golang.GoGenerator{}
+	goDir := t.TempDir()
+	if err := codegen.Walk(desc, []codegen.QueryDescriptor{q}, goGen, &codegen.Context{OutDir: goDir}); err != nil {
+		t.Fatalf("generate go: %v", err)
+	}
+	modelsGo := readFile(t, filepath.Join(goDir, "models.go"))
+	for _, want := range []string{
+		"type VendorAvailability struct {",
+		"Opening *string `json:\"opening\"`",
+		"EffectiveFrom *string `json:\"effective_from\"`",
+		"UpdatedAt *string `json:\"updated_at\"`",
+		"Holidays []string `json:\"holidays\"`",
+	} {
+		if !strings.Contains(normalizeSQL(modelsGo), normalizeSQL(want)) {
+			t.Errorf("models.go missing %q:\n%s", want, modelsGo)
+		}
+	}
+	if strings.Contains(modelsGo, "time.Time") {
+		t.Errorf("models.go should not type JSON temporal fields as time.Time:\n%s", modelsGo)
+	}
+}
+
+func TestTypedJsonDisallowedFieldTypes(t *testing.T) {
+	for _, bad := range []string{"bool", "uuid", "bytes", "json"} {
+		schema := "scalar type S extends jsonb {\n  f: " + bad + ";\n}\n\ntype T {\n  required id: uuid;\n  s: S;\n}\n"
+		err := resolveErr(t, schema)
+		if err == nil {
+			t.Errorf("type %q: expected a resolve error, got nil", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "is not allowed") {
+			t.Errorf("type %q: unexpected error: %v", bad, err)
+		}
+	}
+}

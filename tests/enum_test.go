@@ -83,6 +83,55 @@ type User {
 	}
 }
 
+// A `multi` enum column is stored as a SQL array, so its membership CHECK must
+// be an array-containment test. `"roles" IN ('Admin', …)` makes Postgres parse
+// each literal as an array literal and fail at migration time with
+// `malformed array literal: "Admin"`.
+func TestMultiEnumColumnEmitsArrayContainmentCheck(t *testing.T) {
+	up := genUp(t, `
+enum Role { Admin, Member, Guest }
+type User {
+  required id: uuid { constraint pk; };
+  multi roles: Role;
+}
+`)
+	want := `CONSTRAINT "chk_user_roles_enum" CHECK ("roles" <@ ARRAY['Admin', 'Member', 'Guest']::TEXT[])`
+	if !strings.Contains(up, want) {
+		t.Errorf("up SQL missing %q:\n%s", want, up)
+	}
+	if strings.Contains(up, `CHECK ("roles" IN (`) {
+		t.Errorf("up SQL still uses a scalar IN check on an array column:\n%s", up)
+	}
+	if !strings.Contains(up, `"roles" TEXT[]`) {
+		t.Errorf("up SQL missing TEXT[] column:\n%s", up)
+	}
+}
+
+// The same applies to the ALTER path when the allowed values change.
+func TestMultiEnumValueChangeEmitsArrayContainmentCheck(t *testing.T) {
+	oldSchema := `
+enum Role { Admin, Member }
+type User {
+  required id: uuid { constraint pk; };
+  multi roles: Role;
+}
+`
+	newSchema := `
+enum Role { Admin, Member, Guest }
+type User {
+  required id: uuid { constraint pk; };
+  multi roles: Role;
+}
+`
+	up, down := genMigration(t, oldSchema, newSchema)
+	if !strings.Contains(up, `ADD CONSTRAINT "chk_user_roles_enum" CHECK ("roles" <@ ARRAY['Admin', 'Member', 'Guest']::TEXT[]);`) {
+		t.Errorf("up SQL missing array containment check:\n%s", up)
+	}
+	if !strings.Contains(down, `ADD CONSTRAINT "chk_user_roles_enum" CHECK ("roles" <@ ARRAY['Admin', 'Member']::TEXT[]);`) {
+		t.Errorf("down SQL missing array containment check:\n%s", down)
+	}
+}
+
 func TestEnumDescriptorRoundTrip(t *testing.T) {
 	ir := parseSchema(t, `
 enum Role { Admin, Member }

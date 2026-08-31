@@ -520,10 +520,10 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 	if !slices.Equal(oldField.EnumValues, newField.EnumValues) {
 		name := formatIdentifier(enumConstraintName(tableName, newField.Name))
 		dropStmt := fmt.Sprintf("ALTER TABLE \"%s\" DROP CONSTRAINT IF EXISTS %s;", tableName, name)
-		addNew := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s IN (%s));",
-			tableName, name, formatIdentifier(newField.Name), quotedEnumValues(newField.EnumValues))
-		addOld := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s IN (%s));",
-			tableName, name, formatIdentifier(oldField.Name), quotedEnumValues(oldField.EnumValues))
+		addNew := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s);",
+			tableName, name, enumCheckExpr(formatIdentifier(newField.Name), newField))
+		addOld := fmt.Sprintf("ALTER TABLE \"%s\" ADD CONSTRAINT %s CHECK (%s);",
+			tableName, name, enumCheckExpr(formatIdentifier(oldField.Name), oldField))
 
 		if len(newField.EnumValues) > 0 {
 			// Replace any prior enum check with the new one.

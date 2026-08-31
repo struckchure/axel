@@ -116,6 +116,14 @@ scalar type ItemStats extends jsonb {
   views: int32;
   multi tags: str;
 }
+
+scalar type VendorAvailability extends jsonb {
+  required day: str;
+  opening: time;
+  closing: time;
+  effective_from: date;
+  updated_at: datetime;
+}
 ```
 
 ### Allowed Field Types
@@ -123,9 +131,30 @@ scalar type ItemStats extends jsonb {
 To ensure reliable extraction and type coercion in PostgreSQL, field types within typed JSON scalars are strictly restricted to:
 - **Strings**: `str`
 - **Numbers**: `int16`, `int32`, `int64`, `float32`, `float64`, `decimal`
+- **Temporal**: `date`, `time`, `datetime`
 - **Arrays**: Provided via the `multi` modifier (e.g. `multi tags: str;`, `multi scores: float64;`)
 
 Nested JSON objects and non-primitive types are not permitted within typed JSON scalars.
+
+#### Temporal fields
+
+JSON has no native date/time type, so temporal fields are stored in the document as
+strings (`"09:00:00"`, `"2026-01-31"`, `"2026-01-31T08:30:00Z"`) and cast on
+extraction, exactly like numeric fields:
+
+```aql
+# ((availability->>'opening')::TIME)
+select Vendor { id, name } filter .availability.opening <= $now;
+
+# ((availability->>'updated_at')::TIMESTAMPTZ)
+select Vendor { id, name } filter .availability.updated_at >= $since;
+```
+
+Because the underlying document value is a string, generated clients type these
+fields as strings (`string` in TypeScript, `string` in Go) rather than `Date` /
+`time.Time` — the same treatment `decimal` already gets. Query **parameters**
+compared against them keep their real temporal type (`Date` in TypeScript,
+`time.Time` in Go), since those are bound as SQL values.
 
 ### Using Typed JSON Scalars in Types
 
@@ -172,6 +201,14 @@ export interface ItemStats {
   tags?: string[] | null;
 }
 
+export interface VendorAvailability {
+  closing?: string | null;
+  day: string;
+  effectiveFrom?: string | null;
+  opening?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface Place {
   id: string;
   name?: string | null;
@@ -191,6 +228,14 @@ type ItemStats struct {
 	Score *float64 `json:"score"`
 	Views *int32   `json:"views"`
 	Tags  []string `json:"tags"`
+}
+
+type VendorAvailability struct {
+	Closing       *string `json:"closing"`
+	Day           string  `json:"day"`
+	EffectiveFrom *string `json:"effective_from"`
+	Opening       *string `json:"opening"`
+	UpdatedAt     *string `json:"updated_at"`
 }
 
 type Place struct {

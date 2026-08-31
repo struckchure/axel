@@ -157,9 +157,37 @@ func enumCheckClause(tableName string, field Field) string {
 	if len(field.EnumValues) == 0 {
 		return ""
 	}
-	colName := formatIdentifier(field.Name)
-	body := fmt.Sprintf("CHECK (%s IN (%s))", colName, quotedEnumValues(field.EnumValues))
+	body := fmt.Sprintf("CHECK (%s)", enumCheckExpr(formatIdentifier(field.Name), field))
 	return namedConstraint(enumConstraintName(tableName, field.Name), body)
+}
+
+// enumCheckExpr renders the membership test for an enum-backed column. A scalar
+// column gets a plain `IN` list; a `multi` column is stored as a SQL array, where
+// `"roles" IN ('Admin', …)` would make Postgres parse each literal as an array
+// literal and fail with `malformed array literal: "Admin"`, so it gets an array
+// containment test instead — every element must be an allowed value.
+func enumCheckExpr(colName string, field Field) string {
+	if isArrayColumn(field) {
+		return fmt.Sprintf("%s <@ ARRAY[%s]::%s[]",
+			colName, quotedEnumValues(field.EnumValues), columnElementSQLType(field))
+	}
+	return fmt.Sprintf("%s IN (%s)", colName, quotedEnumValues(field.EnumValues))
+}
+
+// isArrayColumn reports whether a field is stored as a SQL array column. A multi
+// json/jsonb property stays a single document column, so it is not an array.
+func isArrayColumn(field Field) bool {
+	return field.IsMulti && !field.IsLink && field.Type != "json" && field.Type != "jsonb"
+}
+
+// columnElementSQLType returns a field's SQL type with any array suffix removed,
+// i.e. the element type of an array column.
+func columnElementSQLType(field Field) string {
+	sqlType := field.SQLType
+	if sqlType == "" {
+		sqlType = mapType(field.Type)
+	}
+	return strings.TrimSuffix(sqlType, "[]")
 }
 
 // quotedEnumValues renders enum values as a comma-separated list of SQL string
