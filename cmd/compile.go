@@ -84,6 +84,7 @@ var compileCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		printCompileWarnings("", result)
 		sql := result.Full()
 
 		if outFile != "" {
@@ -134,6 +135,18 @@ func compileSrc(src string, ir *asl.SchemaIR) (*compiler.CompiledSQL, error) {
 	return result, nil
 }
 
+// printCompileWarnings writes a compile's non-fatal warnings to stderr, so they
+// stay out of the SQL on stdout (which is often piped straight to a file).
+func printCompileWarnings(path string, result *compiler.CompiledSQL) {
+	for _, w := range result.Warnings {
+		if path != "" {
+			fmt.Fprintf(os.Stderr, "warning: %s: %s\n", path, w)
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+		}
+	}
+}
+
 // compileFile compiles one .aql file and writes a .sql file to destDir.
 func compileFile(aqlPath, destDir string, ir *asl.SchemaIR) error {
 	b, err := os.ReadFile(aqlPath)
@@ -144,6 +157,7 @@ func compileFile(aqlPath, destDir string, ir *asl.SchemaIR) error {
 	if err != nil {
 		return err
 	}
+	printCompileWarnings(aqlPath, result)
 	base := strings.TrimSuffix(filepath.Base(aqlPath), ".aql") + ".sql"
 	dest := filepath.Join(destDir, base)
 	if err := os.WriteFile(dest, []byte(result.Full()+"\n"), 0644); err != nil {

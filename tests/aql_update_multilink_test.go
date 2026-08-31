@@ -159,7 +159,7 @@ update Application filter .id = $id<uuid> set {
   name := { "+": 'bad' }
 };`)
 
-	if err == nil || !strings.Contains(err.Error(), "non-multi") {
+	if err == nil || !strings.Contains(err.Error(), "requires a multi link") {
 		t.Errorf("expected error on non-multi delta assignment, got %v", err)
 	}
 }
@@ -170,7 +170,7 @@ update Application filter .id = $id<uuid> set {
   owner := { "+": (select User filter .id = $uid) }
 };`)
 
-	if err == nil || (!strings.Contains(err.Error(), "non-multi") && !strings.Contains(err.Error(), "single link")) {
+	if err == nil || (!strings.Contains(err.Error(), "requires a multi link") && !strings.Contains(err.Error(), "single link")) {
 		t.Errorf("expected error on single link delta assignment, got %v", err)
 	}
 }

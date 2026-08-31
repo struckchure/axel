@@ -94,9 +94,17 @@ axel codegen -g ts -o ./gen
 ```
 
 Axel auto-discovers every `*.aql` file under the project directory
-and emits a `gen/` folder (`runner.ts`, `models.ts`, one file per query). A query's
+and emits a `gen/` folder (`runner.ts`, `models.ts`, one file per query, and an
+`index.ts` barrel re-exporting all of them). A query's
 filename becomes a **camelCase** method: `list_post.aql` →
 `runner.query.listPost()`. (Or name files explicitly: `-q 'queries/*.aql'`.)
+
+The barrel lets you import from the output directory itself rather than reaching
+into individual files:
+
+```ts
+import { Runner, listPost, type User } from "./gen";
+```
 
 The default target is Bun's built-in `SQL`. For node-postgres, add
 `--option client=pg` and pass a `Pool` instead.
@@ -181,6 +189,23 @@ const authors = await runner
   })
   .all();
 ```
+
+Select a **multi link** by naming it in the shape. It is fetched as a correlated
+JSON array over the link's junction table — no join or correlated filter to write
+by hand, and an empty relation comes back as `[]` rather than `null`:
+
+```ts
+const vendors = await runner
+  .select("Vendor", { id: true, name: true, members: true })
+  .all();
+// vendors: Array<{ id: string; name: string; members: User[] }>
+```
+
+A multi link is a relation, not a column, so it is selectable but never insertable —
+`runner.insert("Vendor", …)` will not accept a `members` key. Use an AQL
+[delta assignment](/aql/update/links#multi-links) to modify the junction. Sub-shapes
+on a link (`{ members: { id: true } }`) are an AQL-only feature for now; the builder
+selects all of the target's columns.
 
 Insert with `runner.insert()`:
 

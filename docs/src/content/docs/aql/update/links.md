@@ -121,6 +121,32 @@ SELECT o.id, o.name FROM _target o;
 - Either `"+"` or `"-"` or both can be provided.
 - Keys can be written as `"+"` / `"-"`, `'+'` / `'-'`, or bare `+` / `-`.
 
+### Delta assignment is multi-**link** only
+
+`multi` appears in two different declarations that look alike:
+
+```asl
+multi link members: User;   # a junction table  → delta assignment applies
+multi roles: UserType;      # an array column   → delta assignment does not
+```
+
+Delta assignment is a junction-table operation — it emits `INSERT`/`DELETE` against the link table —
+so it has nothing to act on for a `multi` scalar, which is a single array column on the row. Writing
+one produces:
+
+```
+delta assignment requires a multi link; "roles" is a multi scalar (assign the whole array instead)
+```
+
+Assign a `multi` scalar as a whole value instead:
+
+```aql
+update User filter .id = $id<uuid> set { roles := $roles };
+```
+
+Membership against a `multi` scalar is likewise an array test rather than a junction lookup — see
+[Multi scalars](/asl/fields/links#multi-scalars-are-not-links).
+
 ### Full replacement
 
 Assigning an expression directly to a multi-link reconciles the relation by replacing all existing links with the new set:

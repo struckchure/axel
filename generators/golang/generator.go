@@ -123,6 +123,15 @@ func (g *GoGenerator) OnProperty(_ *codegen.Context, p codegen.PropertyDescripto
 			goType = "*" + goType
 		}
 	}
+	if p.IsMulti {
+		// `multi` scalars are array columns (TEXT[], …). A nil slice is the null,
+		// so an optional one takes no pointer — build the element type clean.
+		elem := aqlToGoType(p.AQLType, false)
+		if p.EnumType != "" {
+			elem = p.EnumType
+		}
+		goType = "[]" + elem
+	}
 	fieldName := toGoFieldName(p.Name)
 	fmt.Fprintf(&g.models, "\t%s %s `json:%q db:%q`\n", fieldName, goType, p.Name, p.Column)
 	return nil
@@ -542,6 +551,13 @@ func emitRowTypes(buf *bytes.Buffer, rootName string, fields []codegen.ResultFie
 				if f.IsNullable {
 					goType = "*" + goType
 				}
+			}
+			if f.IsMultiple {
+				elem := aqlToGoType(f.AQLType, false)
+				if f.EnumType != "" {
+					elem = f.EnumType
+				}
+				goType = "[]" + elem
 			}
 			fmt.Fprintf(buf, "\t%s %s `json:%q db:%q`\n", fieldName, goType, f.Name, f.Name)
 		}

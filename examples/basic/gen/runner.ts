@@ -4,7 +4,7 @@ import { createPost, type CreatePostParams, type CreatePostRow } from "./create_
 import { createUser, type CreateUserParams, type CreateUserRow } from "./create_user.ts";
 import { listPost, type ListPostRow } from "./list_post.ts";
 import { listUsersWithPost, type ListUsersWithPostRow } from "./list_users_with_post.ts";
-import type { Comment, Post, User } from "./models.ts";
+import type { RelationKeys, IsRelation, RelationRows, Comment, Post, User } from "./models.ts";
 
 export interface DB {
   unsafe<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
@@ -28,7 +28,7 @@ export type ShapeResult<T, S> = {
     S[K] extends SelectBuilder<infer T2, infer S2> ? ShapeResult<T2, S2>[] :
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     S[K] extends FilterChain<infer T2, infer S2> ? ShapeResult<T2, S2>[] :
-    K extends keyof T ? T[K] :
+    K extends keyof T ? (IsRelation<T[K]> extends true ? RelationRows<T[K]> : T[K]) :
     never;
 };
 
@@ -104,7 +104,7 @@ class FilterChain<T, S extends Shape<T>> {
   one(): Promise<ShapeResult<T, S> | null> { return this.builder.one(); }
 }
 
-type Insertable<T> = Omit<T, "id" | "createdAt" | "updatedAt">;
+type Insertable<T> = Omit<T, "id" | "createdAt" | "updatedAt" | RelationKeys<T>>;
 type Updatable<T> = Partial<Insertable<T>>;
 
 class UpdateBuilder<T> {
@@ -214,6 +214,15 @@ function _toSnakeCase(s: string): string {
   return s.replace(/([A-Z])/g, (c) => `_${c.toLowerCase()}`);
 }
 
+interface _SchemaLink {
+  name: string;
+  join_column: string;
+  target_type?: string;
+  junction_table?: string;
+  join_field?: string;
+  is_multi?: boolean;
+}
+
 function _buildSelectSQL(
   schema: Record<string, unknown>,
   typeName: string,
@@ -227,7 +236,7 @@ function _buildSelectSQL(
     table: string;
     properties: Array<{ name: string; column: string }>;
     computed?: Array<{ name: string; expr: string }>;
-    links?: Array<{ name: string; join_column: string }>;
+    links?: _SchemaLink[];
   }>;
   const type = types.find((t) => t.name === typeName);
   if (!type) throw new Error(`axel: unknown type "${typeName}"`);
@@ -246,7 +255,11 @@ function _buildSelectSQL(
     const prop = type.properties?.find((p) => p.name === col || p.column === col);
     if (prop) { cols.push(`${alias}."${prop.column}"`); continue; }
     const comp = type.computed?.find((c) => c.name === col);
-    if (comp) cols.push(`(${comp.expr}) AS "${col}"`);
+    if (comp) { cols.push(`(${comp.expr}) AS "${col}"`); continue; }
+    // A multi link has no column on this row — select it as a
+    // correlated json_agg over its junction table.
+    const link = type.links?.find((l) => l.is_multi && (l.name === col || l.name === key));
+    if (link) cols.push(_buildLinkSubSelectSQL(schema, type.table, link, key, alias));
   }
   if (cols.length === 0) cols.push(`${alias}.*`);
 
@@ -290,6 +303,34 @@ function _buildSubSelectSQL(
   const innerSQL = _buildSelectSQL(schema, spec.typeName, spec.shape, spec.filterSpecs, 0);
   const subAlias = `${spec.typeName[0]!.toLowerCase()}_${fieldName}_sub`;
   return `(SELECT json_agg(row_to_json(${subAlias})) FROM (${innerSQL}) ${subAlias}) AS "${fieldName}"`;
+}
+
+function _buildLinkSubSelectSQL(
+  schema: Record<string, unknown>,
+  ownerTable: string,
+  link: _SchemaLink,
+  fieldName: string,
+  ownerAlias: string,
+): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const types = (schema as any).types as Array<{ name: string; table: string }>;
+  const target = types.find((t) => t.name === link.target_type);
+  if (!target) throw new Error(`axel: unknown target type "${link.target_type}" for link "${link.name}"`);
+  const t = `${target.name[0]!.toLowerCase()}_${fieldName}`;
+  const sub = `${t}_sub`;
+  const joinField = link.join_field || "id";
+  let inner: string;
+  if (link.junction_table) {
+    const jt = `jt_${fieldName}`;
+    inner =
+      `SELECT ${t}.* FROM "${link.junction_table}" ${jt}` +
+      ` JOIN "${target.table}" ${t} ON ${t}."${joinField}" = ${jt}."${target.table}"` +
+      ` WHERE ${jt}."${ownerTable}" = ${ownerAlias}.id`;
+  } else {
+    // Multi link with the FK on the target side rather than a junction.
+    inner = `SELECT ${t}.* FROM "${target.table}" ${t} WHERE ${t}."${link.join_column}" = ${ownerAlias}.id`;
+  }
+  return `(SELECT COALESCE(json_agg(row_to_json(${sub})), '[]') FROM (${inner}) ${sub}) AS "${fieldName}"`;
 }
 
 function _resolveOuterRef(schema: Record<string, unknown>, ref: string): string {

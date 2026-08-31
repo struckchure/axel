@@ -60,8 +60,11 @@ type LinkDescriptor struct {
 	TargetType    string `json:"target_type"`
 	JoinColumn    string `json:"join_column,omitempty"`
 	JunctionTable string `json:"junction_table,omitempty"`
-	IsRequired    bool   `json:"is_required"`
-	IsMulti       bool   `json:"is_multi"`
+	// JoinField is the target field the link references ("id", "email"). Clients
+	// building a junction subquery need it to join back to the target row.
+	JoinField  string `json:"join_field,omitempty"`
+	IsRequired bool   `json:"is_required"`
+	IsMulti    bool   `json:"is_multi"`
 }
 
 // EnumDescriptor describes an enum definition.
@@ -281,6 +284,7 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 				TargetType:    l.TargetType,
 				JoinColumn:    l.JoinColumn,
 				JunctionTable: l.JunctionTable,
+				JoinField:     l.JoinField,
 				IsRequired:    l.IsRequired,
 				IsMulti:       l.IsMulti,
 			})
@@ -335,6 +339,9 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 		File:       file,
 		SQL:        compiled.SQL,
 		Directives: directives,
+		// Compiler warnings (e.g. an unrecognised function) join the descriptor's
+		// own so callers have one list to report.
+		Warnings: append([]string(nil), compiled.Warnings...),
 	}
 
 	// Params
@@ -531,6 +538,9 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 					SQLType:    prop.SQLType,
 					EnumType:   prop.EnumType,
 					IsNullable: !prop.IsRequired,
+					// A `multi` scalar is an array column; SQLType above is the
+					// element type, so the array-ness rides on IsMultiple.
+					IsMultiple: prop.IsMulti,
 				})
 			} else if link, ok := rt.Links[sf.Name]; ok {
 				// Link selected without sub-shape (just the FK value)
@@ -578,6 +588,7 @@ func scalarAndLinkFields(rt *asl.ResolvedType, skip map[string]bool) []ResultFie
 			SQLType:    p.SQLType,
 			EnumType:   p.EnumType,
 			IsNullable: !p.IsRequired,
+			IsMultiple: p.IsMulti,
 		})
 	}
 	linkNames := make([]string, 0, len(rt.Links))
@@ -715,6 +726,7 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 				TargetType:    l.TargetType,
 				JoinColumn:    l.JoinColumn,
 				JunctionTable: l.JunctionTable,
+				JoinField:     l.JoinField,
 				IsRequired:    l.IsRequired,
 				IsMulti:       l.IsMulti,
 			}

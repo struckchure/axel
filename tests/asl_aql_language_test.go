@@ -108,7 +108,7 @@ func TestASLAndAQLCrossLanguageFailures(t *testing.T) {
 	}{
 		{"unknown selected field", `select Post { missing };`, "missing"},
 		{"unknown global", `select Post { id } filter .tenant_id = global missing;`, "global"},
-		{"delta on scalar update", `update Post set { title := { "+": 'bad' } };`, "non-multi"},
+		{"delta on scalar update", `update Post set { title := { "+": 'bad' } };`, "requires a multi link"},
 		{"limit on singleton select", `select Post { id } limit 2;`, "limit"},
 	}
 

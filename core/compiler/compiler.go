@@ -132,8 +132,9 @@ func CompileWithOptions(stmt *aql.Statement, schema *asl.SchemaIR, opts CompileO
 	}
 
 	return &CompiledSQL{
-		SQL:    sql,
-		Params: c.params.params,
+		SQL:      sql,
+		Params:   c.params.params,
+		Warnings: c.warnings,
 	}, nil
 }
 
@@ -170,6 +171,16 @@ type compiler struct {
 	// forIterator and forIteratorRef track the loop iterator when compiling a for-loop body.
 	forIterator    string
 	forIteratorRef string
+	// warnings collects non-fatal notes about the compiled statement (e.g. a
+	// function name that matches nothing known). They never block compilation —
+	// an unrecognised function may still be a perfectly good Postgres one — and
+	// surface via CompiledSQL.Warnings.
+	warnings []string
+}
+
+// warnf records a non-fatal compilation warning.
+func (c *compiler) warnf(format string, args ...any) {
+	c.warnings = append(c.warnings, fmt.Sprintf(format, args...))
 }
 
 // CompilePolicyPredicate lowers an AQL boolean expression to a Postgres RLS policy
@@ -829,7 +840,7 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 		if a.LinkDelta != nil {
 			link, ok := rt.Links[a.Field]
 			if !ok || !link.IsMulti {
-				return "", fmt.Errorf("cannot use delta assignment '{ \"+\": ..., \"-\": ... }' on non-multi field %q", a.Field)
+				return "", deltaTargetError(rt, a.Field)
 			}
 			if !topLevel {
 				return "", fmt.Errorf("cannot assign multi-link %q in nested insert expression", a.Field)
@@ -1473,7 +1484,7 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 		if a.LinkDelta != nil {
 			link, ok := rt.Links[a.Field]
 			if !ok || !link.IsMulti {
-				return "", fmt.Errorf("cannot use delta assignment '{ \"+\": ..., \"-\": ... }' on non-multi field %q", a.Field)
+				return "", deltaTargetError(rt, a.Field)
 			}
 			for _, item := range a.LinkDelta.Items {
 				op := item.NormalizedOp()
@@ -1823,6 +1834,15 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	}
 
 	result := fmt.Sprintf("%s %s %s", left, cmp.Op, right)
+
+	// `<value> in .<multi scalar>` is a membership test against an array column,
+	// not a list membership: Postgres `IN` wants a parenthesised list, so a
+	// `TEXT[]` column has to be tested with `= ANY(...)`. Multi *links* never
+	// reach here — compileMembership lowers them to EXISTS above.
+	if cmp.Op == "in" && rightP != nil && rightP.Path != nil &&
+		c.multiScalarPathProp(rightP.Path, rt) != nil {
+		result = fmt.Sprintf("%s = ANY(%s)", left, right)
+	}
 
 	// Optional params ($name?) make the comparison a no-op when the value is
 	// null. The identity that "no-op" collapses to depends on the enclosing
@@ -2303,6 +2323,51 @@ func outerRef(alias string, rt *asl.ResolvedType, col string) string {
 	return fmt.Sprintf("%q.%s", rt.Table, col)
 }
 
+// deltaTargetError explains why a `{ "+": ..., "-": ... }` assignment can't apply
+// to a field. Delta assignment is a junction-table operation, so it needs a multi
+// *link*; the failure modes worth distinguishing are a multi scalar (declared
+// `multi`, so "non-multi" would read as a contradiction), a plain scalar, and a
+// single link.
+func deltaTargetError(rt *asl.ResolvedType, field string) error {
+	if prop, ok := rt.Properties[field]; ok {
+		if prop.IsMulti {
+			return fmt.Errorf("delta assignment requires a multi link; %q is a multi scalar (assign the whole array instead)", field)
+		}
+		return fmt.Errorf("delta assignment requires a multi link; %q is a scalar", field)
+	}
+	if _, ok := rt.Links[field]; ok {
+		return fmt.Errorf("delta assignment requires a multi link; %q is a single link", field)
+	}
+	return fmt.Errorf("delta assignment requires a multi link; type %q has no multi link %q", rt.Name, field)
+}
+
+// multiScalarPathProp returns the multi scalar property a path terminates in, or
+// nil when it does not. Leading steps must be single links (they locate the row
+// that owns the property), mirroring compileMembership's prefix walk. Used by
+// compileCmp to lower `<value> in .<multi scalar>` to `= ANY(...)`: the column is
+// a Postgres array, and `IN` takes a parenthesised list, not an array.
+func (c *compiler) multiScalarPathProp(path *aql.PathExpr, rt *asl.ResolvedType) *asl.ResolvedProp {
+	if path == nil || len(path.Steps) == 0 || rt == nil {
+		return nil
+	}
+	ownerType := rt
+	for _, step := range path.Steps[:len(path.Steps)-1] {
+		l, ok := ownerType.Links[step]
+		if !ok || l.IsMulti {
+			return nil // not a clean single-link prefix
+		}
+		t, err := c.resolveType(l.TargetType)
+		if err != nil {
+			return nil
+		}
+		ownerType = t
+	}
+	if prop, ok := ownerType.Properties[path.Steps[len(path.Steps)-1]]; ok && prop.IsMulti {
+		return prop
+	}
+	return nil
+}
+
 // compileMembership lowers `<left> in .<path>` when the path ends in a multi-link
 // — a membership test over the link's junction (or target FK). It returns
 // (sql, true, nil) when the path terminates in a multi-link, and ("", false, nil)
@@ -2390,6 +2455,29 @@ func (c *compiler) compileMembership(left string, path *aql.PathExpr, alias stri
 	return inner, true, nil
 }
 
+// warnUnknownFunc records a warning when a called name matches nothing the
+// compiler knows: not an AQL aggregate, not a schema-declared function, and not
+// in the curated Postgres set. Function calls are passed through verbatim by
+// design (it is the escape hatch for arbitrary SQL), so this stays a warning —
+// but it catches the case where a SQL keyword is written as a call, e.g.
+// `distinct(.roles)`, which compiles cleanly and then fails at the database.
+func (c *compiler) warnUnknownFunc(name string) {
+	lower := strings.ToLower(name)
+	if aql.AggFuncs[lower] || knownFuncs[lower] {
+		return
+	}
+	if c.schema != nil {
+		if _, ok := c.schema.Functions[name]; ok {
+			return
+		}
+	}
+	if keywordFuncs[lower] {
+		c.warnf("%q is a SQL keyword, not a function; Postgres will reject %s(...)", name, name)
+		return
+	}
+	c.warnf("unknown function %q — emitted as-is; it must exist in the database", name)
+}
+
 func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.ResolvedType) (string, error) {
 	fn := fc.Name
 	if aql.AggFuncs[strings.ToLower(fn)] {
@@ -2398,6 +2486,7 @@ func (c *compiler) compileFuncCall(fc *aql.FuncCall, alias string, rt *asl.Resol
 	if strings.ToLower(fc.Name) == "count" && len(fc.Args) == 0 {
 		return "COUNT(*)", nil
 	}
+	c.warnUnknownFunc(fc.Name)
 	if c.schema != nil {
 		if declFn, isLocal := c.schema.Functions[fc.Name]; isLocal {
 			if len(fc.Args) != len(declFn.Params) {

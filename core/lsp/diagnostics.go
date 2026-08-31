@@ -184,7 +184,8 @@ func QueryDiagnostics(text string, schema *asl.SchemaIR) []Diagnostic {
 	if schema == nil {
 		return nil
 	}
-	if _, err := compiler.Compile(stmt, schema); err != nil {
+	compiled, err := compiler.Compile(stmt, schema)
+	if err != nil {
 		msg := err.Error()
 		rng := statementRange(text, stmt)
 		// Prefer a range around the most specific (innermost) name in the message.
@@ -197,7 +198,20 @@ func QueryDiagnostics(text string, schema *asl.SchemaIR) []Diagnostic {
 		}
 		return []Diagnostic{{Range: rng, Severity: SeverityError, Message: msg}}
 	}
-	return nil
+	// The statement compiled; report any non-fatal notes as warnings, anchored on
+	// the offending name where the message quotes one.
+	var diags []Diagnostic
+	for _, w := range compiled.Warnings {
+		rng := statementRange(text, stmt)
+		for _, n := range quotedNames(w) {
+			if idx := indexWord(text, n, 0); idx >= 0 {
+				rng = Range{Start: OffsetToPosition(text, idx), End: OffsetToPosition(text, idx+len(n))}
+				break
+			}
+		}
+		diags = append(diags, Diagnostic{Range: rng, Severity: SeverityWarning, Message: w})
+	}
+	return diags
 }
 
 // parseErrDiag turns a participle parse error into a positioned diagnostic.

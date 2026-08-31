@@ -48,7 +48,7 @@ type User extending Base {
 		"update<K extends keyof AxelSchema>(",
 		"): UpdateBuilder<AxelSchema[K]> {",
 		// input types: insert enforces required, update is fully partial
-		"type Insertable<T> = Omit<T, \"id\" | \"createdAt\" | \"updatedAt\">;",
+		"type Insertable<T> = Omit<T, \"id\" | \"createdAt\" | \"updatedAt\" | RelationKeys<T>>;",
 		"type Updatable<T> = Partial<Insertable<T>>;",
 		// single-statement SQL, no manual transaction (breaks Bun's pooled SQL)
 		"const sql = insert + \" RETURNING *\";",

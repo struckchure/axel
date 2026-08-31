@@ -25,6 +25,32 @@ type Post {
 
 The junction table name is `{source}_{link}` in snake_case (e.g. `post_tags`).
 
+## Multi scalars are not links
+
+`multi` on a scalar field means something different from `multi link`: it declares an **array
+column** on the row, not a junction table.
+
+```asl
+type User {
+  multi link teams: Team;   # junction table "user_teams"
+  multi roles: UserType;    # a single TEXT[] column "roles"
+}
+```
+
+The distinction shows up in two places:
+
+- **Membership.** `in` against a multi scalar compiles to `= ANY(...)`, because Postgres `IN` takes a
+  parenthesised list rather than an array. Against a multi link it compiles to an `EXISTS` over the
+  junction table.
+
+  ```aql
+  select User { id } filter UserType.Admin in .roles;   # → 'Admin' = ANY(u.roles)
+  select User { id } filter $team<uuid> in .teams;      # → EXISTS (SELECT 1 FROM "user_teams" …)
+  ```
+
+- **Assignment.** Delta assignment (`{ "+": …, "-": … }`) applies only to a multi link. A multi scalar
+  is assigned as a whole array — see [Updating links](/aql/update/links).
+
 ## Required links
 
 ```asl

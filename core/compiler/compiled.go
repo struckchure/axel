@@ -5,6 +5,10 @@ type CompiledSQL struct {
 	SQL         string      // parameterized SQL ($1, $2, ...)
 	Params      []ParamInfo // Params[i] corresponds to $i+1
 	OriginalAQL string
+	// Warnings are non-fatal notes about the compiled statement — the SQL is
+	// still returned. Callers surface them (stderr for the CLI, LSP warnings in
+	// the editor); ignoring them is safe.
+	Warnings []string
 }
 
 // ParamInfo describes one named parameter in the query.
