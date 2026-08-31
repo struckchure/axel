@@ -61,6 +61,23 @@ entire class of errors that otherwise surface as a confusing migration. Then run
 
 Never hand-edit a file under `migrations/`. Change the schema and re-diff.
 
+**Adding a `required` field to a populated table needs a backfill.** `ADD COLUMN … NOT NULL` fails
+on a table that already has rows, so Axel adds the column nullable, leaves a commented backfill seam,
+and raises `NOT NULL` in a separate statement:
+
+```sql
+ALTER TABLE "vendor" ADD COLUMN "description" TEXT;
+-- axel: "description" is required and has no default. Existing rows need a value
+-- before the NOT NULL below can be applied:
+--   UPDATE "vendor" SET "description" = <value> WHERE "description" IS NULL;
+ALTER TABLE "vendor" ALTER COLUMN "description" SET NOT NULL;
+```
+
+`axel diff` also prints a warning naming the column. Fill that `UPDATE` in, or the migration fails on
+any non-empty table. Declaring a `default` avoids the whole problem: Axel then knows the backfill
+value, writes the `UPDATE` itself, and keeps `NOT NULL` inline. Flipping an existing optional field
+to `required` has the same hazard and gets the same treatment.
+
 ## ASL essentials
 
 ```asl
@@ -102,8 +119,9 @@ type User extends Base {
 
 type Post extends Base {
   required title: str;
-  required link author: User;      # single link  → author_id FK column
-  multi link tags: Tag;            # many-to-many → junction table
+  required link author: User;      # single link  → FK column named "author"
+  multi link tags: Tag;            # many-to-many → junction table "post_tags"
+  multi keywords: str;             # multi SCALAR → a TEXT[] column, not a junction
 
   policy owner_only for all using ( .author = global current_user );
 }
@@ -113,9 +131,18 @@ Things that reliably trip people up:
 
 - **`abstract type` produces no table.** It exists to be inherited; its members are flattened into
   every child. A concrete `type` produces a table named in snake_case (`BlogPost` → `blog_post`).
-- **`link` vs `multi link`.** A single link becomes a nullable-or-not FK column on *this* table. A
-  `multi link` becomes a junction table — Axel creates and manages it. There is no "belongs to /
-  has many" pair to declare on both sides.
+- **`link` vs `multi link`.** A single link becomes a nullable-or-not FK column on *this* table,
+  named after the **field** — `link author: User` gives a column `author`, not `author_id`. A
+  `multi link` becomes a junction table `{owner}_{field}` (`post_tags`) whose two FK columns are
+  named after the tables they reference (`post`, `tag`). There is no "belongs to / has many" pair to
+  declare on both sides.
+- **A self-referential `multi link` names its target column after the field.** Both junction columns
+  would otherwise be called `product`, which Postgres rejects, so `multi link addons: Product` on
+  `Product` yields `product_addons("product", "addons")`.
+- **`multi` on a scalar is an array column, not a link.** `multi roles: UserType` is one `TEXT[]`
+  column. Membership against it compiles to `= ANY(...)` (Postgres `IN` wants a parenthesised list);
+  membership against a `multi link` compiles to an `EXISTS` over the junction table. Delta
+  assignment (`{ "+": …, "-": … }`) applies only to multi links — a multi scalar is replaced whole.
 - **Custom SQL extension types.** Declare scalars using `scalar type Point extends sql "geography(Point, 4326)" as { ... };` or `as multi <Type>` or `as <Type>`. This maps to PostgreSQL DDL while providing client typing in codegen and dot-access in AQL.
 - **Every member ends with `;`**, including the closing brace of a field body: `name: str { … };`.
 - **`required` is a prefix**, not a modifier in the body: `required email: str;`.
@@ -194,6 +221,53 @@ delete Post filter .created_at < $cutoff;
 - Always single-quote an inline query in the shell (`axel compile --aql '…'`) or the shell eats
   `$params`.
 
+### Parameters
+
+A parameter's type is inferred from what it is compared to or assigned to. Declare it explicitly
+when there is nothing to infer from (`limit`/`offset`), when it must be `multi`, or when you want
+one declaration reused across the whole query. A leading `var` block is the place for that; `:type`
+and `<type>` are the same annotation:
+
+```aql
+var (
+  multi $ids: uuid;        # ONE array bind, not N params
+  $status<Role>?;          # optional: skipped when null
+  $limit: int32? := 20;    # optional with a default
+)
+
+multi select User { id, email }
+filter .id in $ids and .role = $status
+limit $limit;
+```
+
+```sql
+WHERE u.id = ANY($1::UUID[]) AND ($2::TEXT IS NULL OR u.role = $2::TEXT)
+LIMIT COALESCE($3::INTEGER, 20)
+```
+
+- **`multi $x` binds a single array**, so `in $x` lowers to `= ANY($1::T[])`, never `IN`. The element
+  type is inferred from the compared column if the declaration omits it. Clients type it as an array
+  (`string[]`, `[]string`) — one value, not a spread.
+- **`?` means skip-when-null**, whether declared in the `var` block or written inline at the use site
+  (`$email?`). In an `and` context an omitted param matches everything; inside an `or` it drops its
+  own arm out instead of voiding the other arms.
+- **A declared default is coalesced, not skipped.** `$age: int32? := 21` compiles to
+  `COALESCE($1, 21)` and the comparison still runs — otherwise the default would be silently ignored.
+- Optional array params keep the array type in **every** cast of the placeholder
+  (`($1::TEXT[] IS NULL OR u.email = ANY($1::TEXT[]))`); casting one placeholder to both `T` and
+  `T[]` makes Postgres reject the statement.
+
+### Unknown functions warn, they do not fail
+
+Function pass-through is the escape hatch for arbitrary SQL, so an unrecognised name still compiles
+and `axel compile` / `axel codegen` print a warning on stderr (the LSP surfaces it as a warning
+diagnostic). Read those warnings — they are the difference between a query that works and one that
+compiles cleanly and only fails against a real database:
+
+```
+warning: "distinct" is a SQL keyword, not a function; Postgres will reject distinct(...)
+```
+
 Full grammar — `with` blocks, sub-selects, casts, `group by`/`having`, conflict targets:
 **`references/aql.md`**.
 
@@ -212,6 +286,17 @@ axel codegen -g ts -o ./gen
 - **Custom SQL & PostGIS types in builders**: When inserting or updating custom extension types (`geography`, `geometry`, `vector`), pass values in their native PostgreSQL input text representation (e.g. EWKT format `"SRID=4326;POINT(lng lat)"` for geography, `"[1.0, 2.0]"` for vector, ISO strings for timestamps). PostgreSQL coerces untyped parameters to the target column type automatically at execution time without requiring SQL function calls in value positions.
 - **Runtime `runner.run(...)` limitations**: The client-bundled runtime parser is intentionally narrower than `axel compile`. It does **not** support `var (...)` blocks, SQL function calls in value positions (like `ST_MakePoint(...)`), or complex AST transforms. Queries that fail in `runner.run` will fail at **runtime** (not build-time).
 - **Session globals**: Scoped via `runner.With<Global>(...)` (Go) / `runner.with<Global>(...)` (TypeScript), or functional options on standalone functions.
+- **Multi links in the TypeScript client** appear on the model as a branded `Relation<T>` field. The
+  brand is what lets `Insertable`/`Updatable` strip them — a junction row cannot be written through
+  an `INSERT` column list — so write them with an `update … set { members := … }` query, not as an
+  insert column. Selecting one through the fluent builder is supported; *sub-shapes* on a link
+  (`author: { id, email }`) remain AQL-only.
+- **`multi` scalars type as arrays** on both sides (`string[] | null`, `[]string`), with the
+  nullability outside the array.
+- **Temporal fields inside a typed JSON scalar are strings.** Postgres renders `date`/`time`/
+  `datetime` into JSON as text and neither `encoding/json` nor `JSON.parse` revives them, so the
+  generators map them to `string`, not `time.Time` / `Date`. Parse them yourself at the edge.
+- **TypeScript codegen emits an `index.ts` barrel** re-exporting the generated modules.
 
 Full codegen guide — generated files, options, transaction patterns, and plugin protocol:
 **`references/codegen.md`**.
@@ -253,6 +338,13 @@ field on a shape, a filter on a column that is not there.
 | Inline query in the shell loses its parameters | Double quotes; use single quotes | Single-quote the query string: `'select ... $param'` |
 | Runtime error `expected keyword, got {"k":"id","v":"var"}` or `expected id got "("` in `runner.run` | `runner.run` runtime parser does not support `var` blocks or function calls (e.g. `ST_MakePoint`) in value positions | Use generated query builder (`runner.insert`) or compiled `.aql` file; pass custom types as EWKT strings (`"SRID=4326;POINT(lng lat)"`) |
 | Unwanted `.sql` files generated in project root | Ran `axel compile -d .` without `--output-dir` | Use `axel compile --aql '...'` for inspection, or supply `--output-dir` |
+| Postgres rejects `IN` against an array column | `in` on a `multi` scalar or a `multi` param needs `= ANY`, which Axel emits — an old build, or hand-written SQL | Recompile; check the emitted SQL says `= ANY(...)` |
+| `column "x" is of type uuid[] but expression is of type uuid` | A `multi` param was passed one element per value instead of a single array | Pass one array; `multi $ids` is *one* bind |
+| Migration fails with `column contains null values` | A `required` field with no default was added to a populated table | Fill in the `UPDATE … SET … WHERE … IS NULL` seam in `up.sql`, or declare a `default` |
+| Query compiles but the database rejects the function | Unknown functions pass through by design | Read the `warning:` line from `axel compile`/`codegen` |
+| `column "product" appears twice in primary key constraint` | A self-referential multi link on an old build named both junction columns after the table | Recompile; the target column now falls back to the field name |
+| A JSON field's timestamp arrives as a string | Postgres renders temporal values inside JSON as text; the generators type them `string` | Parse it at the edge — this is intended |
+| A multi link is missing from a TypeScript insert | Multi links are branded `Relation<T>` and stripped from `Insertable` | Set it with an `update … set { … }` after the insert |
 
 ## Reference files
 

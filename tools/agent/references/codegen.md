@@ -110,6 +110,7 @@ Generates TypeScript client files targeting either **Bun SQL** (default) or **no
 - `models.ts` — Type interfaces and enums for all concrete ASL types.
 - `<query_name>.ts` — Typed async query function, params interface, and row interface.
 - `runner.ts` — `Runner` and `Queries` classes, `withDb`, fluent query builders (`select`, `insert`, `update`), and global setters.
+- `index.ts` — a barrel re-exporting the generated modules.
 
 ### Usage (Bun)
 
@@ -181,6 +182,28 @@ const item = await runner.insert(Document).values({
   embedding: "[0.021, -0.043, 0.812]", // Vector string literal coerced by Postgres
 });
 ```
+
+### `multi` fields in the generated types
+
+**Multi scalars are arrays.** A `multi roles: UserType` column types as `UserType[] | null` in
+TypeScript and `[]UserType` in Go, in the models *and* in query result rows. The nullability sits
+outside the array — `T[] | null`, never `(T | null)[]`.
+
+**Multi links are branded `Relation<T>` fields** in the TypeScript client. The brand is what lets
+`Insertable` and `Updatable` strip them generically: a junction row cannot be written through an
+`INSERT` column list, so a multi link is populated with an `update … set { members := … }` query
+after the insert, not as an insert column. `ShapeResult` unwraps the brand, and the runtime builds
+the junction subquery when a link key appears in a select shape. *Sub-shapes* on a link
+(`author: { id, email }`) remain AQL-only — express them in a compiled `.aql` query.
+
+**Multi params bind one array.** A param declared `multi $ids: uuid` types as `string[]` /
+`[]string` — a single value, not a spread. See the `multi`/`= ANY` lowering in
+[`aql.md`](./aql.md).
+
+**Temporal fields inside a typed JSON scalar are `string`.** Postgres renders `date`, `time` and
+`datetime` into a JSON/JSONB document as text, and neither `encoding/json` nor `JSON.parse` revives
+them into `time.Time` / `Date`. The generators therefore map them to `string` inside JSON documents,
+even though the same types map to real temporal types as columns. Parse them at the edge.
 
 ### Dynamic Execution (`runner.run`) vs Compiled Queries
 

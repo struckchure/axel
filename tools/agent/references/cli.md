@@ -130,6 +130,23 @@ migrations/
     metadata.json
 ```
 
+**A `required` field with no default cannot be added to a populated table in one statement.**
+`ADD COLUMN … NOT NULL` fails while any existing row would hold a null, so `axel diff` adds the
+column nullable, leaves a commented backfill seam, raises `NOT NULL` in a follow-up statement, and
+prints a warning naming the column:
+
+```sql
+ALTER TABLE "vendor" ADD COLUMN "description" TEXT;
+-- axel: "description" is required and has no default. Existing rows need a value
+-- before the NOT NULL below can be applied:
+--   UPDATE "vendor" SET "description" = <value> WHERE "description" IS NULL;
+ALTER TABLE "vendor" ALTER COLUMN "description" SET NOT NULL;
+```
+
+Supply that `UPDATE` before running `axel up`, or declare a `default` on the field — with a default
+Axel knows the value, writes the backfill itself, and keeps `NOT NULL` inline. Flipping an existing
+optional field to `required` behaves the same way.
+
 Never hand-edit these. Change the `.asl` and re-run `axel diff`. Axel diffs *structure*, so a
 renamed column reads as a drop plus an add — check `up.sql` before `axel up` and write the rename by
 hand as a separate migration if that matters.

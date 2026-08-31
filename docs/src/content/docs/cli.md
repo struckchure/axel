@@ -117,6 +117,35 @@ migrations/
     ...
 ```
 
+#### Required columns need a backfill
+
+`ALTER TABLE … ADD COLUMN x TEXT NOT NULL` fails on a table that already has rows. So when a
+`required` field with **no default** is added to an existing table — or an existing optional field is
+flipped to `required` — `axel diff` splits the change: the column is added nullable, a commented
+backfill seam is left in place, and `NOT NULL` is applied in a follow-up statement. The command also
+prints a warning naming the column.
+
+```sql
+ALTER TABLE "vendor" ADD COLUMN "description" TEXT;
+-- axel: "description" is required and has no default. Existing rows need a value
+-- before the NOT NULL below can be applied:
+--   UPDATE "vendor" SET "description" = <value> WHERE "description" IS NULL;
+ALTER TABLE "vendor" ALTER COLUMN "description" SET NOT NULL;
+```
+
+```
+warning: vendor.description is required with no default: existing rows must be backfilled in the
+migration before its SET NOT NULL succeeds
+```
+
+Replace `<value>` with the backfill before running `axel up`. This is the one place a generated
+migration is *meant* to be edited — you are filling in a value Axel cannot know, not changing the
+DDL.
+
+Declaring a `default` on the field avoids the whole dance: Axel then knows the value, writes the
+`UPDATE` itself, and keeps `NOT NULL` inline. Required **links** get the same treatment, applied
+after their foreign key constraint is in place.
+
 ---
 
 ### `axel up`
@@ -212,6 +241,20 @@ axel compile --file queries/get_users.aql --out queries/get_users.sql
 ```
 
 > **Shell quoting:** Always use single quotes around `--aql` values. Double quotes cause the shell to expand `$param` as a shell variable before Axel sees it.
+
+#### Warnings
+
+Unrecognised function names are passed straight through to the SQL — that pass-through is how
+arbitrary SQL and extension functions reach the output, so it cannot be an error. `axel compile` and
+`axel codegen` instead print a warning on **stderr**, and the [language server](/editors) shows it as
+a warning diagnostic:
+
+```
+warning: "distinct" is a SQL keyword, not a function; Postgres will reject distinct(...)
+```
+
+Warnings never stop compilation, which makes them easy to miss — but they mark exactly the queries
+that compile cleanly and then fail against a real database.
 
 #### Batch mode
 

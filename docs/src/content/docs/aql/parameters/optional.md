@@ -12,6 +12,14 @@ multi select User { id, email }
 filter .email = $email?;
 ```
 
+The same optionality can be declared once in a [`var` block](/aql/parameters/typed) instead of at
+every use site — the two forms compile identically:
+
+```aql
+var ( $email: str?; )
+multi select User { id, email } filter .email = $email;
+```
+
 ```sql
 -- $1: email
 SELECT u.id AS id, u.email AS email
@@ -72,6 +80,38 @@ COALESCE(
 
 When `$org` is omitted the first lookup returns nothing, so the `??` chain falls through to the
 second. See [Insert basics](/aql/insert/basics) and [Updating links](/aql/update/links).
+
+## With a default
+
+A parameter declared with a default is **coalesced, not skipped** — the comparison still runs, using
+the default when the value arrives null. Skipping it as well would silently ignore the default you
+asked for:
+
+```aql
+var ( $age: int32? := 21; )
+multi select User { id } filter .age >= $age;
+```
+
+```sql
+WHERE u.age >= COALESCE($1::INTEGER, 21)
+```
+
+## Optional array parameters
+
+An optional [`multi` parameter](/aql/parameters/typed#array-parameters-multi) is guarded the same
+way, and every cast of the placeholder stays the **array** type:
+
+```aql
+var ( multi $emails: str?; )
+multi select User { id } filter .email in $emails;
+```
+
+```sql
+WHERE ($1::TEXT[] IS NULL OR u.email = ANY($1::TEXT[]))
+```
+
+Casting one placeholder to both `TEXT` and `TEXT[]` in the same statement would make Postgres reject
+it, so the array type wins everywhere.
 
 ## In an `update` `set` clause
 

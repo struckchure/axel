@@ -30,7 +30,7 @@ SELECT
    FROM (
      SELECT u_author.id AS id, u_author.email AS email
      FROM "user" u_author
-     WHERE u_author.id = p.author_id
+     WHERE u_author.id = p.author
      LIMIT 1
    ) u_author_sub) AS author
 FROM "post" p;
@@ -59,8 +59,8 @@ SELECT
    FROM (
      SELECT u_likes.id AS id, u_likes.email AS email
      FROM "post_likes" jt_likes
-     JOIN "user" u_likes ON u_likes.id = jt_likes.user_id
-     WHERE jt_likes.post_id = p.id
+     JOIN "user" u_likes ON u_likes.id = jt_likes.user
+     WHERE jt_likes.post = p.id
    ) u_likes_sub) AS likes
 FROM "post" p;
 ```
@@ -129,14 +129,14 @@ SELECT p.id, p.title, author.author, likes.likes
 FROM "post" p
 LEFT JOIN LATERAL (
   SELECT row_to_json(u_sub) AS author
-  FROM (SELECT id, email FROM "user" WHERE id = p.author_id LIMIT 1) u_sub
+  FROM (SELECT id, email FROM "user" WHERE id = p.author LIMIT 1) u_sub
 ) author ON true
 LEFT JOIN LATERAL (
   SELECT COALESCE(json_agg(row_to_json(u_sub)), '[]') AS likes
   FROM (
     SELECT u.id, u.email FROM "post_likes" jt
-    JOIN "user" u ON u.id = jt.user_id
-    WHERE jt.post_id = p.id
+    JOIN "user" u ON u.id = jt.user
+    WHERE jt.post = p.id
   ) u_sub
 ) likes ON true;
 ```

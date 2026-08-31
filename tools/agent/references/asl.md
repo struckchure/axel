@@ -89,14 +89,54 @@ Field-body items: `constraint`, `default :=`, `rewrite`, `on`.
 ### Links
 
 ```asl
-required link author: User;   # FK column author → user.id, NOT NULL
-link editor: User;            # nullable FK
-multi link tags: Tag;         # junction table "post_tags"
+required link author: User;   # FK column "author" → user.id, NOT NULL
+link editor: User;            # nullable FK "editor"
+multi link tags: Tag;         # junction table "post_tags" ("post", "tag")
 ```
 
-A single link is a column on *this* table. A `multi link` is a junction table Axel creates and
-manages. Links are one-directional: the target type gains nothing, and AQL has no reverse-link
+A single link is a column on *this* table, named after the **field** — `link author: User` gives a
+column `author`, not `author_id`. A `multi link` is a junction table Axel creates and manages, named
+`{owner_type}_{field}` in snake_case, with one FK column per side named after the table it
+references. Links are one-directional: the target type gains nothing, and AQL has no reverse-link
 traversal.
+
+**Self-referential multi links.** When the link points back at its own type, both junction columns
+would be named after the same table, which Postgres rejects (`column "product" appears twice in
+primary key constraint`). The target side falls back to the field name:
+
+```asl
+type Product {
+  required id: uuid { constraint pk; };
+  multi link addons: Product;   # product_addons("product", "addons")
+}
+```
+
+Every producer of junction SQL — the DDL generator, the AQL compiler, the generated clients, studio
+— derives these names from the same helper, so they always agree.
+
+### Multi scalars (array columns)
+
+`multi` on a *scalar* field means an array column, not a junction table:
+
+```asl
+type User {
+  multi link teams: Team;   # junction table "user_teams"
+  multi roles: Role;        # ONE column "roles" of type TEXT[]
+  multi scores: float64;    # DOUBLE PRECISION[]
+}
+```
+
+The two behave differently in queries: membership against a multi scalar compiles to `= ANY(...)`
+(Postgres `IN` takes a parenthesised list, not an array), while membership against a multi link
+compiles to an `EXISTS` over the junction table. Delta assignment (`{ "+": …, "-": … }`) applies only
+to multi links; a multi scalar is assigned as a whole array. In generated clients a multi scalar
+types as an array with the nullability outside it (`Role[] | null`, `[]Role`).
+
+An enum array is a `TEXT[]` guarded by a containment CHECK rather than a Postgres enum array:
+
+```sql
+"roles" TEXT[] CONSTRAINT "chk_user_roles_enum" CHECK ("roles" <@ ARRAY['Admin', 'Member']::TEXT[])
+```
 
 ### Computed fields
 

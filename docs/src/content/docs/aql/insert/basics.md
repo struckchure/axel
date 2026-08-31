@@ -36,10 +36,14 @@ insert Post {
 ```sql
 -- $1: title
 -- $2: email
-INSERT INTO "post" ("title", "author_id")
+INSERT INTO "post" ("title", "author")
 VALUES ($1, (SELECT u.id FROM "user" u WHERE u.email = $2 LIMIT 1))
 RETURNING *;
 ```
+
+> The SQL samples on these pages write `RETURNING *` for brevity. Axel actually emits the explicit
+> column list of the inserted row — `RETURNING "id", "title", "author"` for the query above — which is
+> what the generated row type is built from.
 
 A link assignment accepts any scalar expression that resolves to the FK value, not just a solo
 subquery:

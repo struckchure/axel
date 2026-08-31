@@ -11,9 +11,13 @@ Links define foreign-key relationships between types.
 
 ```asl
 type Post {
-  required link author: User;    # adds author_id FK column
+  required link author: User;    # adds an FK column named "author"
 }
 ```
+
+The column is named after the **field**, not the target type, and carries no `_id` suffix — `link
+author: User` gives you `post.author`, referencing `user.id`. Filters and shapes still use the field
+name (`.author`, `author: { … }`), so the column name only matters when you read the generated SQL.
 
 ## Multi link (junction table)
 
@@ -23,7 +27,34 @@ type Post {
 }
 ```
 
-The junction table name is `{source}_{link}` in snake_case (e.g. `post_tags`).
+The junction table name is `{source}_{link}` in snake_case (e.g. `post_tags`), and its two FK
+columns are named after the tables they reference:
+
+```sql
+CREATE TABLE "post_tags" (
+  "post" UUID NOT NULL,
+  "tag" UUID NOT NULL,
+  CONSTRAINT "pk_post_tags" PRIMARY KEY ("post", "tag"),
+  CONSTRAINT "fk_post_tags_post" FOREIGN KEY ("post") REFERENCES "post"("id") ON DELETE CASCADE,
+  CONSTRAINT "fk_post_tags_tag" FOREIGN KEY ("tag") REFERENCES "tag"("id") ON DELETE CASCADE
+);
+```
+
+### Self-referential multi links
+
+When a multi link points back at its own type, naming both sides after the referenced table would
+produce two columns called `product`, which Postgres rejects (`column "product" appears twice in
+primary key constraint`). The target side falls back to the **link name**:
+
+```asl
+type Product {
+  required id: uuid { constraint pk; };
+  multi link addons: Product;    # product_addons("product", "addons")
+}
+```
+
+Nothing about querying changes — `select Product { id, addons: { id } }` works as it does for any
+other multi link.
 
 ## Multi scalars are not links
 
@@ -55,7 +86,10 @@ The distinction shows up in two places:
 
 ```asl
 type Comment {
-  required link post: Post;      # post_id NOT NULL
-  required link author: User;    # author_id NOT NULL
+  required link post: Post;      # column "post", NOT NULL
+  required link author: User;    # column "author", NOT NULL
 }
 ```
+
+Adding a **required** link to a table that already has rows needs a backfill, exactly like adding a
+required column — see [`axel diff`](/cli#axel-diff).

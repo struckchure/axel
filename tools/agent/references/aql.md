@@ -111,8 +111,54 @@ typing each one:
 -- $1: min_age (int32)
 ```
 
-Optional parameters (`$name?`) and `var` blocks declare a parameter's type up front — see
-`aql/parameters/*` in the docs.
+### Declaring parameters
+
+A parameter's type is inferred from the column it is compared to or assigned to. A leading `var`
+block declares it up front instead — needed when there is nothing to infer from (`limit`/`offset`),
+when the param is `multi`, or to avoid repeating an inline annotation. `:type` and `<type>` are the
+same annotation; `?` and `:= default` may follow either.
+
+```aql
+var (
+  multi $ids: uuid;         # one array bind
+  $status<Role>?;           # optional
+  $limit: int32? := 20;     # optional with a default
+)
+var $offset<int32>?;        # single-declaration form
+```
+
+**`multi` params bind one array.** `in $ids` lowers to `= ANY($1::UUID[])` — Postgres `IN` takes a
+parenthesised list and rejects an array bind. The element type is inferred from the compared column
+when the declaration omits it, and the generated clients type the param as an array (`string[]`,
+`[]string`).
+
+```aql
+var ( multi $ids: uuid; )
+multi select User { id } filter .id in $ids;
+```
+```sql
+WHERE u.id = ANY($1::UUID[])
+```
+
+**`?` means skip-when-null**, identically whether declared in the `var` block or written inline at
+the use site (`$email?`):
+
+| Context | Guard emitted | Meaning when omitted |
+|---|---|---|
+| `and` (or a lone filter) | `($1 IS NULL OR <cmp>)` | matches every row |
+| inside an `or` group | `($1 IS NOT NULL AND <cmp>)` | drops its own arm out |
+| value subquery (link assignment, `??` operand) | `($1 IS NOT NULL AND <cmp>)` | yields no row, so `??` can fall through |
+
+An optional **array** param keeps the array type in every cast of the placeholder —
+`($1::TEXT[] IS NULL OR u.email = ANY($1::TEXT[]))`. Casting one placeholder to both `T` and `T[]`
+makes Postgres reject the statement.
+
+**A declared default is coalesced, not skipped.** `$age: int32? := 21` compiles to
+`COALESCE($1::INTEGER, 21)` and the comparison still runs; skipping it as well would silently ignore
+the default.
+
+An optional param assigned directly in an `update … set` clause is *not* skipped — `null` writes
+`NULL` to the column.
 
 ## Computed and aggregate fields
 
@@ -206,6 +252,19 @@ multi select Post { title };
 A binding compiles to a CTE. A single-row binding is a value; a `multi` binding is a set, and using
 a set where a value is expected is an error.
 
+## Warnings (non-fatal)
+
+Function pass-through is deliberate — it is how arbitrary SQL reaches the output — so an unknown
+function name compiles instead of failing. The compiler emits a warning on stderr from `axel
+compile` and `axel codegen`, and the LSP shows it as a warning diagnostic:
+
+```
+warning: "distinct" is a SQL keyword, not a function; Postgres will reject distinct(...)
+```
+
+Warnings are never fatal, so they are easy to scroll past. They mark exactly the queries that
+compile cleanly and then fail against a real database — read them.
+
 ## Errors you will see from `axel compile`
 
 | Message | Meaning |
@@ -216,3 +275,5 @@ a set where a value is expected is an error.
 | `an aggregate select may only contain aggregate fields` | Split the query, or use a correlated subquery |
 | `lexer: invalid input text "-- …"` | AQL comments are `#` |
 | parameters vanish when run inline | The shell ate `$name`; single-quote the `--aql` value |
+| `IN` emitted against an array column | Only from hand-written SQL — Axel lowers array membership to `= ANY` |
+| compiles fine, database rejects the function | Unknown functions pass through by design; `axel compile` printed a `warning:` line |

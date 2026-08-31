@@ -75,8 +75,9 @@ type User extending Base {
 
 type Post extending Base {
   required title: str;
-  required link author: User;   # adds author_id FK column
+  required link author: User;   # adds an FK column named "author"
   multi link likes: User;       # creates post_likes junction table
+  multi tags: str;              # a TEXT[] array column (multi scalar, not a link)
 }
 ```
 
