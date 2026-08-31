@@ -76,12 +76,18 @@ func TestInOnMultiScalarWithOptionalParam(t *testing.T) {
 	}
 }
 
-// A single-link prefix locates the row that owns the array; the array itself is
-// resolved through a correlated subquery, which ANY accepts.
+// A single-link prefix locates the row that owns the array, so the array itself
+// is resolved through a correlated subquery. That subquery has to be cast:
+// `ANY (<subquery>)` is the *subquery* form of ANY, which Postgres reads as a set
+// of rows and then rejects with `operator does not exist: text = text[]`. The
+// cast makes it an ordinary array expression and selects the array form.
 func TestInOnMultiScalarThroughSingleLink(t *testing.T) {
 	got := compileAQL(t, multiScalarSchema, `multi select Post { id } filter UserType.Admin in .author.roles;`).SQL
 	if !strings.Contains(got, "= ANY((SELECT") {
 		t.Errorf("expected ANY over a correlated subquery:\n%s", got)
+	}
+	if !strings.Contains(got, ")::TEXT[])") {
+		t.Errorf("subquery operand must be cast to the array type:\n%s", got)
 	}
 }
 

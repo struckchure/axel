@@ -178,7 +178,9 @@ type Place {
 	if err != nil {
 		t.Fatalf("compile subquery aggregate query: %v", err)
 	}
-	if !strings.Contains(compiledSub.SQL, `(SELECT COUNT(*) FROM (`) {
+	// COUNT is bigint, which the drivers hand back as a string; the cast keeps the
+	// generated Promise<number>/int64 typing honest.
+	if !strings.Contains(compiledSub.SQL, `(SELECT COUNT(*)::INTEGER FROM (`) {
 		t.Errorf("expected subquery count compilation, got:\n%s", compiledSub.SQL)
 	}
 

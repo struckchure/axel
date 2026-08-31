@@ -379,7 +379,12 @@ func (c *compiler) compileAggSQL(agg *aql.AggExpr) (string, error) {
 
 	switch strings.ToLower(agg.Func) {
 	case "count":
-		return fmt.Sprintf("SELECT COUNT(*) FROM (\n  %s\n) _agg", inner), nil
+		// COUNT is bigint, which both pgx and the JS drivers surface as a string
+		// to avoid losing precision past 2^53 — so a generated Promise<number> was
+		// a lie and `total` silently became "2". A row count that overflows int4
+		// is not a thing this form can produce usefully, so cast and keep the
+		// number typing honest.
+		return fmt.Sprintf("SELECT COUNT(*)::INTEGER FROM (\n  %s\n) _agg", inner), nil
 	default:
 		// The top-level `select func(Type filter ...)` form aggregates over `*`,
 		// which is only meaningful for count. sum/avg/min/max need a column — that
@@ -737,6 +742,17 @@ func (c *compiler) compileComputedShapeField(f *aql.ShapeField, parentType *asl.
 	if p := expr.SoloPrimary(); p != nil && p.SubQuery != nil && p.SubQueryField == "" {
 		sq := p.SubQuery
 		multi := p.SubQueryMulti
+		// An aggregate sub-select — `total := (select count(Order filter ...))` —
+		// carries its type inside AggFunc, not in TypeName, so resolving TypeName
+		// here failed with `unknown type ""`. It is a correlated scalar subquery,
+		// which is exactly what compileAggSQL builds for the order-by position.
+		if sq.AggFunc != nil {
+			aggSQL, err := c.compileAggSQL(sq.AggFunc)
+			if err != nil {
+				return "", "", err
+			}
+			return fmt.Sprintf("(%s) AS %s", aggSQL, f.Name), "", nil
+		}
 		sqRT, err := c.resolveType(sq.TypeName)
 		if err != nil {
 			return "", "", err
@@ -1119,13 +1135,20 @@ func (c *compiler) compileOnConflict(rt *asl.ResolvedType, oc *aql.OnConflict) (
 }
 
 // compileConflictSets builds the `DO UPDATE SET` assignments, mirroring the SET
-// building in compileUpdate but without a table alias (Postgres resolves the
-// conflicting row automatically).
+// building in compileUpdate.
+//
+// Inside `ON CONFLICT ... DO UPDATE`, Postgres has two rows in scope: the
+// existing row (under the table's name) and the proposed one (under EXCLUDED).
+// A bare column name is therefore ambiguous — `SET "name" = COALESCE($2, name)`
+// fails with 42702 — so field references on the right-hand side are qualified
+// with the target table. The left-hand side stays bare, which is what Postgres
+// requires of an assignment target.
 func (c *compiler) compileConflictSets(rt *asl.ResolvedType, assignments []*aql.Assignment) ([]string, error) {
+	targetAlias := fmt.Sprintf("%q", rt.Table)
 	var sets []string
 	for _, a := range assignments {
 		if prop, ok := rt.Properties[a.Field]; ok {
-			val, err := c.compileExpr(a.Value, "", rt)
+			val, err := c.compileExpr(a.Value, targetAlias, rt)
 			if err != nil {
 				return nil, err
 			}
@@ -1137,7 +1160,7 @@ func (c *compiler) compileConflictSets(rt *asl.ResolvedType, assignments []*aql.
 			if link.IsMulti {
 				return nil, fmt.Errorf("cannot assign multi-link %q in conflict update", a.Field)
 			}
-			val, err := c.compileExpr(a.Value, "", rt)
+			val, err := c.compileExpr(a.Value, targetAlias, rt)
 			if err != nil {
 				return nil, err
 			}
@@ -1763,7 +1786,12 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		if membership, ok, err := c.compileMembership(left, rightP.Path, alias, rt); err != nil {
 			return "", err
 		} else if ok {
-			return membership, nil
+			// Fall through to the optional-param guard below rather than returning
+			// here: `$x? in .someMultiLink` is a plain comparison as far as the
+			// author is concerned, and skipping the guard made an omitted param
+			// match *nothing* (EXISTS over `IN (NULL)` is never true) instead of
+			// everything.
+			return c.guardOptionalParams(membership, leftP, rightP, alias, rt, orContext), nil
 		}
 	}
 
@@ -1838,9 +1866,23 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	// not a list membership: Postgres `IN` wants a parenthesised list, so a
 	// `TEXT[]` column has to be tested with `= ANY(...)`. Multi *links* never
 	// reach here — compileMembership lowers them to EXISTS above.
-	if cmp.Op == "in" && rightP != nil && rightP.Path != nil &&
-		c.multiScalarPathProp(rightP.Path, rt) != nil {
-		result = fmt.Sprintf("%s = ANY(%s)", left, right)
+	if cmp.Op == "in" && rightP != nil && rightP.Path != nil {
+		if prop := c.multiScalarPathProp(rightP.Path, rt); prop != nil {
+			operand := right
+			// Reached through a link, the array lives in another row, so the path
+			// compiles to a correlated scalar subquery. `ANY (<subquery>)` is the
+			// *subquery* form of ANY — Postgres reads it as a set of rows and
+			// compares text to text[] — so the subquery is cast, which makes it an
+			// ordinary array expression and selects the array form instead.
+			if strings.HasPrefix(strings.TrimSpace(operand), "(SELECT") {
+				elem := prop.SQLType
+				if elem == "" {
+					elem = "TEXT"
+				}
+				operand = fmt.Sprintf("%s::%s[]", operand, elem)
+			}
+			result = fmt.Sprintf("%s = ANY(%s)", left, operand)
+		}
 	}
 
 	// Same for `<value> in $param` where $param was declared `multi`: the bind is
@@ -1862,6 +1904,17 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 	// knows about it either way. A param with a declared default is never
 	// skipped: its COALESCE substitutes the default for a null value, and
 	// skipping the comparison would ignore the default the author wrote.
+	result = c.guardOptionalParams(result, leftP, rightP, alias, rt, orContext)
+
+	return result, nil
+}
+
+// guardOptionalParams wraps a compiled comparison so an optional parameter makes
+// it a no-op when the bound value is null. See the comment above its call site
+// for why the identity differs between AND and OR context.
+func (c *compiler) guardOptionalParams(
+	result string, leftP, rightP *aql.Primary, alias string, rt *asl.ResolvedType, orContext bool,
+) string {
 	for _, operand := range []*aql.Primary{leftP, rightP} {
 		if operand == nil || operand.Param == nil {
 			continue
@@ -1881,8 +1934,7 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 			}
 		}
 	}
-
-	return result, nil
+	return result
 }
 
 func (c *compiler) compileAddExpr(add *aql.AddExpr, alias string, rt *asl.ResolvedType) (string, error) {
