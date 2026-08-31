@@ -743,6 +743,8 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("  join_column: string;\n")
 	buf.WriteString("  target_type?: string;\n")
 	buf.WriteString("  junction_table?: string;\n")
+	buf.WriteString("  junction_source_column?: string;\n")
+	buf.WriteString("  junction_target_column?: string;\n")
 	buf.WriteString("  join_field?: string;\n")
 	buf.WriteString("  is_multi?: boolean;\n")
 	buf.WriteString("}\n\n")
@@ -829,9 +831,10 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 
 	// _buildLinkSubSelectSQL — selects a multi link as a correlated json_agg of its
 	// target rows, mirroring what the AQL compiler emits for `{ members: {...} }`.
-	// The junction table has one FK column per side, each named after the table it
-	// references (owner side / target side) — the convention the DDL generator
-	// fixes. COALESCE keeps an empty relation as [] rather than null.
+	// The junction table has one FK column per side, named after the table it
+	// references — except on a self-referential link, where the target side takes
+	// the link name instead (see asl.JunctionColumns). COALESCE keeps an empty
+	// relation as [] rather than null.
 	buf.WriteString("function _buildLinkSubSelectSQL(\n")
 	buf.WriteString("  schema: Record<string, unknown>,\n")
 	buf.WriteString("  ownerTable: string,\n")
@@ -849,10 +852,16 @@ func (g *TsGenerator) emitRunner(ctx *codegen.Context) error {
 	buf.WriteString("  let inner: string;\n")
 	buf.WriteString("  if (link.junction_table) {\n")
 	buf.WriteString("    const jt = `jt_${fieldName}`;\n")
+	buf.WriteString("    // A self-referential multi link cannot name both columns after the same\n")
+	buf.WriteString("    // table, so the DDL falls back to the link name on the target side.\n")
+	buf.WriteString("    const sourceCol = link.junction_source_column || ownerTable;\n")
+	buf.WriteString("    const targetCol =\n")
+	buf.WriteString("      link.junction_target_column ||\n")
+	buf.WriteString("      (target.table === ownerTable ? link.name : target.table);\n")
 	buf.WriteString("    inner =\n")
 	buf.WriteString("      `SELECT ${t}.* FROM \"${link.junction_table}\" ${jt}` +\n")
-	buf.WriteString("      ` JOIN \"${target.table}\" ${t} ON ${t}.\"${joinField}\" = ${jt}.\"${target.table}\"` +\n")
-	buf.WriteString("      ` WHERE ${jt}.\"${ownerTable}\" = ${ownerAlias}.id`;\n")
+	buf.WriteString("      ` JOIN \"${target.table}\" ${t} ON ${t}.\"${joinField}\" = ${jt}.\"${targetCol}\"` +\n")
+	buf.WriteString("      ` WHERE ${jt}.\"${sourceCol}\" = ${ownerAlias}.id`;\n")
 	buf.WriteString("  } else {\n")
 	buf.WriteString("    // Multi link with the FK on the target side rather than a junction.\n")
 	buf.WriteString("    inner = `SELECT ${t}.* FROM \"${target.table}\" ${t} WHERE ${t}.\"${link.join_column}\" = ${ownerAlias}.id`;\n")
@@ -1626,6 +1635,19 @@ func emitTsParamsInterface(buf *bytes.Buffer, name string, params []codegen.Para
 		tsType := aqlToTsType(p.AQLType, p.IsOptional)
 		if p.EnumType != "" {
 			tsType = p.EnumType
+			if p.IsOptional {
+				tsType += " | null"
+			}
+		}
+		if p.IsMulti {
+			// A `multi` param binds one array value. Build the element type
+			// non-nullable, then the array, then the nullability, so an optional one
+			// is `T[] | null` rather than `(T | null)[]`.
+			elem := aqlToTsType(p.AQLType, false)
+			if p.EnumType != "" {
+				elem = p.EnumType
+			}
+			tsType = elem + "[]"
 			if p.IsOptional {
 				tsType += " | null"
 			}

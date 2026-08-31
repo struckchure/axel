@@ -523,6 +523,15 @@ func emitParamsStruct(buf *bytes.Buffer, name string, params []codegen.ParamDesc
 				goType = "*" + goType
 			}
 		}
+		if p.IsMulti {
+			// A `multi` param binds one array value. A nil slice is the null, so an
+			// optional one takes no pointer — build the element type clean.
+			elem := aqlToGoType(p.AQLType, false)
+			if p.EnumType != "" {
+				elem = p.EnumType
+			}
+			goType = "[]" + elem
+		}
 		fmt.Fprintf(buf, "\t%s %s\n", toGoExportedName(p.Name), goType)
 	}
 	fmt.Fprintf(buf, "}\n\n")

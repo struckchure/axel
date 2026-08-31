@@ -1076,6 +1076,7 @@ func (r *Resolver) resolveLink(f *FieldDecl, rt *ResolvedType, ir *SchemaIR, tar
 	if f.Multi {
 		// Multi-link → junction table: source_linkname
 		link.JunctionTable = fmt.Sprintf("%s_%s", toSnakeCase(rt.Name), toSnakeCase(f.Name))
+		link.JunctionSourceColumn, link.JunctionTargetColumn = JunctionColumns(rt.Name, targetType, f.Name)
 	} else {
 		// Single link → FK column: fieldname (matches migration SQL generator convention)
 		link.JoinColumn = toSnakeCase(f.Name)
@@ -1345,4 +1346,3 @@ func replaceParamWithSelf(expr, param string) string {
 func isIdentChar(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
 }
-

@@ -11,6 +11,7 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/struckchure/axel/core/aql"
+	"github.com/struckchure/axel/core/asl"
 	"github.com/struckchure/axel/core/compiler"
 	"github.com/struckchure/axel/core/runner"
 )
@@ -175,12 +176,14 @@ func (a *AQL) applyMultiLinks(ctx context.Context, ownerType, ownerID string, mu
 
 // setMultiLink replaces a row's membership in a multi link's junction table with
 // the given set of target ids, in one transaction. Junction naming follows
-// axel's convention: table "<owner>_<link>", columns "<owner>" and "<target>"
-// (all snake-cased).
+// axel's convention: table "<owner>_<link>", with columns named by
+// asl.JunctionColumns ("<owner>" and "<target>", or the link name on the target
+// side when the link points back at its own type).
 func (a *AQL) setMultiLink(ctx context.Context, ownerType, ownerID, field, targetType string, ids []string) error {
 	junction := pgIdent(lo.SnakeCase(ownerType) + "_" + lo.SnakeCase(field))
-	ownerCol := pgIdent(lo.SnakeCase(ownerType))
-	targetCol := pgIdent(lo.SnakeCase(targetType))
+	sourceName, targetName := asl.JunctionColumns(ownerType, targetType, field)
+	ownerCol := pgIdent(sourceName)
+	targetCol := pgIdent(targetName)
 
 	tx, err := a.pool.Begin(ctx)
 	if err != nil {

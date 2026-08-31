@@ -162,9 +162,13 @@ type ResolvedLink struct {
 	JoinColumn    string // FK column in this table: "author_id" (single links)
 	JoinField     string // the target field referenced: "id", "email"
 	JunctionTable string // junction table name for multi links: "post_tags"
-	IsRequired    bool
-	IsMulti       bool
-	Constraints   []ResolvedConstraint // body constraints on the link column (e.g. exclusive)
+	// JunctionSourceColumn / JunctionTargetColumn are the junction table's two FK
+	// columns (multi links only). See JunctionColumns for the naming rule.
+	JunctionSourceColumn string
+	JunctionTargetColumn string
+	IsRequired           bool
+	IsMulti              bool
+	Constraints          []ResolvedConstraint // body constraints on the link column (e.g. exclusive)
 }
 
 // ResolvedComputed is a computed/derived property (not stored in DB).
@@ -192,4 +196,27 @@ type ResolvedTypeConstraint struct {
 	Columns    []string // snake_case column names the constraint applies to
 	FilterAQL  string   // raw AQL partial predicate; "" if not partial. Lowered
 	// to a `CREATE UNIQUE INDEX … WHERE` in the migration bridge.
+}
+
+// JunctionColumns returns the two FK column names of a multi link's junction
+// table. Each side is normally named after the table it references — owner on
+// one side, target on the other. A self-referential multi link (e.g.
+// `product.addons: [Product]`) would name both sides identically, which
+// Postgres rejects ("column ... appears twice in primary key constraint"), so
+// the target side falls back to the link's field name, and then to a
+// "<owner>_target" suffix if that still collides.
+//
+// Every producer of junction SQL — the DDL generator, the AQL compiler, the
+// generated clients and studio — must derive its column names here so they
+// agree.
+func JunctionColumns(ownerType, targetType, fieldName string) (source, target string) {
+	source = toSnakeCase(ownerType)
+	target = toSnakeCase(targetType)
+	if target != source {
+		return source, target
+	}
+	if target = toSnakeCase(fieldName); target != source && target != "" {
+		return source, target
+	}
+	return source, source + "_target"
 }

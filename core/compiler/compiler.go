@@ -659,14 +659,15 @@ func (c *compiler) compileLinkField(f *aql.ShapeField, link *asl.ResolvedLink, p
 			if joinField == "" {
 				joinField = "id"
 			}
+			sourceCol, targetCol := junctionCols(parentType.Name, link)
 			inner = fmt.Sprintf(
 				"SELECT %s FROM \"%s\" %s JOIN \"%s\" %s ON %s.%s = %s.%s%s WHERE %s.%s = %s.id",
 				strings.Join(subCols, ", "),
 				link.JunctionTable, jAlias,
 				targetType.Table, tAlias,
-				tAlias, joinField, jAlias, targetType.Table,
+				tAlias, joinField, jAlias, targetCol,
 				subLatClause,
-				jAlias, parentType.Table, parentAlias,
+				jAlias, sourceCol, parentAlias,
 			)
 		} else {
 			// Direct FK on the target side (rare for multi).
@@ -949,8 +950,7 @@ func (c *compiler) compileInsertBody(typeName string, assignments []*aql.Assignm
 	ctes = append(ctes, targetCTE)
 
 	for _, op := range multiInserts {
-		sourceCol := snakeCase(rt.Name)
-		targetCol := snakeCase(op.link.TargetType)
+		sourceCol, targetCol := junctionCols(rt.Name, op.link)
 		junctionTable := op.link.JunctionTable
 
 		if op.isFull {
@@ -1576,8 +1576,7 @@ func (c *compiler) compileUpdate(stmt *aql.UpdateStmt) (string, error) {
 	ctes = append(ctes, targetCTE)
 
 	for _, op := range multiUpdates {
-		sourceCol := snakeCase(rt.Name)
-		targetCol := snakeCase(op.link.TargetType)
+		sourceCol, targetCol := junctionCols(rt.Name, op.link)
 		junctionTable := op.link.JunctionTable
 
 		if op.isFull {
@@ -1844,14 +1843,31 @@ func (c *compiler) compileCmp(cmp *aql.Cmp, alias string, rt *asl.ResolvedType, 
 		result = fmt.Sprintf("%s = ANY(%s)", left, right)
 	}
 
-	// Optional params ($name?) make the comparison a no-op when the value is
-	// null. The identity that "no-op" collapses to depends on the enclosing
-	// connective: in an AND (or a lone top-level filter) an omitted param matches
-	// all rows — `($N IS NULL OR result)`; in an OR it must instead drop out of
-	// the disjunction — `($N IS NOT NULL AND result)` — otherwise one omitted
-	// param makes the whole OR true and silently voids the other arms.
+	// Same for `<value> in $param` where $param was declared `multi`: the bind is
+	// a single array value, not a list of positional binds, so it too is tested
+	// with `= ANY(...)`.
+	if cmp.Op == "in" && rightP != nil && rightP.Param != nil && c.params.isMulti(rightP.Param.Name) {
+		result = fmt.Sprintf("%s = ANY(%s)", left, right)
+	}
+
+	// Optional params make the comparison a no-op when the value is null. The
+	// identity that "no-op" collapses to depends on the enclosing connective: in
+	// an AND (or a lone top-level filter) an omitted param matches all rows —
+	// `($N IS NULL OR result)`; in an OR it must instead drop out of the
+	// disjunction — `($N IS NOT NULL AND result)` — otherwise one omitted param
+	// makes the whole OR true and silently voids the other arms.
+	//
+	// Optionality can be declared at the use site ($name?) or in a var block
+	// (`var ( $name: str?; )`), which compiles first, so the collector already
+	// knows about it either way. A param with a declared default is never
+	// skipped: its COALESCE substitutes the default for a null value, and
+	// skipping the comparison would ignore the default the author wrote.
 	for _, operand := range []*aql.Primary{leftP, rightP} {
-		if operand != nil && operand.Param != nil && operand.Param.Optional {
+		if operand == nil || operand.Param == nil {
+			continue
+		}
+		optional := operand.Param.Optional || c.params.isOptional(operand.Param.Name)
+		if optional && c.params.getDefault(operand.Param.Name) == "" {
 			ph := c.params.add(operand.Param.Name, "")
 			other := rightP
 			if operand == rightP {
@@ -2432,15 +2448,17 @@ func (c *compiler) compileMembership(left string, path *aql.PathExpr, alias stri
 	}
 
 	if link.JunctionTable != "" {
-		// Junction table with one FK column per side, named after the referenced
-		// table (see generateJunctionTable / compileLinkField): ownerType.Table on
-		// the owner side, targetType.Table on the target side.
+		// Junction table with one FK column per side, named by asl.JunctionColumns
+		// (see generateJunctionTable / compileLinkField): the owner table on the
+		// owner side, the target table — or the link name, when a self-referential
+		// link would collide — on the target side.
 		jAlias := "jt"
+		sourceCol, targetCol := junctionCols(ownerType.Name, link)
 		inner = fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM %q %s WHERE %s.%s = %s AND %s.%s IN %s)",
 			link.JunctionTable, jAlias,
-			jAlias, ownerType.Table, ownerRef,
-			jAlias, targetType.Table, inClause,
+			jAlias, sourceCol, ownerRef,
+			jAlias, targetCol, inClause,
 		)
 	} else {
 		// Direct FK on the target side (rare for multi).
@@ -2827,11 +2845,18 @@ func (c *compiler) paramCastSuffix(operand, other *aql.Primary, rt *asl.Resolved
 	if operand == nil || operand.Param == nil {
 		return ""
 	}
+	// A multi param binds one array value, so every cast of it — including the
+	// IS NULL guard on an optional one — must be the array type. Casting the same
+	// placeholder to both T and T[] makes Postgres reject the statement.
+	suffix := ""
+	if c.params.isMulti(operand.Param.Name) {
+		suffix = "[]"
+	}
 	if t := c.filterOperandSQLType(other, rt); t != "" {
-		return "::" + t
+		return "::" + t + suffix
 	}
 	if bt, ok := asl.BuiltinSQLType(paramAQLType(c.params, operand.Param.Name)); ok {
-		return "::" + bt
+		return "::" + bt + suffix
 	}
 	return ""
 }
@@ -2907,4 +2932,14 @@ func expandScalarSerialize(scalar *asl.ResolvedScalar, valSQL string) string {
 		serializeExpr = strings.ReplaceAll(serializeExpr, recPrefix+fName, fieldExtraction)
 	}
 	return serializeExpr
+}
+
+// junctionCols returns a multi link's junction FK column names, falling back to
+// the canonical naming when an IR built elsewhere left them unset. Must agree
+// with the DDL generator (see asl.JunctionColumns).
+func junctionCols(ownerTypeName string, link *asl.ResolvedLink) (source, target string) {
+	if link.JunctionSourceColumn != "" && link.JunctionTargetColumn != "" {
+		return link.JunctionSourceColumn, link.JunctionTargetColumn
+	}
+	return asl.JunctionColumns(ownerTypeName, link.TargetType, link.Name)
 }

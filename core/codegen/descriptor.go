@@ -60,6 +60,11 @@ type LinkDescriptor struct {
 	TargetType    string `json:"target_type"`
 	JoinColumn    string `json:"join_column,omitempty"`
 	JunctionTable string `json:"junction_table,omitempty"`
+	// JunctionSourceColumn / JunctionTargetColumn name the junction table's two FK
+	// columns. They differ from the referenced table names only when a multi link
+	// points back at its own type (see asl.JunctionColumns).
+	JunctionSourceColumn string `json:"junction_source_column,omitempty"`
+	JunctionTargetColumn string `json:"junction_target_column,omitempty"`
 	// JoinField is the target field the link references ("id", "email"). Clients
 	// building a junction subquery need it to join back to the target row.
 	JoinField  string `json:"join_field,omitempty"`
@@ -81,7 +86,7 @@ type ScalarDescriptor struct {
 	IsMulti     bool                    `json:"is_multi,omitempty"`
 	IsCustomSQL bool                    `json:"is_custom_sql,omitempty"`
 	Default     string                  `json:"default,omitempty"`
-	Constraints []ConstraintDescriptor `json:"constraints,omitempty"`
+	Constraints []ConstraintDescriptor  `json:"constraints,omitempty"`
 	Fields      []ScalarFieldDescriptor `json:"fields,omitempty"`
 }
 
@@ -155,6 +160,9 @@ type ParamDescriptor struct {
 	EnumType   string `json:"enum_type,omitempty"` // enum type name when enum-backed
 	SQLPos     int    `json:"sql_pos"`             // 1-based $N
 	IsOptional bool   `json:"is_optional,omitempty"`
+	// IsMulti marks a param declared `multi` in a var block: it binds a single
+	// array value (TEXT[], UUID[], …), not one element.
+	IsMulti bool `json:"is_multi,omitempty"`
 }
 
 // ResultDescriptor describes the shape of data returned by a query.
@@ -280,13 +288,15 @@ func FromSchemaIR(ir *asl.SchemaIR) SchemaDescriptor {
 		for _, ln := range linkNames {
 			l := t.Links[ln]
 			td.Links = append(td.Links, LinkDescriptor{
-				Name:          l.Name,
-				TargetType:    l.TargetType,
-				JoinColumn:    l.JoinColumn,
-				JunctionTable: l.JunctionTable,
-				JoinField:     l.JoinField,
-				IsRequired:    l.IsRequired,
-				IsMulti:       l.IsMulti,
+				Name:                 l.Name,
+				TargetType:           l.TargetType,
+				JoinColumn:           l.JoinColumn,
+				JunctionTable:        l.JunctionTable,
+				JunctionSourceColumn: l.JunctionSourceColumn,
+				JunctionTargetColumn: l.JunctionTargetColumn,
+				JoinField:            l.JoinField,
+				IsRequired:           l.IsRequired,
+				IsMulti:              l.IsMulti,
 			})
 		}
 
@@ -352,6 +362,7 @@ func BuildQueryDescriptor(name, file string, stmt *aql.Statement, compiled *comp
 			EnumType:   p.EnumType,
 			SQLPos:     i + 1,
 			IsOptional: p.Optional,
+			IsMulti:    p.Multi,
 		})
 	}
 
@@ -722,13 +733,15 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 		}
 		for _, l := range t.Links {
 			rt.Links[l.Name] = &asl.ResolvedLink{
-				Name:          l.Name,
-				TargetType:    l.TargetType,
-				JoinColumn:    l.JoinColumn,
-				JunctionTable: l.JunctionTable,
-				JoinField:     l.JoinField,
-				IsRequired:    l.IsRequired,
-				IsMulti:       l.IsMulti,
+				Name:                 l.Name,
+				TargetType:           l.TargetType,
+				JoinColumn:           l.JoinColumn,
+				JunctionTable:        l.JunctionTable,
+				JunctionSourceColumn: l.JunctionSourceColumn,
+				JunctionTargetColumn: l.JunctionTargetColumn,
+				JoinField:            l.JoinField,
+				IsRequired:           l.IsRequired,
+				IsMulti:              l.IsMulti,
 			}
 		}
 		for _, c := range t.Computed {

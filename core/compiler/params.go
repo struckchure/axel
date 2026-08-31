@@ -54,6 +54,15 @@ func (p *paramCollector) markOptional(name string) {
 	}
 }
 
+// isOptional reports whether the param was declared optional, whether inline
+// ($name?) or in a var block.
+func (p *paramCollector) isOptional(name string) bool {
+	if pos, ok := p.index[name]; ok {
+		return p.params[pos-1].Optional
+	}
+	return false
+}
+
 // markMulti flags an already-registered param as multi (array).
 func (p *paramCollector) markMulti(name string) {
 	if pos, ok := p.index[name]; ok {

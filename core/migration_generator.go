@@ -2,6 +2,9 @@ package axel
 
 import (
 	"fmt"
+	"os"
+
+	"github.com/samber/lo"
 
 	"github.com/struckchure/axel/core/asl"
 )
@@ -81,6 +84,8 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 	// Generate SQL.
 	upSQL, downSQL := GenerateMigrationSQL(changes, lastSchema, currentSchema)
 
+	warnings := backfillWarnings(changes)
+
 	// Get next version.
 	version, err := g.manager.GetNextVersion()
 	if err != nil {
@@ -100,5 +105,43 @@ func (g *MigrationGenerator) GenerateMigration(name string) error {
 		fmt.Printf("    - %s\n", change.Description)
 	}
 
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
+
 	return nil
+}
+
+// backfillWarnings flags columns that become NOT NULL on a table that already
+// exists — newly added, or flipped from optional to required.
+// Such a column is created nullable and set NOT NULL in a second statement (see
+// generateAddColumn); on a table with rows that statement fails until the
+// migration is edited to backfill a value, so say so at generation time rather
+// than letting `axel up` be the messenger.
+func backfillWarnings(changes []SchemaChange) []string {
+	var warnings []string
+	for _, change := range changes {
+		if change.Type != AddField && change.Type != ModifyField {
+			continue
+		}
+		field, ok := change.NewValue.(Field)
+		if !ok || !field.IsRequired || field.IsMulti {
+			continue
+		}
+		if change.Type == ModifyField {
+			// Only a nullable → required flip needs a backfill; anything else about
+			// an already-required column is safe.
+			old, ok := change.OldValue.(Field)
+			if !ok || old.IsRequired {
+				continue
+			}
+		}
+		if !field.IsLink && field.Default != "" {
+			continue // the default backfills existing rows
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"%s.%s is required with no default: existing rows must be backfilled in the migration before its SET NOT NULL succeeds",
+			lo.SnakeCase(change.ModelName), lo.SnakeCase(field.Name)))
+	}
+	return warnings
 }

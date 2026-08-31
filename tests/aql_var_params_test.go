@@ -18,7 +18,9 @@ filter .status = $status and .amount >= $min_amount
 limit $limit;
 `)
 
-	if !strings.Contains(c.SQL, "WHERE t.status = $1::TEXT AND t.amount >= $2::INTEGER") {
+	// Declared optional (`$status<...>?`), so each comparison is skipped when the
+	// value comes in null — same as the inline `$status?` form.
+	if !strings.Contains(c.SQL, "WHERE ($1::TEXT IS NULL OR t.status = $1::TEXT) AND ($2::INTEGER IS NULL OR t.amount >= $2::INTEGER)") {
 		t.Errorf("unexpected WHERE clause in SQL:\n%s", c.SQL)
 	}
 	if !strings.Contains(c.SQL, "LIMIT $3::INTEGER") {

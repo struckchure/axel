@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
+
+	"github.com/struckchure/axel/core/asl"
 )
 
 func generateTable(model Model, abstractModels map[string]Model) string {
@@ -379,12 +381,18 @@ func generateJunctionTable(modelName string, field Field) string {
 	refTable := formatIdentifier(field.Type)
 	modelTable := formatIdentifier(modelName)
 
+	// Self-referential multi links would otherwise name both sides after the same
+	// table; asl.JunctionColumns is the single source of truth for the names.
+	sourceName, targetName := asl.JunctionColumns(modelName, field.Type, field.Name)
+	sourceCol := formatIdentifier(sourceName)
+	targetCol := formatIdentifier(targetName)
+
 	pk := namedConstraint(pkConstraintName(junction),
-		fmt.Sprintf("PRIMARY KEY (%s, %s)", formatIdentifier(modelName), formatIdentifier(field.Type)))
-	fkModel := namedConstraint(fkConstraintName(junction, modelName),
-		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(modelName), modelTable, formatIdentifier("id")))
-	fkTarget := namedConstraint(fkConstraintName(junction, field.Type),
-		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", formatIdentifier(field.Type), refTable, formatIdentifier("id")))
+		fmt.Sprintf("PRIMARY KEY (%s, %s)", sourceCol, targetCol))
+	fkModel := namedConstraint(fkConstraintName(junction, sourceName),
+		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", sourceCol, modelTable, formatIdentifier("id")))
+	fkTarget := namedConstraint(fkConstraintName(junction, targetName),
+		fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", targetCol, refTable, formatIdentifier("id")))
 
 	return fmt.Sprintf(`CREATE TABLE %s (
   %s UUID NOT NULL,
@@ -394,7 +402,7 @@ func generateJunctionTable(modelName string, field Field) string {
   %s
 );`,
 		tableName,
-		formatIdentifier(modelName), formatIdentifier(field.Type),
+		sourceCol, targetCol,
 		pk,       // TODO: reference fields assumed to be "id"
 		fkModel,  // TODO: should be the reference field
 		fkTarget, // TODO: should be the reference field

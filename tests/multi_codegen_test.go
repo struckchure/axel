@@ -107,7 +107,8 @@ func TestMultiLinkInTsClient(t *testing.T) {
 		"IsRelation<T[K]> extends true ? RelationRows<T[K]> : T[K]",
 		// the junction subquery itself
 		"function _buildLinkSubSelectSQL(",
-		`JOIN "${target.table}" ${t} ON ${t}."${joinField}" = ${jt}."${target.table}"`,
+		`JOIN "${target.table}" ${t} ON ${t}."${joinField}" = ${jt}."${targetCol}"`,
+		`WHERE ${jt}."${sourceCol}" = ${ownerAlias}.id`,
 		`COALESCE(json_agg(row_to_json(${sub})), '[]')`,
 		// shape keys now consult links
 		"const link = type.links?.find((l) => l.is_multi",
@@ -120,7 +121,12 @@ func TestMultiLinkInTsClient(t *testing.T) {
 	// The junction metadata the runtime needs must survive into the embedded
 	// schema. join_field is omitted when it defaults to id (the runtime supplies
 	// the default), so it is not asserted here.
-	for _, want := range []string{`"junction_table":"vendor_members"`, `"target_type":"User"`} {
+	for _, want := range []string{
+		`"junction_table":"vendor_members"`,
+		`"target_type":"User"`,
+		`"junction_source_column":"vendor"`,
+		`"junction_target_column":"user"`,
+	} {
 		if !strings.Contains(runner, want) {
 			t.Errorf("embedded schema JSON missing %q", want)
 		}

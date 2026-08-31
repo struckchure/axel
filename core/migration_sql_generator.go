@@ -390,7 +390,14 @@ func generateAddColumn(tableName string, field Field) string {
 		parts = append(parts, sqlType)
 	}
 
-	if field.IsRequired {
+	// A required column can only be added inline when every existing row gets a
+	// value: with a DEFAULT, Postgres backfills; without one, `ADD COLUMN ... NOT
+	// NULL` fails outright on a non-empty table ("column contains null values").
+	// So add the column nullable and raise NOT NULL in a separate statement,
+	// leaving a seam for the backfill UPDATE the schema author has to supply.
+	deferNotNull := field.IsRequired && (field.IsLink || field.Default == "")
+
+	if field.IsRequired && !deferNotNull {
 		parts = append(parts, "NOT NULL")
 	}
 
@@ -427,6 +434,14 @@ func generateAddColumn(tableName string, field Field) string {
 				fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", colName, refTable, refColumn)))
 	}
 
+	if deferNotNull {
+		stmt += fmt.Sprintf("\n-- axel: %q is required and has no default. Existing rows need a value\n"+
+			"-- before the NOT NULL below can be applied:\n"+
+			"--   UPDATE \"%s\" SET %s = <value> WHERE %s IS NULL;\n"+
+			"ALTER TABLE \"%s\" ALTER COLUMN %s SET NOT NULL;",
+			field.Name, tableName, colName, colName, tableName, colName)
+	}
+
 	return stmt
 }
 
@@ -455,6 +470,20 @@ func generateModifyColumn(tableName string, oldField, newField Field) (upSQL, do
 	// Required constraint change
 	if oldField.IsRequired != newField.IsRequired {
 		if newField.IsRequired {
+			// SET NOT NULL fails on a column that still holds NULLs, so fill them in
+			// first. A declared default gives the value to backfill with (SET DEFAULT
+			// alone does not touch existing rows); without one, leave the UPDATE
+			// commented out for the schema author to complete.
+			if newField.Default != "" {
+				backfill := mapDefault(newField.Default, newSQLType)
+				upParts = append(upParts, fmt.Sprintf("UPDATE \"%s\" SET %s = %s WHERE %s IS NULL;", tableName, colName, backfill, colName))
+			} else {
+				upParts = append(upParts, fmt.Sprintf(
+					"-- axel: %q is becoming required. Existing rows need a value before the\n"+
+						"-- NOT NULL below can be applied:\n"+
+						"--   UPDATE \"%s\" SET %s = <value> WHERE %s IS NULL;",
+					newField.Name, tableName, colName, colName))
+			}
 			upParts = append(upParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s SET NOT NULL;", tableName, colName))
 			downParts = append(downParts, fmt.Sprintf("ALTER TABLE \"%s\" ALTER COLUMN %s DROP NOT NULL;", tableName, colName))
 		} else {
