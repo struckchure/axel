@@ -102,9 +102,9 @@ func TestMultiLinkInTsClient(t *testing.T) {
 	runner := readFile(t, filepath.Join(dir, "runner.ts"))
 	for _, want := range []string{
 		// relation keys are not insertable columns
-		`type Insertable<T> = Omit<T, "id" | "createdAt" | "updatedAt" | RelationKeys<T>>;`,
+		`type Insertable<T> = Omit<T, "id" | "created_at" | "updated_at" | models.RelationKeys<T>>;`,
 		// a selected relation resolves to the target rows, not the branded type
-		"IsRelation<T[K]> extends true ? RelationRows<T[K]> : T[K]",
+		"models.IsRelation<T[K]> extends true ? models.RelationRows<T[K]> : T[K]",
 		// the junction subquery itself
 		"function _buildLinkSubSelectSQL(",
 		`JOIN "${target.table}" ${t} ON ${t}."${joinField}" = ${jt}."${targetCol}"`,
@@ -150,10 +150,15 @@ func TestTsBarrelFile(t *testing.T) {
 
 	barrel := readFile(t, filepath.Join(dir, "index.ts"))
 	for _, want := range []string{
-		`export * from "./models.ts";`,
-		`export * from "./runner.ts";`,
-		`export * from "./list_roles.ts";`,
-		`export * from "./list_vendors.ts";`,
+		// Specifiers are extensionless so tsc accepts them without
+		// allowImportingTsExtensions (which would force noEmit).
+		`export * from "./models";`,
+		// The runner's own names are re-exported explicitly: an explicit named
+		// export beats `export *`, so a schema type sharing one of them (a type
+		// called Runner, say) cannot make the barrel ambiguous.
+		`export { Runner, Queries, type DB, type Shape, type ShapeResult } from "./runner";`,
+		`export * from "./list_roles";`,
+		`export * from "./list_vendors";`,
 	} {
 		if !strings.Contains(barrel, want) {
 			t.Errorf("index.ts missing %q:\n%s", want, barrel)

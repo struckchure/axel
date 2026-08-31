@@ -470,7 +470,7 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 				rf := ResultField{Name: sf.Name, AQLType: "json", IsNullable: true}
 				if targetRT := ir.ObjectTypes[p.SubQuery.TypeName]; targetRT != nil {
 					if prop, ok := targetRT.Properties[p.SubQueryField]; ok {
-						rf.AQLType = sqlTypeToAQLType(prop.SQLType)
+						rf.AQLType = propAQLType(prop)
 						rf.SQLType = prop.SQLType
 						rf.EnumType = prop.EnumType
 					}
@@ -545,7 +545,7 @@ func buildShapeFields(shape *aql.Shape, rt *asl.ResolvedType, ir *asl.SchemaIR, 
 			if prop, ok := rt.Properties[sf.Name]; ok {
 				fields = append(fields, ResultField{
 					Name:       sf.Name,
-					AQLType:    sqlTypeToAQLType(prop.SQLType),
+					AQLType:    propAQLType(prop),
 					SQLType:    prop.SQLType,
 					EnumType:   prop.EnumType,
 					IsNullable: !prop.IsRequired,
@@ -595,7 +595,7 @@ func scalarAndLinkFields(rt *asl.ResolvedType, skip map[string]bool) []ResultFie
 		}
 		fields = append(fields, ResultField{
 			Name:       p.Name,
-			AQLType:    sqlTypeToAQLType(p.SQLType),
+			AQLType:    propAQLType(p),
 			SQLType:    p.SQLType,
 			EnumType:   p.EnumType,
 			IsNullable: !p.IsRequired,
@@ -753,6 +753,19 @@ func ToSchemaIR(sd SchemaDescriptor) *asl.SchemaIR {
 		ir.ObjectTypes[t.Name] = rt
 	}
 	return ir
+}
+
+// propAQLType resolves the AQL type name for a property. A property declared
+// with a custom scalar (`address: Point`) carries that scalar's name in
+// AQLType, which is what generators key their interface lookup on; falling back
+// to sqlTypeToAQLType there would surface the raw SQL type ("geography(Point,
+// 4326)") in generated code, which is not a valid type name in any target
+// language. Mirrors the models path in FromSchemaIR.
+func propAQLType(p *asl.ResolvedProp) string {
+	if p.AQLType != "" {
+		return p.AQLType
+	}
+	return sqlTypeToAQLType(p.SQLType)
 }
 
 // sqlTypeToAQLType maps a SQL type string back to an AQL type name.

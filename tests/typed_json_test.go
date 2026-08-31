@@ -421,12 +421,14 @@ func TestTypedJsonTemporalCodegen(t *testing.T) {
 		t.Fatalf("generate ts: %v", err)
 	}
 	modelsTs := readFile(t, filepath.Join(tsDir, "models.ts"))
-	// Temporal fields inside a JSON document arrive as strings, not Dates.
+	// Temporal fields inside a JSON document arrive as strings, not Dates — and
+	// under the document's own keys, which json_build_object writes in snake_case
+	// (`availability->>'effective_from'`), the same names the Go tags carry.
 	for _, want := range []string{
 		"export interface VendorAvailability {",
 		"opening?: string | null;",
-		"effectiveFrom?: string | null;",
-		"updatedAt?: string | null;",
+		"effective_from?: string | null;",
+		"updated_at?: string | null;",
 		"holidays?: string[] | null;",
 	} {
 		if !strings.Contains(modelsTs, want) {

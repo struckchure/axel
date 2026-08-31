@@ -152,8 +152,10 @@ func TestTsCodegenEnumResultField(t *testing.T) {
 	if !strings.Contains(query, "protocol: NetworkProtocol") {
 		t.Errorf("nested row interface missing enum-typed protocol:\n%s", query)
 	}
+	// Specifiers are extensionless: tsc rejects a ".ts" import unless
+	// allowImportingTsExtensions is set, which in turn forces noEmit.
 	if !strings.Contains(query, "ApplicationStatus") || !strings.Contains(query, "NetworkProtocol") ||
-		!strings.Contains(query, `from "./models.ts"`) {
+		!strings.Contains(query, `from "./models"`) {
 		t.Errorf("query file should import enum types from models.ts:\n%s", query)
 	}
 }
@@ -254,7 +256,7 @@ func TestTsCodegenDirectiveImport(t *testing.T) {
 		t.Errorf("models.ts missing hoisted UserView:\n%s", models)
 	}
 	query := readFile(t, filepath.Join(dir, "list_users.ts"))
-	if !strings.Contains(query, `import type { UserView } from "./models.ts"`) {
+	if !strings.Contains(query, `import type { UserView } from "./models"`) {
 		t.Errorf("list_users.ts should import UserView from models.ts:\n%s", query)
 	}
 	if strings.Contains(query, "export interface UserView") {
