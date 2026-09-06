@@ -23,7 +23,7 @@
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "sharp": "^0.33.5",
+    "sharp": "^0.35.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3"
   },

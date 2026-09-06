@@ -4692,6 +4692,56 @@ for $tag in $tags {
 }
 ```
 
+### Upserting Iterator Values (`EXCLUDED`)
+
+Inside `ON CONFLICT ... DO UPDATE`, Postgres has only two rows in scope: the existing row and
+`EXCLUDED`, the row the insert proposed. The `__for_iter` CTE is *not* in scope there. When the
+`else` update reuses an expression the insert already writes, Axel rewrites it to that column's
+`EXCLUDED` reference:
+
+```aql
+var multi $plans: str? := {'A1|0|NGN|512|256'}
+
+for $plan in $plans {
+  insert Plan {
+    name := split_part($plan, '|', 1),
+    price := split_part($plan, '|', 2)<int64>,
+    currency := split_part($plan, '|', 3),
+    memory := split_part($plan, '|', 4)<int32>,
+    cpu := split_part($plan, '|', 5)<int32>
+  } unless conflict on .name else (update Plan set {
+    price := split_part($plan, '|', 2)<int64>,
+    memory := split_part($plan, '|', 4)<int32>
+  });
+}
+```
+
+```sql
+-- $1: plans (str[])
+WITH __for_iter AS (
+  SELECT unnest(COALESCE($1::TEXT[], ARRAY['A1|0|NGN|512|256']::TEXT[])) AS "plan"
+)
+INSERT INTO "plan" ("name", "price", "currency", "memory", "cpu")
+SELECT
+  split_part(__for_iter."plan", '|', 1),
+  (split_part(__for_iter."plan", '|', 2))::BIGINT,
+  split_part(__for_iter."plan", '|', 3),
+  (split_part(__for_iter."plan", '|', 4))::INTEGER,
+  (split_part(__for_iter."plan", '|', 5))::INTEGER
+FROM __for_iter
+ON CONFLICT ("name") DO UPDATE SET "price" = EXCLUDED."price", "memory" = EXCLUDED."memory"
+RETURNING "cpu", "currency", "id", "memory", "name", "price";
+```
+
+Only values the insert actually writes are available this way. An `else` update that derives a new
+value from the iterator — a field the insert never assigns, for example — is rejected at compile
+time instead of failing at run time with `missing FROM-clause entry for table "__for_iter"`.
+
+:::note
+`split_part` field positions are 1-based in Postgres; position `0` raises
+`field position must be greater than zero` at run time.
+:::
+
 ---
 
 Source: https://struckchure.github.io/axel/aql/update/basics
