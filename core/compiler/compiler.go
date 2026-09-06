@@ -171,6 +171,12 @@ type compiler struct {
 	// forIterator and forIteratorRef track the loop iterator when compiling a for-loop body.
 	forIterator    string
 	forIteratorRef string
+	// forInsertCols/forInsertVals hold the column list and the compiled value
+	// expressions of a for-loop's bulk INSERT ... SELECT. They let an
+	// `unless conflict ... else` update rewrite iterator references into
+	// EXCLUDED references; see rewriteForIterAsExcluded.
+	forInsertCols []string
+	forInsertVals []string
 	// warnings collects non-fatal notes about the compiled statement (e.g. a
 	// function name that matches nothing known). They never block compilation —
 	// an unrecognised function may still be a perfectly good Postgres one — and
@@ -1072,7 +1078,9 @@ func (c *compiler) compileFor(stmt *aql.ForStmt) (string, error) {
 		strings.Join(vals, ",\n  "),
 	)
 	if ins.Conflict != nil {
+		c.forInsertCols, c.forInsertVals = cols, vals
 		onConflict, err := c.compileOnConflict(rt, ins.Conflict)
+		c.forInsertCols, c.forInsertVals = nil, nil
 		if err != nil {
 			return "", err
 		}
@@ -1152,6 +1160,10 @@ func (c *compiler) compileConflictSets(rt *asl.ResolvedType, assignments []*aql.
 			if err != nil {
 				return nil, err
 			}
+			val, err = c.rewriteForIterAsExcluded(val, a.Field)
+			if err != nil {
+				return nil, err
+			}
 			inferAssignmentParamType(c.params, a.Value, sqlToAQLType(prop.SQLType), prop.EnumType)
 			sets = append(sets, fmt.Sprintf("%q = %s", prop.Column, val))
 			continue
@@ -1161,6 +1173,10 @@ func (c *compiler) compileConflictSets(rt *asl.ResolvedType, assignments []*aql.
 				return nil, fmt.Errorf("cannot assign multi-link %q in conflict update", a.Field)
 			}
 			val, err := c.compileExpr(a.Value, targetAlias, rt)
+			if err != nil {
+				return nil, err
+			}
+			val, err = c.rewriteForIterAsExcluded(val, a.Field)
 			if err != nil {
 				return nil, err
 			}
@@ -1174,6 +1190,46 @@ func (c *compiler) compileConflictSets(rt *asl.ResolvedType, assignments []*aql.
 		return nil, fmt.Errorf("else update must set at least one field")
 	}
 	return sets, nil
+}
+
+// rewriteForIterAsExcluded makes a for-loop's `unless conflict ... else` update
+// legal Postgres. The loop's INSERT reads its values from the __for_iter CTE,
+// but ON CONFLICT DO UPDATE only has two rows in scope — the existing row and
+// EXCLUDED, the row the INSERT proposed — so a __for_iter reference there fails
+// with 42P01 (missing FROM-clause entry for table "__for_iter").
+//
+// Every inserted column's proposed value is available as EXCLUDED."col", so any
+// insert value expression appearing in the update can be swapped for the
+// EXCLUDED reference of its column. Longest expressions are substituted first so
+// that a nested expression cannot shadow the one containing it. Anything still
+// naming the iterator afterwards refers to data the INSERT never wrote, which
+// Postgres cannot see here, so it is rejected with an explanation instead of
+// emitting SQL that fails at run time.
+func (c *compiler) rewriteForIterAsExcluded(val, field string) (string, error) {
+	if c.forIterator == "" || !strings.Contains(val, "__for_iter.") {
+		return val, nil
+	}
+
+	idx := make([]int, 0, len(c.forInsertVals))
+	for i, v := range c.forInsertVals {
+		if strings.Contains(v, "__for_iter.") {
+			idx = append(idx, i)
+		}
+	}
+	sort.SliceStable(idx, func(a, b int) bool {
+		return len(c.forInsertVals[idx[a]]) > len(c.forInsertVals[idx[b]])
+	})
+	for _, i := range idx {
+		val = strings.ReplaceAll(val, c.forInsertVals[i], "EXCLUDED."+c.forInsertCols[i])
+	}
+
+	if strings.Contains(val, "__for_iter.") {
+		return "", fmt.Errorf(
+			"field %q in `unless conflict ... else` uses $%s in a way the insert does not write; "+
+				"only expressions also assigned by the insert are available (as the proposed row) inside the update",
+			field, c.forIterator)
+	}
+	return val, nil
 }
 
 // conflictColumn resolves a conflict-target field to its column (scalar property

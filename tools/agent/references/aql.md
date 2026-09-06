@@ -238,6 +238,34 @@ for $condition in $conditions {
 - Declaring `multi $name: type? := default` passes an array parameter (`TEXT[]`) with a fallback default array.
 - Emits a CTE `WITH __for_iter AS (SELECT unnest(...) AS "iter")` and runs `INSERT ... SELECT ... FROM __for_iter`.
 
+### `unless conflict ... else` inside a `for` loop
+
+Postgres puts only the existing row and `EXCLUDED` in scope inside `ON CONFLICT DO UPDATE` — not the
+`__for_iter` CTE. Axel therefore rewrites iterator expressions in the `else` update into the
+`EXCLUDED` column the insert wrote them to:
+
+```aql
+var multi $plans: str? := {'A1|0|NGN|512', 'A2|150000|NGN|1024'}
+
+for $plan in $plans {
+  insert Plan {
+    name := split_part($plan, '|', 1),
+    price := split_part($plan, '|', 2)<int64>,
+    memory := split_part($plan, '|', 4)<int32>
+  } unless conflict on .name else (update Plan set {
+    price := split_part($plan, '|', 2)<int64>,
+    memory := split_part($plan, '|', 4)<int32>
+  });
+}
+```
+
+```sql
+ON CONFLICT ("name") DO UPDATE SET "price" = EXCLUDED."price", "memory" = EXCLUDED."memory"
+```
+
+An `else` update expression over the iterator that the insert does not itself write has no `EXCLUDED`
+column to read, and is a compile error rather than a run-time `42P01`.
+
 Enum values are qualified (`Role.Member`). Insert and update return the row's columns.
 
 ## with blocks
