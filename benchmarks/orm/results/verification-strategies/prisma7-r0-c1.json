@@ -1,0 +1,50 @@
+{
+  "results": [
+    {
+      "adapter": "prisma7",
+      "round": 0,
+      "concurrency": 1,
+      "workload": "nested10x5",
+      "iterations": 20,
+      "warmup": 5,
+      "elapsedMs": 20.9861249999999,
+      "opsPerSec": 953.0106201121023,
+      "p50Ms": 0.8993749999999636,
+      "p95Ms": 1.7603339999998298,
+      "p99Ms": 2.2362500000001546,
+      "latenciesMs": [
+        0.506458000000066,
+        0.5782910000000356,
+        0.6231250000000728,
+        0.6477909999998701,
+        0.654207999999926,
+        0.7108330000000933,
+        0.8142920000000231,
+        0.8266249999999218,
+        0.8984159999999974,
+        0.8993749999999636,
+        0.9711250000000291,
+        1.020665999999892,
+        1.0332079999998314,
+        1.1749160000001666,
+        1.199999999999818,
+        1.2185839999999644,
+        1.5378339999999753,
+        1.5392080000001442,
+        1.7603339999998298,
+        2.2362500000001546
+      ]
+    }
+  ],
+  "samples": {
+    "nested10x5": {
+      "queries": [
+        {
+          "sql": "SELECT \"t0\".\"id\", \"t0\".\"email\", \"Account_posts\".\"__prisma_data__\" AS \"posts\" FROM \"public\".\"account\" AS \"t0\" LEFT JOIN LATERAL (SELECT COALESCE(JSONB_AGG(\"__prisma_data__\"), '[]') AS \"__prisma_data__\" FROM (SELECT \"t3\".\"__prisma_data__\" FROM (SELECT JSONB_BUILD_OBJECT('id', \"t2\".\"id\", 'title', \"t2\".\"title\") AS \"__prisma_data__\" FROM (SELECT \"t1\".* FROM \"public\".\"post\" AS \"t1\" WHERE \"t0\".\"id\" = \"t1\".\"author\" /* root select */) AS \"t2\" /* inner select */) AS \"t3\" /* middle select */) AS \"t4\" /* outer select */) AS \"Account_posts\" ON true WHERE (\"t0\".\"id\" >= $1 AND \"t0\".\"id\" < $2)",
+          "params": "[1,11]"
+        }
+      ],
+      "resultRows": 10
+    }
+  }
+}

@@ -1,0 +1,4 @@
+packages:
+  - .
+  - prisma6
+  - prisma7

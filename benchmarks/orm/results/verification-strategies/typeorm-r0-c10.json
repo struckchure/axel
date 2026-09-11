@@ -1,0 +1,53 @@
+{
+  "results": [
+    {
+      "adapter": "typeorm",
+      "round": 0,
+      "concurrency": 10,
+      "workload": "nested10x5",
+      "iterations": 20,
+      "warmup": 5,
+      "elapsedMs": 24.068667000000005,
+      "opsPerSec": 830.9558647348437,
+      "p50Ms": 8.39991699999996,
+      "p95Ms": 13.758540999999923,
+      "p99Ms": 16.03125,
+      "latenciesMs": [
+        4.194958000000042,
+        5.30337499999996,
+        5.3420840000001135,
+        5.538624999999911,
+        5.884209000000055,
+        6.366500000000087,
+        7.229666999999836,
+        7.6330420000001595,
+        7.8743750000001,
+        8.39991699999996,
+        9.43504199999984,
+        10.190917000000127,
+        10.385291999999936,
+        10.578416999999945,
+        11.17816700000003,
+        11.43837499999995,
+        11.789083000000119,
+        12.666791999999987,
+        13.758540999999923,
+        16.03125
+      ]
+    }
+  ],
+  "samples": {
+    "nested10x5": {
+      "queries": [
+        {
+          "sql": "SELECT \"Account\".\"id\" AS \"Account_id\", \"Account\".\"email\" AS \"Account_email\", \"Account__Account_posts\".\"id\" AS \"Account__Account_posts_id\", \"Account__Account_posts\".\"title\" AS \"Account__Account_posts_title\" FROM \"account\" \"Account\" LEFT JOIN \"post\" \"Account__Account_posts\" ON \"Account__Account_posts\".\"author\"=\"Account\".\"id\" WHERE (((\"Account\".\"id\" >= $1 AND \"Account\".\"id\" < $2)))",
+          "params": [
+            1,
+            11
+          ]
+        }
+      ],
+      "resultRows": 10
+    }
+  }
+}

@@ -753,3 +753,25 @@ EndSchema
 Use `BeginSchema` to reset state, `BeginType`/`EndType` to open and close type-level buffers, and `EndSchema` to flush everything to files via `ctx.WriteFile`.
 
 `ctx.WriteFile(path, content)` writes `content` to `<out_dir>/<path>`, creating parent directories as needed. Paths are relative to `out_dir`.
+
+### TypeScript runtime relation loading
+
+The generated `Runner` accepts a runtime strategy for both `runner.run()` AQL
+and `runner.select()` nested builders:
+
+```ts
+const aggregate = new Runner(db); // relLoadStrategy: "query" (default)
+const joined = new Runner(db, { relLoadStrategy: "join" });
+```
+
+`query` emits correlated JSON aggregate subqueries in the SELECT list. `join`
+emits `LEFT JOIN LATERAL` aggregates. Both execute one SQL statement and preserve
+the same nested result shape; join mode still uses JSON aggregation. The option
+propagates to deeper nested selections and multi-link builder projections.
+Existing empty-result semantics are preserved: explicit nested subselects return
+`null` when empty, while multi-link projections coalesce to `[]`.
+
+This option controls dynamic TypeScript execution only. AOT query methods under
+`runner.query` keep the strategy chosen at compilation through `rel-load-strategy`
+or `@rel_load_strategy`. The TypeScript runtime parser does not parse that directive;
+use the constructor option for runtime AQL. Regenerate the client to get this API.

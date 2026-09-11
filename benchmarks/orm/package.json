@@ -1,0 +1,32 @@
+{
+  "name": "axel-orm-benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "seed": "node seed.mjs",
+    "bench": "node run.mjs",
+    "report": "node report.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "node": "24.21.0",
+    "pg": "8.16.3",
+    "reflect-metadata": "0.2.2",
+    "tsx": "4.20.6",
+    "typeorm": "1.1.1"
+  },
+  "packageManager": "pnpm@10.23.0",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "node",
+      "@prisma/engines",
+      "prisma",
+      "@prisma/client",
+      "esbuild"
+    ]
+  }
+}

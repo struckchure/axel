@@ -1,0 +1,24 @@
+{
+  "supplements": [
+    {
+      "path": "../node24-pg18",
+      "workloads": [
+        "point",
+        "range100",
+        "insert"
+      ]
+    }
+  ],
+  "additions": [
+    {
+      "path": "../prisma7-query",
+      "workloads": [
+        "nested10x5"
+      ],
+      "adapters": [
+        "prisma7-query"
+      ],
+      "note": "The existing Prisma 7 rows use join loading. Prisma 7 (query) uses two SQL queries and combines relations in the client. Axel aggregate and join variants above remain unchanged."
+    }
+  ]
+}

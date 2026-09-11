@@ -56,6 +56,18 @@ query.aql   ──► axel compile  ──► parameterized SQL (you execute thi
 
 ---
 
+## Benchmark TLDR
+
+Benchmarked on **September 11, 2026**, using **pnpm, Node 24.21.0 LTS, and PostgreSQL 18.6**: Axel's generated TypeScript AQL runtime and query builder versus Prisma 6/7, TypeORM, and Drizzle. AQL parsing and SQL generation are included in the timings.
+
+- At concurrency 10, Axel's builder had the highest measured median throughput in the saved comparisons: **6,520 point reads/sec**, **4,094 100-row reads/sec**, **5,345 nested reads/sec** with join loading, and **2,134 inserts/sec**.
+- For nested reads, builder join loading measured **31% higher throughput** than its default aggregate strategy. Prisma 7's query-loading variant measured **5,239/sec**, close to Axel builder join. At concurrency 1, aggregate loading performed better for both Axel modes; Prisma 6 led point reads.
+- These are **provisional local results**, with wide variation between trials. Workloads and the additional Prisma 7 variant were collected in separate runs; the report preserves their dates and provenance. All measured variants passed result-equivalence checks. The nested strategy run includes the TypeScript runtime strategy support added in this repository.
+
+See the **[complete benchmark report](benchmarks/orm/results/nested-strategies/REPORT.md)** for every workload, sorted throughput tables, latency percentiles, and trial ranges. The **[benchmark harness](benchmarks/orm/README.md)** includes reproduction commands, raw measurements, SQL captures, and known limitations.
+
+---
+
 ## Schema language (ASL)
 
 Define types, links, constraints, and indexes in `.asl` files:

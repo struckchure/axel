@@ -109,7 +109,7 @@ func TestMultiLinkInTsClient(t *testing.T) {
 		"function _buildLinkSubSelectSQL(",
 		`JOIN "${target.table}" ${t} ON ${t}."${joinField}" = ${jt}."${targetCol}"`,
 		`WHERE ${jt}."${sourceCol}" = ${ownerAlias}.id`,
-		`COALESCE(json_agg(row_to_json(${sub})), '[]')`,
+		`COALESCE(json_agg(row_to_json(${subAlias})), '[]')`,
 		// shape keys now consult links
 		"const link = type.links?.find((l) => l.is_multi",
 	} {

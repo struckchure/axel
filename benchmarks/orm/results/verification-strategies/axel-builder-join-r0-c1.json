@@ -1,0 +1,53 @@
+{
+  "results": [
+    {
+      "adapter": "axel-builder-join",
+      "round": 0,
+      "concurrency": 1,
+      "workload": "nested10x5",
+      "iterations": 20,
+      "warmup": 5,
+      "elapsedMs": 42.678875000000005,
+      "opsPerSec": 468.61591361065626,
+      "p50Ms": 1.9157499999999743,
+      "p95Ms": 4.130250000000018,
+      "p99Ms": 4.3481669999999895,
+      "latenciesMs": [
+        0.7495419999999626,
+        0.8084580000000301,
+        0.9257089999999835,
+        1.0249999999999773,
+        1.0779590000000212,
+        1.293457999999987,
+        1.3807079999999985,
+        1.4369580000000042,
+        1.545375000000007,
+        1.9157499999999743,
+        1.9842919999999822,
+        2.0759160000000065,
+        2.379665999999986,
+        2.5172919999999976,
+        2.7457500000000152,
+        2.9685420000000136,
+        3.3117909999999995,
+        3.5987499999999955,
+        4.130250000000018,
+        4.3481669999999895
+      ]
+    }
+  ],
+  "samples": {
+    "nested10x5": {
+      "queries": [
+        {
+          "sql": "SELECT a.\"id\", a.\"email\", p_posts_sub_lat.\"value\" AS \"posts\" FROM \"account\" a LEFT JOIN LATERAL (SELECT json_agg(row_to_json(p_posts_sub)) AS \"value\" FROM (SELECT p.\"id\", p.\"title\" FROM \"post\" p WHERE p.\"author\" = a.\"id\") p_posts_sub) p_posts_sub_lat ON true WHERE a.\"id\" >= $1 AND a.\"id\" < $2",
+          "params": [
+            1,
+            11
+          ]
+        }
+      ],
+      "resultRows": 10
+    }
+  }
+}

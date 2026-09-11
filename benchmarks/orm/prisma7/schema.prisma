@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client"
+  output = "./generated"
+
+  previewFeatures = ["relationJoins"]
+}
+datasource db {
+  provider = "postgresql"
+
+}
+
+model Account {
+  id Int @id
+  email String
+  age Int
+  active Boolean
+  posts Post[]
+  @@map("account")
+}
+model Post {
+  id Int @id
+  title String
+  author Int
+  user Account @relation(fields: [author], references: [id])
+  @@map("post")
+}

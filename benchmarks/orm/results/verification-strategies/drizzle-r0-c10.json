@@ -1,0 +1,53 @@
+{
+  "results": [
+    {
+      "adapter": "drizzle",
+      "round": 0,
+      "concurrency": 10,
+      "workload": "nested10x5",
+      "iterations": 20,
+      "warmup": 5,
+      "elapsedMs": 19.623083999999835,
+      "opsPerSec": 1019.2077860952013,
+      "p50Ms": 4.903459000000112,
+      "p95Ms": 16.465291999999863,
+      "p99Ms": 16.52741600000013,
+      "latenciesMs": [
+        2.77537499999994,
+        3.002124999999978,
+        3.3781249999999545,
+        3.633874999999989,
+        4.16254200000003,
+        4.27904199999989,
+        4.345832999999857,
+        4.521542000000181,
+        4.66595899999993,
+        4.903459000000112,
+        10.284834000000046,
+        10.803707999999915,
+        11.756374999999935,
+        12.941499999999905,
+        13.37175000000002,
+        13.631667000000107,
+        14.351958000000195,
+        14.841125000000147,
+        16.465291999999863,
+        16.52741600000013
+      ]
+    }
+  ],
+  "samples": {
+    "nested10x5": {
+      "queries": [
+        {
+          "sql": "select \"users\".\"id\", \"users\".\"email\", \"users_posts\".\"data\" as \"posts\" from \"account\" \"users\" left join lateral (select coalesce(json_agg(json_build_array(\"users_posts\".\"id\", \"users_posts\".\"title\")), '[]'::json) as \"data\" from \"post\" \"users_posts\" where \"users_posts\".\"author\" = \"users\".\"id\") \"users_posts\" on true where (\"users\".\"id\" >= $1 and \"users\".\"id\" < $2)",
+          "params": [
+            1,
+            11
+          ]
+        }
+      ],
+      "resultRows": 10
+    }
+  }
+}

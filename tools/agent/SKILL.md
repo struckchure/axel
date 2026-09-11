@@ -346,6 +346,13 @@ field on a shape, a filter on a column that is not there.
 | A JSON field's timestamp arrives as a string | Postgres renders temporal values inside JSON as text; the generators type them `string` | Parse it at the edge — this is intended |
 | A multi link is missing from a TypeScript insert | Multi links are branded `Relation<T>` and stripped from `Insertable` | Set it with an `update … set { … }` after the insert |
 
+## TypeScript runtime relation loading
+
+Generated TypeScript clients accept `new Runner(db, { relLoadStrategy: "join" })`
+for lateral JSON aggregation in dynamic AQL and nested builders. The default
+`"query"` strategy uses correlated aggregates. This constructor option does not
+change AOT methods under `runner.query`; see `references/codegen.md`.
+
 ## Reference files
 
 - `references/asl.md` — the full schema language: every declaration, field body item, constraint,

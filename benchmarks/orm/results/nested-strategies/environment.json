@@ -1,0 +1,89 @@
+{
+  "date": "2026-09-11T20:41:35.440Z",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M4",
+  "cpuCount": 10,
+  "memoryBytes": 17179869184,
+  "postgres": "PostgreSQL 18.6 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "axelCommit": "0fa2ca54925e22e41637a4bad63b0d9c7d382616",
+  "adapters": [
+    "axel-aql",
+    "axel-aql-join",
+    "axel-builder",
+    "axel-builder-join",
+    "prisma6",
+    "prisma7",
+    "typeorm",
+    "drizzle"
+  ],
+  "rounds": 8,
+  "concurrencies": [
+    1,
+    10
+  ],
+  "workloads": [
+    "nested10x5"
+  ],
+  "iterations": 2000,
+  "warmup": 300,
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "node": "24.21.0",
+    "pg": "8.16.3",
+    "reflect-metadata": "0.2.2",
+    "tsx": "4.20.6",
+    "typeorm": "1.1.1"
+  },
+  "packageManager": "pnpm@10.23.0",
+  "prisma6": {
+    "prisma": "6.19.3",
+    "@prisma/client": "6.19.3"
+  },
+  "prisma7": {
+    "prisma": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@prisma/adapter-pg": "7.10.0"
+  },
+  "lockSha256": "bfdc8bb5bdb8109ca1edbf132161c9f361f65f71c72908f89972bb9994ee39ce",
+  "generatedAxelSha256": "90fc9f30fb7311b944d95f2472b73991bcf5a017118926298e53ff3b858b7762",
+  "postgresSettings": [
+    {
+      "name": "autovacuum",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "fsync",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "jit",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "max_connections",
+      "setting": "100",
+      "unit": null
+    },
+    {
+      "name": "shared_buffers",
+      "setting": "16384",
+      "unit": "8kB"
+    },
+    {
+      "name": "synchronous_commit",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "work_mem",
+      "setting": "4096",
+      "unit": "kB"
+    }
+  ],
+  "measurementNote": "This run uses the working-tree TypeScript runtime strategy implementation. See runtime.patch; unsuffixed Axel entries use correlated aggregates and -join entries use lateral aggregates."
+}
